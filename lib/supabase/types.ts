@@ -230,6 +230,35 @@ export type Database = {
           },
         ]
       }
+      recurring_service_roles: {
+        Row: {
+          created_at: string
+          id: string
+          recurring_service_id: string
+          role_name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          recurring_service_id: string
+          role_name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          recurring_service_id?: string
+          role_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_service_roles_recurring_service_id_fkey"
+            columns: ["recurring_service_id"]
+            isOneToOne: false
+            referencedRelation: "recurring_services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

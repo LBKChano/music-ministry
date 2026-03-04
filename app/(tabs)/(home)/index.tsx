@@ -21,7 +21,7 @@ import { useServices } from '@/hooks/useServices';
 
 export default function HomeScreen() {
   const { colors: themeColors } = useTheme();
-  const { currentChurch, members } = useChurch();
+  const { currentChurch, members, recurringServices, churchRoles } = useChurch();
   const {
     services,
     loading,
@@ -36,6 +36,7 @@ export default function HomeScreen() {
   const [isAddAssignmentModalVisible, setAddAssignmentModalVisible] = useState(false);
   const [isDeleteServiceModalVisible, setDeleteServiceModalVisible] = useState(false);
   const [isDeleteAssignmentModalVisible, setDeleteAssignmentModalVisible] = useState(false);
+  const [isRecurringServicePickerVisible, setRecurringServicePickerVisible] = useState(false);
 
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
@@ -51,6 +52,8 @@ export default function HomeScreen() {
 
   const [newAssignmentRole, setNewAssignmentRole] = useState('');
   const [newAssignmentPerson, setNewAssignmentPerson] = useState('');
+  const [showRolePicker, setShowRolePicker] = useState(false);
+  const [showMemberPicker, setShowMemberPicker] = useState(false);
 
   const handleSaveService = async () => {
     console.log('User tapped Save Service button');
@@ -101,6 +104,8 @@ export default function HomeScreen() {
       setNewAssignmentRole('');
       setNewAssignmentPerson('');
       setSelectedServiceId(null);
+      setShowRolePicker(false);
+      setShowMemberPicker(false);
       setAddAssignmentModalVisible(false);
     }
   };
@@ -116,6 +121,31 @@ export default function HomeScreen() {
       setAssignmentToDelete(null);
       setDeleteAssignmentModalVisible(false);
     }
+  };
+
+  const handleSelectRecurringService = (recurringService: any) => {
+    console.log('User selected recurring service:', recurringService.name);
+    
+    // Calculate next occurrence of this day
+    const today = new Date();
+    const targetDay = recurringService.day_of_week;
+    const currentDay = today.getDay();
+    let daysUntilTarget = targetDay - currentDay;
+    if (daysUntilTarget <= 0) {
+      daysUntilTarget += 7;
+    }
+    
+    const nextDate = new Date(today);
+    nextDate.setDate(today.getDate() + daysUntilTarget);
+    
+    // Set time
+    const [hours, minutes] = recurringService.time.split(':');
+    nextDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+    
+    setNewServiceDate(nextDate);
+    setNewServiceType(recurringService.name);
+    setNewServiceNotes(recurringService.notes || '');
+    setRecurringServicePickerVisible(false);
   };
 
   const formatDate = (dateString: string) => {
@@ -326,11 +356,74 @@ export default function HomeScreen() {
         style={[styles.fab, { backgroundColor: colors.primary }]}
         onPress={() => {
           console.log('User tapped Add Service FAB');
-          setAddServiceModalVisible(true);
+          if (recurringServices.length > 0) {
+            setRecurringServicePickerVisible(true);
+          } else {
+            setAddServiceModalVisible(true);
+          }
         }}
       >
         <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={24} color="#fff" />
       </TouchableOpacity>
+
+      {/* Recurring Service Picker Modal */}
+      <Modal
+        visible={isRecurringServicePickerVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setRecurringServicePickerVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Select Service Type</Text>
+            
+            <ScrollView style={styles.recurringServiceList}>
+              {recurringServices.map((recurringService) => {
+                const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][recurringService.day_of_week];
+                return (
+                  <TouchableOpacity
+                    key={recurringService.id}
+                    style={[styles.recurringServiceItem, { borderColor: colors.border }]}
+                    onPress={() => handleSelectRecurringService(recurringService)}
+                  >
+                    <Text style={[styles.recurringServiceName, { color: colors.text }]}>
+                      {recurringService.name}
+                    </Text>
+                    <Text style={[styles.recurringServiceDay, { color: colors.textSecondary }]}>
+                      {dayName}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                style={[styles.recurringServiceItem, { borderColor: colors.border }]}
+                onPress={() => {
+                  console.log('User chose custom service');
+                  setRecurringServicePickerVisible(false);
+                  setAddServiceModalVisible(true);
+                }}
+              >
+                <Text style={[styles.recurringServiceName, { color: colors.primary }]}>
+                  Custom Service
+                </Text>
+                <Text style={[styles.recurringServiceDay, { color: colors.textSecondary }]}>
+                  Create a one-time service
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.modalButton, styles.cancelButton, { marginTop: 16 }]}
+              onPress={() => {
+                console.log('User cancelled service picker');
+                setRecurringServicePickerVisible(false);
+              }}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Add Service Modal */}
       <Modal
@@ -414,44 +507,127 @@ export default function HomeScreen() {
         onRequestClose={() => setAddAssignmentModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Add Assignment</Text>
+          <ScrollView contentContainerStyle={styles.modalScrollContent}>
+            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Add Assignment</Text>
 
-            <TextInput
-              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Role (e.g., Worship Leader, Piano)"
-              placeholderTextColor={colors.textSecondary}
-              value={newAssignmentRole}
-              onChangeText={setNewAssignmentRole}
-            />
+              <View style={styles.pickerContainer}>
+                <Text style={[styles.label, { color: colors.text }]}>Role</Text>
+                {churchRoles.length > 0 ? (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.input, { borderColor: colors.border, justifyContent: 'center' }]}
+                      onPress={() => {
+                        console.log('User tapped role picker');
+                        setShowRolePicker(!showRolePicker);
+                      }}
+                    >
+                      <Text style={[{ color: newAssignmentRole ? colors.text : colors.textSecondary }]}>
+                        {newAssignmentRole || 'Select a role'}
+                      </Text>
+                    </TouchableOpacity>
+                    {showRolePicker && (
+                      <View style={[styles.pickerList, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+                        {churchRoles.map((role) => (
+                          <TouchableOpacity
+                            key={role.id}
+                            style={styles.pickerItem}
+                            onPress={() => {
+                              console.log('User selected role:', role.name);
+                              setNewAssignmentRole(role.name);
+                              setShowRolePicker(false);
+                            }}
+                          >
+                            <Text style={[styles.pickerItemText, { color: colors.text }]}>
+                              {role.name}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <TextInput
+                    style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                    placeholder="Role (e.g., Worship Leader, Piano)"
+                    placeholderTextColor={colors.textSecondary}
+                    value={newAssignmentRole}
+                    onChangeText={setNewAssignmentRole}
+                  />
+                )}
+              </View>
 
-            <TextInput
-              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Person Name"
-              placeholderTextColor={colors.textSecondary}
-              value={newAssignmentPerson}
-              onChangeText={setNewAssignmentPerson}
-            />
+              <View style={styles.pickerContainer}>
+                <Text style={[styles.label, { color: colors.text }]}>Person</Text>
+                {members.length > 0 ? (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.input, { borderColor: colors.border, justifyContent: 'center' }]}
+                      onPress={() => {
+                        console.log('User tapped member picker');
+                        setShowMemberPicker(!showMemberPicker);
+                      }}
+                    >
+                      <Text style={[{ color: newAssignmentPerson ? colors.text : colors.textSecondary }]}>
+                        {newAssignmentPerson || 'Select a member'}
+                      </Text>
+                    </TouchableOpacity>
+                    {showMemberPicker && (
+                      <View style={[styles.pickerList, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+                        {members.map((member) => {
+                          const displayName = member.name || member.email;
+                          return (
+                            <TouchableOpacity
+                              key={member.id}
+                              style={styles.pickerItem}
+                              onPress={() => {
+                                console.log('User selected member:', displayName);
+                                setNewAssignmentPerson(displayName);
+                                setShowMemberPicker(false);
+                              }}
+                            >
+                              <Text style={[styles.pickerItemText, { color: colors.text }]}>
+                                {displayName}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <TextInput
+                    style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                    placeholder="Person Name"
+                    placeholderTextColor={colors.textSecondary}
+                    value={newAssignmentPerson}
+                    onChangeText={setNewAssignmentPerson}
+                  />
+                )}
+              </View>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => {
-                  console.log('User cancelled add assignment');
-                  setAddAssignmentModalVisible(false);
-                  setSelectedServiceId(null);
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.primary }]}
-                onPress={handleSaveAssignment}
-              >
-                <Text style={styles.saveButtonText}>Save</Text>
-              </TouchableOpacity>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton]}
+                  onPress={() => {
+                    console.log('User cancelled add assignment');
+                    setAddAssignmentModalVisible(false);
+                    setSelectedServiceId(null);
+                    setShowRolePicker(false);
+                    setShowMemberPicker(false);
+                  }}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                  onPress={handleSaveAssignment}
+                >
+                  <Text style={styles.saveButtonText}>Save</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
 
@@ -665,9 +841,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  modalScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
   modalContent: {
     width: '90%',
     maxWidth: 400,
+    maxHeight: '80%',
     borderRadius: 16,
     padding: 24,
     shadowColor: '#000',
@@ -704,6 +887,45 @@ const styles = StyleSheet.create({
   textArea: {
     height: 80,
     textAlignVertical: 'top',
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  pickerContainer: {
+    marginBottom: 16,
+  },
+  pickerList: {
+    borderWidth: 1,
+    borderRadius: 8,
+    marginTop: 4,
+    maxHeight: 200,
+  },
+  pickerItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  pickerItemText: {
+    fontSize: 16,
+  },
+  recurringServiceList: {
+    maxHeight: 400,
+  },
+  recurringServiceItem: {
+    padding: 16,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  recurringServiceName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  recurringServiceDay: {
+    fontSize: 14,
   },
   modalButtons: {
     flexDirection: 'row',

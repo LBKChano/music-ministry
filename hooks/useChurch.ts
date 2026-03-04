@@ -9,12 +9,17 @@ type Service = Tables<'services'>;
 type Assignment = Tables<'assignments'>;
 type RecurringService = Tables<'recurring_services'>;
 type ChurchRole = Tables<'church_roles'>;
+type RecurringServiceRole = Tables<'recurring_service_roles'>;
+
+export interface RecurringServiceWithRoles extends RecurringService {
+  roles: string[];
+}
 
 export function useChurch() {
   const [churches, setChurches] = useState<Church[]>([]);
   const [currentChurch, setCurrentChurch] = useState<Church | null>(null);
   const [members, setMembers] = useState<ChurchMember[]>([]);
-  const [recurringServices, setRecurringServices] = useState<RecurringService[]>([]);
+  const [recurringServices, setRecurringServices] = useState<RecurringServiceWithRoles[]>([]);
   const [churchRoles, setChurchRoles] = useState<ChurchRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -261,10 +266,31 @@ export function useChurch() {
       if (fetchError) {
         console.error('Error fetching recurring services:', fetchError);
         setError(fetchError.message);
-      } else {
-        console.log('Fetched recurring services:', data);
-        setRecurringServices(data || []);
+        return;
       }
+
+      console.log('Fetched recurring services:', data);
+
+      // Fetch roles for each service
+      const servicesWithRoles: RecurringServiceWithRoles[] = [];
+      for (const service of data || []) {
+        const { data: rolesData, error: rolesError } = await supabase
+          .from('recurring_service_roles')
+          .select('role_name')
+          .eq('recurring_service_id', service.id);
+
+        if (rolesError) {
+          console.error('Error fetching service roles:', rolesError);
+        }
+
+        servicesWithRoles.push({
+          ...service,
+          roles: rolesData?.map(r => r.role_name) || [],
+        });
+      }
+
+      console.log('Services with roles:', servicesWithRoles);
+      setRecurringServices(servicesWithRoles);
     } catch (err) {
       console.error('Error in fetchRecurringServices:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -297,8 +323,8 @@ export function useChurch() {
   }, []);
 
   // Add a recurring service
-  const addRecurringService = useCallback(async (churchId: string, name: string, dayOfWeek: number, time: string, notes?: string) => {
-    console.log('Adding recurring service:', { churchId, name, dayOfWeek, time, notes });
+  const addRecurringService = useCallback(async (churchId: string, name: string, dayOfWeek: number, time: string, notes?: string, roles?: string[]) => {
+    console.log('Adding recurring service:', { churchId, name, dayOfWeek, time, notes, roles });
     try {
       setError(null);
 
@@ -323,6 +349,23 @@ export function useChurch() {
       }
 
       console.log('Recurring service added successfully:', data);
+
+      // Add roles if provided
+      if (roles && roles.length > 0 && data) {
+        const roleInserts: TablesInsert<'recurring_service_roles'>[] = roles.map(roleName => ({
+          recurring_service_id: data.id,
+          role_name: roleName,
+        }));
+
+        const { error: rolesError } = await supabase
+          .from('recurring_service_roles')
+          .insert(roleInserts);
+
+        if (rolesError) {
+          console.error('Error adding service roles:', rolesError);
+        }
+      }
+
       await fetchRecurringServices(churchId);
       return data;
     } catch (err) {

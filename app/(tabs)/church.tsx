@@ -59,10 +59,13 @@ export default function ChurchScreen() {
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberRole, setNewMemberRole] = useState('');
+  const [showRolePicker, setShowRolePicker] = useState(false);
   const [newServiceName, setNewServiceName] = useState('');
   const [newServiceDay, setNewServiceDay] = useState(0);
   const [newServiceTime, setNewServiceTime] = useState('09:00');
   const [newServiceNotes, setNewServiceNotes] = useState('');
+  const [selectedServiceRoles, setSelectedServiceRoles] = useState<string[]>([]);
+  const [showServiceRolePicker, setShowServiceRolePicker] = useState(false);
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleDescription, setNewRoleDescription] = useState('');
 
@@ -142,7 +145,8 @@ export default function ChurchScreen() {
       newServiceName.trim(),
       newServiceDay,
       newServiceTime,
-      newServiceNotes.trim() || undefined
+      newServiceNotes.trim() || undefined,
+      selectedServiceRoles
     );
 
     if (result) {
@@ -150,6 +154,7 @@ export default function ChurchScreen() {
       setNewServiceDay(0);
       setNewServiceTime('09:00');
       setNewServiceNotes('');
+      setSelectedServiceRoles([]);
       setAddServiceModalVisible(false);
     }
   };
@@ -209,6 +214,15 @@ export default function ChurchScreen() {
     console.log('User tapped delete role:', roleId);
     setRoleToDelete(roleId);
     setDeleteRoleModalVisible(true);
+  };
+
+  const toggleServiceRole = (roleName: string) => {
+    console.log('User toggled service role:', roleName);
+    if (selectedServiceRoles.includes(roleName)) {
+      setSelectedServiceRoles(selectedServiceRoles.filter(r => r !== roleName));
+    } else {
+      setSelectedServiceRoles([...selectedServiceRoles, roleName]);
+    }
   };
 
   const getDayName = (day: number): string => {
@@ -524,6 +538,9 @@ export default function ChurchScreen() {
                     {recurringServices.map((service) => {
                       const dayName = getDayName(service.day_of_week);
                       const timeDisplay = formatTime(service.time);
+                      const rolesDisplay = service.roles && service.roles.length > 0 
+                        ? service.roles.join(', ') 
+                        : '';
                       return (
                         <View
                           key={service.id}
@@ -546,6 +563,11 @@ export default function ChurchScreen() {
                               <Text style={[styles.serviceTime, { color: colors.textSecondary }]}>
                                 {timeDisplay}
                               </Text>
+                              {rolesDisplay && (
+                                <Text style={[styles.serviceRoles, { color: colors.primary }]}>
+                                  Roles: {rolesDisplay}
+                                </Text>
+                              )}
                               {service.notes && (
                                 <Text style={[styles.serviceNotes, { color: colors.textSecondary }]}>
                                   {service.notes}
@@ -705,56 +727,105 @@ export default function ChurchScreen() {
         onRequestClose={() => setAddMemberModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Add Member</Text>
+          <ScrollView contentContainerStyle={styles.modalScrollContent}>
+            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Add Member</Text>
 
-            <TextInput
-              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Email (required)"
-              placeholderTextColor={colors.textSecondary}
-              value={newMemberEmail}
-              onChangeText={setNewMemberEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                placeholder="Email (required)"
+                placeholderTextColor={colors.textSecondary}
+                value={newMemberEmail}
+                onChangeText={setNewMemberEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
 
-            <TextInput
-              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Name (optional)"
-              placeholderTextColor={colors.textSecondary}
-              value={newMemberName}
-              onChangeText={setNewMemberName}
-            />
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                placeholder="Name (optional)"
+                placeholderTextColor={colors.textSecondary}
+                value={newMemberName}
+                onChangeText={setNewMemberName}
+              />
 
-            <TextInput
-              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Role (optional)"
-              placeholderTextColor={colors.textSecondary}
-              value={newMemberRole}
-              onChangeText={setNewMemberRole}
-            />
+              <View style={styles.pickerContainer}>
+                <Text style={[styles.label, { color: colors.text }]}>Role (optional)</Text>
+                {churchRoles.length > 0 ? (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.input, { borderColor: colors.border, justifyContent: 'center' }]}
+                      onPress={() => {
+                        console.log('User tapped role picker');
+                        setShowRolePicker(!showRolePicker);
+                      }}
+                    >
+                      <Text style={[{ color: newMemberRole ? colors.text : colors.textSecondary }]}>
+                        {newMemberRole || 'Select a role'}
+                      </Text>
+                    </TouchableOpacity>
+                    {showRolePicker && (
+                      <View style={[styles.pickerList, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+                        <TouchableOpacity
+                          style={styles.pickerItem}
+                          onPress={() => {
+                            console.log('User cleared role selection');
+                            setNewMemberRole('');
+                            setShowRolePicker(false);
+                          }}
+                        >
+                          <Text style={[styles.pickerItemText, { color: colors.textSecondary }]}>
+                            None
+                          </Text>
+                        </TouchableOpacity>
+                        {churchRoles.map((role) => (
+                          <TouchableOpacity
+                            key={role.id}
+                            style={styles.pickerItem}
+                            onPress={() => {
+                              console.log('User selected role:', role.name);
+                              setNewMemberRole(role.name);
+                              setShowRolePicker(false);
+                            }}
+                          >
+                            <Text style={[styles.pickerItemText, { color: colors.text }]}>
+                              {role.name}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <Text style={[styles.helperText, { color: colors.textSecondary }]}>
+                    Add roles in the Roles tab first
+                  </Text>
+                )}
+              </View>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => {
-                  console.log('User cancelled add member');
-                  setAddMemberModalVisible(false);
-                  setNewMemberEmail('');
-                  setNewMemberName('');
-                  setNewMemberRole('');
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.primary }]}
-                onPress={handleAddMember}
-              >
-                <Text style={styles.saveButtonText}>Add</Text>
-              </TouchableOpacity>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton]}
+                  onPress={() => {
+                    console.log('User cancelled add member');
+                    setAddMemberModalVisible(false);
+                    setNewMemberEmail('');
+                    setNewMemberName('');
+                    setNewMemberRole('');
+                    setShowRolePicker(false);
+                  }}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                  onPress={handleAddMember}
+                >
+                  <Text style={styles.saveButtonText}>Add</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
 
@@ -802,86 +873,124 @@ export default function ChurchScreen() {
         onRequestClose={() => setAddServiceModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Add Weekly Service</Text>
+          <ScrollView contentContainerStyle={styles.modalScrollContent}>
+            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Add Weekly Service</Text>
 
-            <TextInput
-              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Service Name (e.g., Sunday Morning)"
-              placeholderTextColor={colors.textSecondary}
-              value={newServiceName}
-              onChangeText={setNewServiceName}
-            />
-
-            <View style={styles.pickerContainer}>
-              <Text style={[styles.label, { color: colors.text }]}>Day of Week</Text>
-              <View style={styles.dayButtons}>
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={[
-                      styles.dayButton,
-                      { borderColor: colors.border },
-                      newServiceDay === index && { backgroundColor: colors.primary },
-                    ]}
-                    onPress={() => setNewServiceDay(index)}
-                  >
-                    <Text
-                      style={[
-                        styles.dayButtonText,
-                        { color: newServiceDay === index ? '#fff' : colors.text },
-                      ]}
-                    >
-                      {day}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.pickerContainer}>
-              <Text style={[styles.label, { color: colors.text }]}>Time</Text>
               <TextInput
                 style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                placeholder="HH:MM (e.g., 09:00)"
+                placeholder="Service Name (e.g., Sunday Morning)"
                 placeholderTextColor={colors.textSecondary}
-                value={newServiceTime}
-                onChangeText={setNewServiceTime}
+                value={newServiceName}
+                onChangeText={setNewServiceName}
               />
-            </View>
 
-            <TextInput
-              style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Notes (optional)"
-              placeholderTextColor={colors.textSecondary}
-              value={newServiceNotes}
-              onChangeText={setNewServiceNotes}
-              multiline
-              numberOfLines={3}
-            />
+              <View style={styles.pickerContainer}>
+                <Text style={[styles.label, { color: colors.text }]}>Day of Week</Text>
+                <View style={styles.dayButtons}>
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.dayButton,
+                        { borderColor: colors.border },
+                        newServiceDay === index && { backgroundColor: colors.primary },
+                      ]}
+                      onPress={() => setNewServiceDay(index)}
+                    >
+                      <Text
+                        style={[
+                          styles.dayButtonText,
+                          { color: newServiceDay === index ? '#fff' : colors.text },
+                        ]}
+                      >
+                        {day}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => {
-                  console.log('User cancelled add service');
-                  setAddServiceModalVisible(false);
-                  setNewServiceName('');
-                  setNewServiceDay(0);
-                  setNewServiceTime('09:00');
-                  setNewServiceNotes('');
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.primary }]}
-                onPress={handleAddService}
-              >
-                <Text style={styles.saveButtonText}>Add</Text>
-              </TouchableOpacity>
+              <View style={styles.pickerContainer}>
+                <Text style={[styles.label, { color: colors.text }]}>Time</Text>
+                <TextInput
+                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                  placeholder="HH:MM (e.g., 09:00)"
+                  placeholderTextColor={colors.textSecondary}
+                  value={newServiceTime}
+                  onChangeText={setNewServiceTime}
+                />
+              </View>
+
+              <View style={styles.pickerContainer}>
+                <Text style={[styles.label, { color: colors.text }]}>Roles for this service</Text>
+                {churchRoles.length > 0 ? (
+                  <View style={styles.roleCheckboxContainer}>
+                    {churchRoles.map((role) => {
+                      const isSelected = selectedServiceRoles.includes(role.name);
+                      return (
+                        <TouchableOpacity
+                          key={role.id}
+                          style={[
+                            styles.roleCheckbox,
+                            { borderColor: colors.border },
+                            isSelected && { backgroundColor: colors.primary },
+                          ]}
+                          onPress={() => toggleServiceRole(role.name)}
+                        >
+                          <Text
+                            style={[
+                              styles.roleCheckboxText,
+                              { color: isSelected ? '#fff' : colors.text },
+                            ]}
+                          >
+                            {role.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <Text style={[styles.helperText, { color: colors.textSecondary }]}>
+                    Add roles in the Roles tab first
+                  </Text>
+                )}
+              </View>
+
+              <TextInput
+                style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.border }]}
+                placeholder="Additional notes (optional)"
+                placeholderTextColor={colors.textSecondary}
+                value={newServiceNotes}
+                onChangeText={setNewServiceNotes}
+                multiline
+                numberOfLines={3}
+              />
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton]}
+                  onPress={() => {
+                    console.log('User cancelled add service');
+                    setAddServiceModalVisible(false);
+                    setNewServiceName('');
+                    setNewServiceDay(0);
+                    setNewServiceTime('09:00');
+                    setNewServiceNotes('');
+                    setSelectedServiceRoles([]);
+                  }}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                  onPress={handleAddService}
+                >
+                  <Text style={styles.saveButtonText}>Add</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
 
@@ -1189,6 +1298,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 2,
   },
+  serviceRoles: {
+    fontSize: 12,
+    marginTop: 4,
+    fontWeight: '500',
+  },
   serviceNotes: {
     fontSize: 12,
     marginTop: 4,
@@ -1239,10 +1353,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  modalScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
   modalContent: {
     width: '90%',
     maxWidth: 400,
-    maxHeight: '80%',
     borderRadius: 16,
     padding: 24,
     shadowColor: '#000',
@@ -1276,8 +1395,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 8,
   },
+  helperText: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
   pickerContainer: {
     marginBottom: 16,
+  },
+  pickerList: {
+    borderWidth: 1,
+    borderRadius: 8,
+    marginTop: 4,
+    maxHeight: 200,
+  },
+  pickerItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  pickerItemText: {
+    fontSize: 16,
   },
   dayButtons: {
     flexDirection: 'row',
@@ -1291,6 +1429,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   dayButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  roleCheckboxContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  roleCheckbox: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  roleCheckboxText: {
     fontSize: 14,
     fontWeight: '600',
   },
