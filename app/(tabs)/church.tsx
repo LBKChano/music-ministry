@@ -11,15 +11,17 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@react-navigation/native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useChurch } from '@/hooks/useChurch';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function ChurchScreen() {
   const { colors: themeColors } = useTheme();
+  const router = useRouter();
   const {
     churches,
     currentChurch,
@@ -27,6 +29,7 @@ export default function ChurchScreen() {
     members,
     loading,
     error,
+    user,
     createChurch,
     addMember,
     deleteMember,
@@ -36,6 +39,7 @@ export default function ChurchScreen() {
   const [isCreateChurchModalVisible, setCreateChurchModalVisible] = useState(false);
   const [isAddMemberModalVisible, setAddMemberModalVisible] = useState(false);
   const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [isSignOutModalVisible, setSignOutModalVisible] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<string | null>(null);
 
   const [newChurchName, setNewChurchName] = useState('');
@@ -90,6 +94,18 @@ export default function ChurchScreen() {
     }
   };
 
+  const handleSignOut = async () => {
+    console.log('User confirmed sign out');
+    try {
+      await supabase.auth.signOut();
+      console.log('User signed out successfully');
+      setSignOutModalVisible(false);
+      router.replace('/onboarding');
+    } catch (err) {
+      console.error('Error signing out:', err);
+    }
+  };
+
   const openDeleteModal = (memberId: string) => {
     console.log('User tapped delete member:', memberId);
     setMemberToDelete(memberId);
@@ -117,6 +133,7 @@ export default function ChurchScreen() {
   const createFirstChurchText = 'Create your first church to get started';
   const noMembersText = 'No members yet';
   const addFirstMemberText = 'Add members to your church';
+  const signOutText = 'Sign Out';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -125,6 +142,22 @@ export default function ChurchScreen() {
           title: 'Church Management',
           headerStyle: { backgroundColor: colors.primary },
           headerTintColor: '#fff',
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => {
+                console.log('User tapped Sign Out');
+                setSignOutModalVisible(true);
+              }}
+              style={styles.signOutButton}
+            >
+              <IconSymbol
+                ios_icon_name="arrow.right.square"
+                android_material_icon_name="logout"
+                size={24}
+                color="#fff"
+              />
+            </TouchableOpacity>
+          ),
         }}
       />
 
@@ -420,6 +453,41 @@ export default function ChurchScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Sign Out Confirmation Modal */}
+      <Modal
+        visible={isSignOutModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setSignOutModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Sign Out</Text>
+            <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
+              Are you sure you want to sign out?
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  console.log('User cancelled sign out');
+                  setSignOutModalVisible(false);
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                onPress={handleSignOut}
+              >
+                <Text style={styles.saveButtonText}>{signOutText}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -455,6 +523,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  signOutButton: {
+    marginRight: 16,
   },
   emptyState: {
     padding: 32,

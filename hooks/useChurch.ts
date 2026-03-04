@@ -14,6 +14,26 @@ export function useChurch() {
   const [members, setMembers] = useState<ChurchMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [user, setUser] = useState<any>(null);
+
+  // Check authentication status
+  useEffect(() => {
+    const checkUser = async () => {
+      const sessionResult = await supabase.auth.getSession();
+      const currentUser = sessionResult.data.session?.user || null;
+      setUser(currentUser);
+    };
+
+    checkUser();
+
+    const authSubscription = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user || null);
+    });
+
+    return () => {
+      authSubscription.data.subscription.unsubscribe();
+    };
+  }, []);
 
   // Fetch churches for the current user
   const fetchChurches = async () => {
@@ -211,12 +231,21 @@ export function useChurch() {
   };
 
   useEffect(() => {
-    fetchChurches();
-  }, []);
+    if (user) {
+      fetchChurches();
+    } else {
+      setChurches([]);
+      setCurrentChurch(null);
+      setMembers([]);
+      setLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (currentChurch) {
       fetchMembers(currentChurch.id);
+    } else {
+      setMembers([]);
     }
   }, [currentChurch]);
 
@@ -227,6 +256,7 @@ export function useChurch() {
     members,
     loading,
     error,
+    user,
     createChurch,
     addMember,
     deleteMember,
