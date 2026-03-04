@@ -17,7 +17,7 @@ import { useTheme } from '@react-navigation/native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useChurch } from '@/hooks/useChurch';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 
 export default function ChurchScreen() {
   const { colors: themeColors } = useTheme();

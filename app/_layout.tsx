@@ -16,7 +16,7 @@ import {
 } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
-import { supabase } from "@/app/integrations/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 // Note: Error logging is auto-initialized via index.ts import
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.

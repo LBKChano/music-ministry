@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@react-navigation/native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 
 export default function OnboardingScreen() {
   const { colors: themeColors } = useTheme();
