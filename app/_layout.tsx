@@ -17,35 +17,44 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { supabase } from "@/lib/supabase/client";
-// Note: Error logging is auto-initialized via index.ts import
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
-  initialRouteName: "(tabs)", // Ensure any route can link back to `/`
+  initialRouteName: "(tabs)",
 };
 
-function useProtectedRoute(user: any, needsOnboarding: boolean) {
+function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: boolean) {
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
+    // Don't navigate while still checking auth
+    if (isCheckingAuth) {
+      return;
+    }
+
     console.log('Protected route check:', { user: !!user, needsOnboarding, segments });
     
-    const inAuthGroup = segments[0] === 'onboarding';
+    const inOnboarding = segments[0] === 'onboarding';
 
     // If user needs onboarding and not on onboarding screen, redirect
-    if (needsOnboarding && !inAuthGroup) {
+    if (needsOnboarding && !inOnboarding) {
       console.log('Redirecting to onboarding');
-      router.replace('/onboarding');
+      // Use setTimeout to ensure navigation happens after layout is mounted
+      setTimeout(() => {
+        router.replace('/onboarding');
+      }, 100);
     } 
     // If user doesn't need onboarding and is on onboarding screen, redirect to app
-    else if (!needsOnboarding && inAuthGroup) {
+    else if (!needsOnboarding && inOnboarding) {
       console.log('Redirecting to app');
-      router.replace('/(tabs)');
+      setTimeout(() => {
+        router.replace('/(tabs)');
+      }, 100);
     }
-  }, [user, needsOnboarding, segments]);
+  }, [user, needsOnboarding, segments, isCheckingAuth]);
 }
 
 export default function RootLayout() {
@@ -60,10 +69,10 @@ export default function RootLayout() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   useEffect(() => {
-    if (loaded) {
+    if (loaded && !isCheckingAuth) {
       SplashScreen.hideAsync();
     }
-  }, [loaded]);
+  }, [loaded, isCheckingAuth]);
 
   // Check authentication and onboarding status
   useEffect(() => {
@@ -130,7 +139,7 @@ export default function RootLayout() {
     };
   }, []);
 
-  useProtectedRoute(user, needsOnboarding);
+  useProtectedRoute(user, needsOnboarding, isCheckingAuth);
 
   React.useEffect(() => {
     if (
@@ -144,7 +153,7 @@ export default function RootLayout() {
     }
   }, [networkState.isConnected, networkState.isInternetReachable]);
 
-  if (!loaded || isCheckingAuth) {
+  if (!loaded) {
     return null;
   }
 
@@ -152,44 +161,44 @@ export default function RootLayout() {
     ...DefaultTheme,
     dark: false,
     colors: {
-      primary: "rgb(0, 122, 255)", // System Blue
-      background: "rgb(242, 242, 247)", // Light mode background
-      card: "rgb(255, 255, 255)", // White cards/surfaces
-      text: "rgb(0, 0, 0)", // Black text for light mode
-      border: "rgb(216, 216, 220)", // Light gray for separators/borders
-      notification: "rgb(255, 59, 48)", // System Red
+      primary: "rgb(0, 122, 255)",
+      background: "rgb(242, 242, 247)",
+      card: "rgb(255, 255, 255)",
+      text: "rgb(0, 0, 0)",
+      border: "rgb(216, 216, 220)",
+      notification: "rgb(255, 59, 48)",
     },
   };
 
   const CustomDarkTheme: Theme = {
     ...DarkTheme,
     colors: {
-      primary: "rgb(10, 132, 255)", // System Blue (Dark Mode)
-      background: "rgb(1, 1, 1)", // True black background for OLED displays
-      card: "rgb(28, 28, 30)", // Dark card/surface color
-      text: "rgb(255, 255, 255)", // White text for dark mode
-      border: "rgb(44, 44, 46)", // Dark gray for separators/borders
-      notification: "rgb(255, 69, 58)", // System Red (Dark Mode)
+      primary: "rgb(10, 132, 255)",
+      background: "rgb(1, 1, 1)",
+      card: "rgb(28, 28, 30)",
+      text: "rgb(255, 255, 255)",
+      border: "rgb(44, 44, 46)",
+      notification: "rgb(255, 69, 58)",
     },
   };
+
   return (
     <>
       <StatusBar style="auto" animated />
-        <ThemeProvider
-          value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
-        >
-          <WidgetProvider>
-            <GestureHandlerRootView>
-            <Stack>
-              {/* Onboarding screen */}
+      <ThemeProvider
+        value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
+      >
+        <WidgetProvider>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-              {/* Main app with tabs */}
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="+not-found" />
             </Stack>
-            <SystemBars style={"auto"} />
-            </GestureHandlerRootView>
-          </WidgetProvider>
-        </ThemeProvider>
+            <SystemBars style="auto" />
+          </GestureHandlerRootView>
+        </WidgetProvider>
+      </ThemeProvider>
     </>
   );
 }
