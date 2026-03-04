@@ -113,7 +113,7 @@ export default function OnboardingScreen() {
       console.log('Church created successfully:', churchResult.data);
 
       // Step 3: Add admin as a member of the church
-      console.log('Adding admin as church member');
+      console.log('Adding admin as church member with email:', adminEmail.trim());
       const memberResult = await supabase
         .from('church_members')
         .insert({
@@ -121,27 +121,32 @@ export default function OnboardingScreen() {
           email: adminEmail.trim(),
           name: adminName.trim() || adminEmail.trim(),
           role: 'Admin',
-        });
+        })
+        .select()
+        .single();
 
       if (memberResult.error) {
         console.error('Error adding admin as member:', memberResult.error);
-        // Don't fail the whole process if this fails
-      } else {
-        console.log('Admin added as member successfully');
+        setError('Church created but failed to add you as a member. Please contact support.');
+        setLoading(false);
+        return;
       }
 
+      console.log('Admin added as member successfully:', memberResult.data);
+      console.log('Onboarding complete! Auth listener will redirect to app');
+      
       // Success! The auth state change listener will handle the redirect
-      console.log('Onboarding complete, auth listener will redirect to app');
     } catch (err) {
       console.error('Error in onboarding:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
+      setLoading(false);
     } finally {
       setLoading(false);
     }
   };
 
   const handleAdminLogin = async () => {
-    console.log('Admin logging in');
+    console.log('Admin logging in with email:', adminLoginEmail);
 
     if (!adminLoginEmail.trim() || !adminLoginPassword.trim()) {
       setError('Please enter email and password');
@@ -164,12 +169,14 @@ export default function OnboardingScreen() {
         return;
       }
 
-      console.log('Admin logged in successfully, auth listener will redirect');
+      console.log('Admin logged in successfully! User ID:', signInResult.data.user?.id);
+      console.log('Auth listener will redirect to app');
+      
       // The auth state change listener in _layout.tsx will handle the redirect
+      // Don't set loading to false here - let the redirect happen
     } catch (err) {
       console.error('Error in admin login:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
       setLoading(false);
     }
   };

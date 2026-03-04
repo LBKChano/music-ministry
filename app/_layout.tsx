@@ -32,6 +32,7 @@ function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: 
   useEffect(() => {
     // Don't navigate while still checking auth
     if (isCheckingAuth) {
+      console.log('Still checking auth, waiting...');
       return;
     }
 
@@ -55,6 +56,41 @@ function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: 
       }, 100);
     }
   }, [user, needsOnboarding, segments, isCheckingAuth, router]);
+}
+
+async function checkUserHasChurches(userId: string, userEmail: string | undefined): Promise<boolean> {
+  console.log('Checking churches for user:', userId, userEmail);
+  
+  // Check if user is admin of any church
+  const adminChurchesResult = await supabase
+    .from('churches')
+    .select('id')
+    .eq('admin_id', userId)
+    .limit(1);
+
+  console.log('Admin churches query result:', adminChurchesResult);
+
+  // Check if user is a member of any church (by email)
+  let hasMemberChurches = false;
+  if (userEmail) {
+    const memberChurchesResult = await supabase
+      .from('church_members')
+      .select('church_id')
+      .eq('email', userEmail)
+      .limit(1);
+
+    console.log('Member churches query result:', memberChurchesResult);
+    hasMemberChurches = memberChurchesResult.data ? memberChurchesResult.data.length > 0 : false;
+  }
+
+  const hasAdminChurches = adminChurchesResult.data ? adminChurchesResult.data.length > 0 : false;
+  const hasChurches = hasAdminChurches || hasMemberChurches;
+  
+  console.log('User has admin churches:', hasAdminChurches);
+  console.log('User has member churches:', hasMemberChurches);
+  console.log('User has churches (total):', hasChurches);
+  
+  return hasChurches;
 }
 
 export default function RootLayout() {
@@ -87,31 +123,7 @@ export default function RootLayout() {
         setUser(currentUser);
 
         if (currentUser) {
-          // Check if user has any churches (either as admin or member)
-          console.log('Checking if user has churches or memberships');
-          
-          // Check if user is admin of any church
-          const adminChurchesResult = await supabase
-            .from('churches')
-            .select('id')
-            .eq('admin_id', currentUser.id)
-            .limit(1);
-
-          // Check if user is a member of any church (by email)
-          const memberChurchesResult = await supabase
-            .from('church_members')
-            .select('church_id')
-            .eq('email', currentUser.email)
-            .limit(1);
-
-          const hasAdminChurches = adminChurchesResult.data && adminChurchesResult.data.length > 0;
-          const hasMemberChurches = memberChurchesResult.data && memberChurchesResult.data.length > 0;
-          const hasChurches = hasAdminChurches || hasMemberChurches;
-          
-          console.log('User has admin churches:', hasAdminChurches);
-          console.log('User has member churches:', hasMemberChurches);
-          console.log('User has churches:', hasChurches);
-          
+          const hasChurches = await checkUserHasChurches(currentUser.id, currentUser.email);
           setNeedsOnboarding(!hasChurches);
         } else {
           console.log('No user logged in, needs onboarding');
@@ -134,27 +146,20 @@ export default function RootLayout() {
       setUser(currentUser);
 
       if (currentUser && event === 'SIGNED_IN') {
-        // Check if user has churches (either as admin or member)
-        const adminChurchesResult = await supabase
-          .from('churches')
-          .select('id')
-          .eq('admin_id', currentUser.id)
-          .limit(1);
-
-        const memberChurchesResult = await supabase
-          .from('church_members')
-          .select('church_id')
-          .eq('email', currentUser.email)
-          .limit(1);
-
-        const hasAdminChurches = adminChurchesResult.data && adminChurchesResult.data.length > 0;
-        const hasMemberChurches = memberChurchesResult.data && memberChurchesResult.data.length > 0;
-        const hasChurches = hasAdminChurches || hasMemberChurches;
+        // Set checking auth to true while we verify churches
+        setIsCheckingAuth(true);
+        
+        // Add a small delay to ensure database operations have completed
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const hasChurches = await checkUserHasChurches(currentUser.id, currentUser.email);
         
         console.log('Auth change - User has churches:', hasChurches);
         setNeedsOnboarding(!hasChurches);
+        setIsCheckingAuth(false);
       } else if (!currentUser) {
         setNeedsOnboarding(true);
+        setIsCheckingAuth(false);
       }
     });
 
