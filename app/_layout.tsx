@@ -58,8 +58,8 @@ function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: 
   }, [user, needsOnboarding, segments, isCheckingAuth, router]);
 }
 
-async function checkUserHasChurches(userId: string, userEmail: string | undefined): Promise<boolean> {
-  console.log('Checking churches for user:', userId, userEmail);
+async function checkUserHasChurches(userId: string, userEmail: string | undefined, retryCount = 0): Promise<boolean> {
+  console.log(`Checking churches for user (attempt ${retryCount + 1}):`, userId, userEmail);
   
   // Check if user is admin of any church
   const adminChurchesResult = await supabase
@@ -89,6 +89,13 @@ async function checkUserHasChurches(userId: string, userEmail: string | undefine
   console.log('User has admin churches:', hasAdminChurches);
   console.log('User has member churches:', hasMemberChurches);
   console.log('User has churches (total):', hasChurches);
+  
+  // If no churches found and we haven't retried too many times, retry after a delay
+  if (!hasChurches && retryCount < 3) {
+    console.log(`No churches found, retrying in ${(retryCount + 1) * 500}ms...`);
+    await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 500));
+    return checkUserHasChurches(userId, userEmail, retryCount + 1);
+  }
   
   return hasChurches;
 }
@@ -149,9 +156,11 @@ export default function RootLayout() {
         // Set checking auth to true while we verify churches
         setIsCheckingAuth(true);
         
-        // Add a small delay to ensure database operations have completed
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Add a longer initial delay to ensure database operations have completed
+        console.log('Waiting for database to settle after sign in...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
+        // Check for churches with retry logic
         const hasChurches = await checkUserHasChurches(currentUser.id, currentUser.email);
         
         console.log('Auth change - User has churches:', hasChurches);
