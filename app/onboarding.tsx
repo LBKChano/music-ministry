@@ -118,7 +118,6 @@ export default function OnboardingScreen() {
         .from('church_members')
         .insert({
           church_id: churchResult.data.id,
-          user_id: user.id,
           email: adminEmail.trim(),
           name: adminName.trim() || adminEmail.trim(),
           role: 'Admin',
@@ -127,6 +126,8 @@ export default function OnboardingScreen() {
       if (memberResult.error) {
         console.error('Error adding admin as member:', memberResult.error);
         // Don't fail the whole process if this fails
+      } else {
+        console.log('Admin added as member successfully');
       }
 
       // Success! The auth state change listener will handle the redirect

@@ -97,11 +97,11 @@ export default function RootLayout() {
             .eq('admin_id', currentUser.id)
             .limit(1);
 
-          // Check if user is a member of any church
+          // Check if user is a member of any church (by email)
           const memberChurchesResult = await supabase
             .from('church_members')
             .select('church_id')
-            .eq('user_id', currentUser.id)
+            .eq('email', currentUser.email)
             .limit(1);
 
           const hasAdminChurches = adminChurchesResult.data && adminChurchesResult.data.length > 0;
@@ -144,7 +144,7 @@ export default function RootLayout() {
         const memberChurchesResult = await supabase
           .from('church_members')
           .select('church_id')
-          .eq('user_id', currentUser.id)
+          .eq('email', currentUser.email)
           .limit(1);
 
         const hasAdminChurches = adminChurchesResult.data && adminChurchesResult.data.length > 0;
