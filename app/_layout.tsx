@@ -1,6 +1,6 @@
 
 import "react-native-reanimated";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -54,7 +54,7 @@ function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: 
         router.replace('/(tabs)');
       }, 100);
     }
-  }, [user, needsOnboarding, segments, isCheckingAuth]);
+  }, [user, needsOnboarding, segments, isCheckingAuth, router]);
 }
 
 export default function RootLayout() {

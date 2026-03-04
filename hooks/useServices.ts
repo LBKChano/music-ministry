@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import type { Tables, TablesInsert } from '@/lib/supabase/types';
 
@@ -16,7 +16,7 @@ export function useServices(churchId: string | null) {
   const [error, setError] = useState<string | null>(null);
 
   // Fetch services for a church
-  const fetchServices = async () => {
+  const fetchServices = useCallback(async () => {
     if (!churchId) {
       console.log('No church selected, skipping service fetch');
       setServices([]);
@@ -69,10 +69,10 @@ export function useServices(churchId: string | null) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [churchId]);
 
   // Create a new service
-  const createService = async (date: string, serviceType: string, notes?: string) => {
+  const createService = useCallback(async (date: string, serviceType: string, notes?: string) => {
     if (!churchId) {
       console.error('No church selected');
       return null;
@@ -109,10 +109,10 @@ export function useServices(churchId: string | null) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  };
+  }, [churchId, fetchServices]);
 
   // Delete a service
-  const deleteService = async (serviceId: string) => {
+  const deleteService = useCallback(async (serviceId: string) => {
     console.log('Deleting service:', serviceId);
     try {
       setError(null);
@@ -136,10 +136,10 @@ export function useServices(churchId: string | null) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       return false;
     }
-  };
+  }, [fetchServices]);
 
   // Add an assignment to a service
-  const addAssignment = async (serviceId: string, role: string, personName: string, memberId?: string) => {
+  const addAssignment = useCallback(async (serviceId: string, role: string, personName: string, memberId?: string) => {
     console.log('Adding assignment:', { serviceId, role, personName, memberId });
     try {
       setError(null);
@@ -171,10 +171,10 @@ export function useServices(churchId: string | null) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  };
+  }, [fetchServices]);
 
   // Delete an assignment
-  const deleteAssignment = async (assignmentId: string) => {
+  const deleteAssignment = useCallback(async (assignmentId: string) => {
     console.log('Deleting assignment:', assignmentId);
     try {
       setError(null);
@@ -198,11 +198,11 @@ export function useServices(churchId: string | null) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       return false;
     }
-  };
+  }, [fetchServices]);
 
   useEffect(() => {
     fetchServices();
-  }, [churchId]);
+  }, [fetchServices]);
 
   return {
     services,

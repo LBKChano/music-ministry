@@ -1,3 +1,4 @@
+
 import React from 'react';
 import {
   View,
@@ -50,27 +51,43 @@ export default function FloatingTabBar({
 
   // Improved active tab detection with better path matching
   const activeTabIndex = React.useMemo(() => {
+    console.log('FloatingTabBar - Current pathname:', pathname);
+    console.log('FloatingTabBar - Available tabs:', tabs.map(t => ({ name: t.name, route: t.route })));
+
+    // Safety check: ensure tabs array is valid
+    if (!tabs || tabs.length === 0) {
+      console.warn('FloatingTabBar - No tabs provided');
+      return 0;
+    }
+
     // Find the best matching tab based on the current pathname
     let bestMatch = -1;
     let bestMatchScore = 0;
 
     tabs.forEach((tab, index) => {
+      // Safety check: ensure tab and tab.route exist
+      if (!tab || !tab.route) {
+        console.warn('FloatingTabBar - Invalid tab at index', index, tab);
+        return;
+      }
+
       let score = 0;
+      const routeStr = String(tab.route);
 
       // Exact route match gets highest score
-      if (pathname === tab.route) {
+      if (pathname === routeStr) {
         score = 100;
       }
       // Check if pathname starts with tab route (for nested routes)
-      else if (pathname.startsWith(tab.route as string)) {
+      else if (pathname.startsWith(routeStr)) {
         score = 80;
       }
       // Check if pathname contains the tab name
-      else if (pathname.includes(tab.name)) {
+      else if (tab.name && pathname.includes(tab.name)) {
         score = 60;
       }
       // Check for partial matches in the route
-      else if (tab.route.includes('/(tabs)/') && pathname.includes(tab.route.split('/(tabs)/')[1])) {
+      else if (routeStr.includes('/(tabs)/') && pathname.includes(routeStr.split('/(tabs)/')[1])) {
         score = 40;
       }
 
@@ -79,6 +96,8 @@ export default function FloatingTabBar({
         bestMatch = index;
       }
     });
+
+    console.log('FloatingTabBar - Active tab index:', bestMatch >= 0 ? bestMatch : 0);
 
     // Default to first tab if no match found
     return bestMatch >= 0 ? bestMatch : 0;
@@ -94,16 +113,25 @@ export default function FloatingTabBar({
     }
   }, [activeTabIndex, animatedValue]);
 
-  const handleTabPress = (route: Href) => {
+  const handleTabPress = React.useCallback((route: Href) => {
+    console.log('FloatingTabBar - Navigating to:', route);
     router.push(route);
-  };
+  }, [router]);
 
-  // Remove unnecessary tabBarStyle animation to prevent flickering
+  // Calculate tab width percentage
+  const tabWidthPercent = React.useMemo(() => {
+    if (!tabs || tabs.length === 0) return 50;
+    return ((100 / tabs.length) - 1);
+  }, [tabs]);
 
-  const tabWidthPercent = ((100 / tabs.length) - 1).toFixed(2);
-
+  // CRITICAL: Call useAnimatedStyle BEFORE any conditional returns
+  // This ensures the hook is always called in the same order
   const indicatorStyle = useAnimatedStyle(() => {
-    const tabWidth = (containerWidth - 8) / tabs.length; // Account for container padding (4px on each side)
+    if (!tabs || tabs.length === 0) {
+      return { transform: [{ translateX: 0 }] };
+    }
+    
+    const tabWidth = (containerWidth - 8) / tabs.length;
     return {
       transform: [
         {
@@ -115,7 +143,14 @@ export default function FloatingTabBar({
         },
       ],
     };
-  });
+  }, [tabs, containerWidth]);
+
+  // Safety check: if tabs is empty or invalid, render nothing
+  // This check comes AFTER all hooks have been called
+  if (!tabs || tabs.length === 0) {
+    console.error('FloatingTabBar - No valid tabs to render');
+    return null;
+  }
 
   // Dynamic styles based on theme
   const dynamicStyles = {
@@ -148,9 +183,9 @@ export default function FloatingTabBar({
     indicator: {
       ...styles.indicator,
       backgroundColor: theme.dark
-        ? 'rgba(255, 255, 255, 0.08)' // Subtle white overlay in dark mode
-        : 'rgba(0, 0, 0, 0.04)', // Subtle black overlay in light mode
-      width: `${tabWidthPercent}%` as `${number}%`, // Dynamic width based on number of tabs
+        ? 'rgba(255, 255, 255, 0.08)'
+        : 'rgba(0, 0, 0, 0.04)',
+      width: `${tabWidthPercent}%` as `${number}%`,
     },
   };
 
@@ -171,34 +206,39 @@ export default function FloatingTabBar({
           <Animated.View style={[dynamicStyles.indicator, indicatorStyle]} />
           <View style={styles.tabsContainer}>
             {tabs.map((tab, index) => {
+              // Safety check for each tab
+              if (!tab) {
+                console.warn('FloatingTabBar - Skipping invalid tab at index', index);
+                return null;
+              }
+
               const isActive = activeTabIndex === index;
 
               return (
                 <React.Fragment key={index}>
-                <TouchableOpacity
-                  key={index} // Use index as key
-                  style={styles.tab}
-                  onPress={() => handleTabPress(tab.route)}
-                  activeOpacity={0.7}
-                >
-                  <View key={index} style={styles.tabContent}>
-                    <IconSymbol
-                      android_material_icon_name={tab.icon}
-                      ios_icon_name={tab.icon}
-                      size={24}
-                      color={isActive ? theme.colors.primary : (theme.dark ? '#98989D' : '#000000')}
-                    />
-                    <Text
-                      style={[
-                        styles.tabLabel,
-                        { color: theme.dark ? '#98989D' : '#8E8E93' },
-                        isActive && { color: theme.colors.primary, fontWeight: '600' },
-                      ]}
-                    >
-                      {tab.label}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.tab}
+                    onPress={() => handleTabPress(tab.route)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.tabContent}>
+                      <IconSymbol
+                        android_material_icon_name={tab.icon}
+                        ios_icon_name={tab.icon}
+                        size={24}
+                        color={isActive ? theme.colors.primary : (theme.dark ? '#98989D' : '#000000')}
+                      />
+                      <Text
+                        style={[
+                          styles.tabLabel,
+                          { color: theme.dark ? '#98989D' : '#8E8E93' },
+                          isActive && { color: theme.colors.primary, fontWeight: '600' },
+                        ]}
+                      >
+                        {tab.label}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
                 </React.Fragment>
               );
             })}
@@ -216,20 +256,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 1000,
-    alignItems: 'center', // Center the content
+    alignItems: 'center',
   },
   container: {
     marginHorizontal: 20,
     alignSelf: 'center',
-    // width and marginBottom handled dynamically via props
   },
   blurContainer: {
     overflow: 'hidden',
-    // borderRadius and other styling applied dynamically
   },
   background: {
     ...StyleSheet.absoluteFillObject,
-    // Dynamic styling applied in component
   },
   indicator: {
     position: 'absolute',
@@ -237,8 +274,7 @@ const styles = StyleSheet.create({
     left: 2,
     bottom: 4,
     borderRadius: 27,
-    width: `${(100 / 2) - 1}%`, // Default for 2 tabs, will be overridden by dynamic styles
-    // Dynamic styling applied in component
+    width: `${(100 / 2) - 1}%`,
   },
   tabsContainer: {
     flexDirection: 'row',
@@ -261,6 +297,5 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '500',
     marginTop: 2,
-    // Dynamic styling applied in component
   },
 });

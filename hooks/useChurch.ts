@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import type { Tables, TablesInsert } from '@/lib/supabase/types';
 
@@ -36,7 +36,7 @@ export function useChurch() {
   }, []);
 
   // Fetch churches for the current user
-  const fetchChurches = async () => {
+  const fetchChurches = useCallback(async () => {
     console.log('Fetching churches for current user');
     try {
       setLoading(true);
@@ -75,10 +75,10 @@ export function useChurch() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentChurch]);
 
   // Fetch members for a specific church
-  const fetchMembers = async (churchId: string) => {
+  const fetchMembers = useCallback(async (churchId: string) => {
     console.log('Fetching members for church:', churchId);
     try {
       setError(null);
@@ -100,10 +100,10 @@ export function useChurch() {
       console.error('Error in fetchMembers:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
     }
-  };
+  }, []);
 
   // Create a new church
-  const createChurch = async (name: string) => {
+  const createChurch = useCallback(async (name: string) => {
     console.log('Creating church:', name);
     try {
       setError(null);
@@ -139,10 +139,10 @@ export function useChurch() {
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  };
+  }, [fetchChurches]);
 
   // Add a member to a church
-  const addMember = async (churchId: string, email: string, name?: string, role?: string) => {
+  const addMember = useCallback(async (churchId: string, email: string, name?: string, role?: string) => {
     console.log('Adding member to church:', { churchId, email, name, role });
     try {
       setError(null);
@@ -174,10 +174,10 @@ export function useChurch() {
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  };
+  }, [fetchMembers]);
 
   // Delete a member
-  const deleteMember = async (memberId: string, churchId: string) => {
+  const deleteMember = useCallback(async (memberId: string, churchId: string) => {
     console.log('Deleting member:', memberId);
     try {
       setError(null);
@@ -201,10 +201,10 @@ export function useChurch() {
       setError(err instanceof Error ? err.message : 'Unknown error');
       return false;
     }
-  };
+  }, [fetchMembers]);
 
   // Update a member
-  const updateMember = async (memberId: string, churchId: string, updates: { name?: string; role?: string; email?: string }) => {
+  const updateMember = useCallback(async (memberId: string, churchId: string, updates: { name?: string; role?: string; email?: string }) => {
     console.log('Updating member:', memberId, updates);
     try {
       setError(null);
@@ -228,7 +228,7 @@ export function useChurch() {
       setError(err instanceof Error ? err.message : 'Unknown error');
       return false;
     }
-  };
+  }, [fetchMembers]);
 
   useEffect(() => {
     if (user) {
@@ -239,7 +239,7 @@ export function useChurch() {
       setMembers([]);
       setLoading(false);
     }
-  }, [user]);
+  }, [user, fetchChurches]);
 
   useEffect(() => {
     if (currentChurch) {
@@ -247,7 +247,7 @@ export function useChurch() {
     } else {
       setMembers([]);
     }
-  }, [currentChurch]);
+  }, [currentChurch, fetchMembers]);
 
   return {
     churches,
@@ -262,6 +262,6 @@ export function useChurch() {
     deleteMember,
     updateMember,
     refreshChurches: fetchChurches,
-    refreshMembers: () => currentChurch && fetchMembers(currentChurch.id),
+    refreshMembers: useCallback(() => currentChurch && fetchMembers(currentChurch.id), [currentChurch, fetchMembers]),
   };
 }
