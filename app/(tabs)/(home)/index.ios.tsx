@@ -207,7 +207,7 @@ export default function HomeScreen() {
         }}
       />
 
-      <ScrollView style={styles.scrollView}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
         {services.length === 0 ? (
           <View style={styles.emptyContainer}>
             <IconSymbol
@@ -340,7 +340,7 @@ export default function HomeScreen() {
         onRequestClose={() => setAddServiceModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Add Service</Text>
 
             <TouchableOpacity
@@ -414,7 +414,7 @@ export default function HomeScreen() {
         onRequestClose={() => setAddAssignmentModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Add Assignment</Text>
 
             <TextInput
@@ -463,7 +463,7 @@ export default function HomeScreen() {
         onRequestClose={() => setDeleteServiceModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Service</Text>
             <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
               Are you sure you want to delete this service and all its assignments?
@@ -499,7 +499,7 @@ export default function HomeScreen() {
         onRequestClose={() => setDeleteAssignmentModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Remove Assignment</Text>
             <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
               Are you sure you want to remove this assignment?
@@ -536,6 +536,9 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollViewContent: {
+    paddingBottom: 100,
   },
   emptyContainer: {
     flex: 1,
@@ -635,7 +638,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 16,
-    bottom: 16,
+    bottom: 96,
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -667,6 +670,11 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     borderRadius: 16,
     padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
   modalTitle: {
     fontSize: 20,

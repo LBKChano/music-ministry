@@ -324,7 +324,7 @@ export default function ChurchScreen() {
         onRequestClose={() => setCreateChurchModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Create Church</Text>
 
             <TextInput
@@ -365,7 +365,7 @@ export default function ChurchScreen() {
         onRequestClose={() => setAddMemberModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Add Member</Text>
 
             <TextInput
@@ -426,7 +426,7 @@ export default function ChurchScreen() {
         onRequestClose={() => setDeleteModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Member</Text>
             <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
               Are you sure you want to remove this member?
@@ -462,7 +462,7 @@ export default function ChurchScreen() {
         onRequestClose={() => setSignOutModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Sign Out</Text>
             <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
               Are you sure you want to sign out?
@@ -609,6 +609,11 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     borderRadius: 16,
     padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
   modalTitle: {
     fontSize: 20,
