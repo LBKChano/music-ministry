@@ -22,7 +22,7 @@ export default function OnboardingScreen() {
   const { colors: themeColors } = useTheme();
   const router = useRouter();
 
-  const [step, setStep] = useState<'welcome' | 'church' | 'admin' | 'member'>('welcome');
+  const [step, setStep] = useState<'welcome' | 'church' | 'admin' | 'adminLogin' | 'member'>('welcome');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +33,10 @@ export default function OnboardingScreen() {
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [adminName, setAdminName] = useState('');
+
+  // Admin login data
+  const [adminLoginEmail, setAdminLoginEmail] = useState('');
+  const [adminLoginPassword, setAdminLoginPassword] = useState('');
 
   // Member login data
   const [memberEmail, setMemberEmail] = useState('');
@@ -119,6 +123,40 @@ export default function OnboardingScreen() {
     }
   };
 
+  const handleAdminLogin = async () => {
+    console.log('Admin logging in');
+
+    if (!adminLoginEmail.trim() || !adminLoginPassword.trim()) {
+      setError('Please enter email and password');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const signInResult = await supabase.auth.signInWithPassword({
+        email: adminLoginEmail.trim(),
+        password: adminLoginPassword,
+      });
+
+      if (signInResult.error) {
+        console.error('Error signing in as admin:', signInResult.error);
+        setError(signInResult.error.message);
+        setLoading(false);
+        return;
+      }
+
+      console.log('Admin logged in successfully');
+      router.replace('/(tabs)');
+    } catch (err) {
+      console.error('Error in admin login:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleMemberLogin = async () => {
     console.log('User logging in as member');
 
@@ -156,11 +194,14 @@ export default function OnboardingScreen() {
   const welcomeTitle = 'Welcome to Church Scheduler';
   const welcomeSubtitle = 'Organize your church services and team assignments';
   const createChurchButton = 'Create Church & Admin Account';
+  const loginAsAdminButton = 'Login as Admin';
   const loginAsMemberButton = 'Login as Member';
   const churchStepTitle = 'Create Your Church';
   const churchStepSubtitle = 'Enter the name of your church';
   const adminStepTitle = 'Create Admin Account';
   const adminStepSubtitle = 'Set up your administrator account';
+  const adminLoginTitle = 'Admin Login';
+  const adminLoginSubtitle = 'Sign in with your admin credentials';
   const memberStepTitle = 'Member Login';
   const memberStepSubtitle = 'Sign in with your member credentials';
   const backButton = 'Back';
@@ -212,6 +253,18 @@ export default function OnboardingScreen() {
                   }}
                 >
                   <Text style={styles.primaryButtonText}>{createChurchButton}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.secondaryButton, { borderColor: colors.primary }]}
+                  onPress={() => {
+                    console.log('User selected: Login as Admin');
+                    setStep('adminLogin');
+                  }}
+                >
+                  <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
+                    {loginAsAdminButton}
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -360,6 +413,76 @@ export default function OnboardingScreen() {
                       <ActivityIndicator color="#fff" />
                     ) : (
                       <Text style={styles.continueButtonText}>{createButton}</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Admin Login Step */}
+          {step === 'adminLogin' && (
+            <View style={styles.stepContainer}>
+              <Text style={[styles.title, { color: colors.text }]}>
+                {adminLoginTitle}
+              </Text>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                {adminLoginSubtitle}
+              </Text>
+
+              <View style={styles.formContainer}>
+                <TextInput
+                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                  placeholder="Email"
+                  placeholderTextColor={colors.textSecondary}
+                  value={adminLoginEmail}
+                  onChangeText={setAdminLoginEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+
+                <TextInput
+                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                  placeholder="Password"
+                  placeholderTextColor={colors.textSecondary}
+                  value={adminLoginPassword}
+                  onChangeText={setAdminLoginPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+
+                {error && (
+                  <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                <View style={styles.navigationButtons}>
+                  <TouchableOpacity
+                    style={[styles.backButton, { borderColor: colors.border }]}
+                    onPress={() => {
+                      console.log('User tapped Back');
+                      setStep('welcome');
+                      setError(null);
+                    }}
+                    disabled={loading}
+                  >
+                    <Text style={[styles.backButtonText, { color: colors.text }]}>
+                      {backButton}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.continueButton, { backgroundColor: colors.primary }]}
+                    onPress={handleAdminLogin}
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.continueButtonText}>{loginButton}</Text>
                     )}
                   </TouchableOpacity>
                 </View>
