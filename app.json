@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "i-want-to-build-and-",
@@ -34,6 +35,7 @@
     "plugins": [
       "expo-font",
       "expo-router",
+      "expo-secure-store",
       "expo-web-browser"
     ],
     "scheme": "iwanttobuildand",
