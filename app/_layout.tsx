@@ -87,15 +87,29 @@ export default function RootLayout() {
         setUser(currentUser);
 
         if (currentUser) {
-          // Check if user has any churches
-          console.log('Checking if user has churches');
-          const churchesResult = await supabase
+          // Check if user has any churches (either as admin or member)
+          console.log('Checking if user has churches or memberships');
+          
+          // Check if user is admin of any church
+          const adminChurchesResult = await supabase
             .from('churches')
             .select('id')
             .eq('admin_id', currentUser.id)
             .limit(1);
 
-          const hasChurches = churchesResult.data && churchesResult.data.length > 0;
+          // Check if user is a member of any church
+          const memberChurchesResult = await supabase
+            .from('church_members')
+            .select('church_id')
+            .eq('user_id', currentUser.id)
+            .limit(1);
+
+          const hasAdminChurches = adminChurchesResult.data && adminChurchesResult.data.length > 0;
+          const hasMemberChurches = memberChurchesResult.data && memberChurchesResult.data.length > 0;
+          const hasChurches = hasAdminChurches || hasMemberChurches;
+          
+          console.log('User has admin churches:', hasAdminChurches);
+          console.log('User has member churches:', hasMemberChurches);
           console.log('User has churches:', hasChurches);
           
           setNeedsOnboarding(!hasChurches);
@@ -120,14 +134,24 @@ export default function RootLayout() {
       setUser(currentUser);
 
       if (currentUser && event === 'SIGNED_IN') {
-        // Check if user has churches
-        const churchesResult = await supabase
+        // Check if user has churches (either as admin or member)
+        const adminChurchesResult = await supabase
           .from('churches')
           .select('id')
           .eq('admin_id', currentUser.id)
           .limit(1);
 
-        const hasChurches = churchesResult.data && churchesResult.data.length > 0;
+        const memberChurchesResult = await supabase
+          .from('church_members')
+          .select('church_id')
+          .eq('user_id', currentUser.id)
+          .limit(1);
+
+        const hasAdminChurches = adminChurchesResult.data && adminChurchesResult.data.length > 0;
+        const hasMemberChurches = memberChurchesResult.data && memberChurchesResult.data.length > 0;
+        const hasChurches = hasAdminChurches || hasMemberChurches;
+        
+        console.log('Auth change - User has churches:', hasChurches);
         setNeedsOnboarding(!hasChurches);
       } else if (!currentUser) {
         setNeedsOnboarding(true);

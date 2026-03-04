@@ -112,9 +112,25 @@ export default function OnboardingScreen() {
 
       console.log('Church created successfully:', churchResult.data);
 
-      // Success! Redirect to main app
-      console.log('Onboarding complete, redirecting to app');
-      router.replace('/(tabs)');
+      // Step 3: Add admin as a member of the church
+      console.log('Adding admin as church member');
+      const memberResult = await supabase
+        .from('church_members')
+        .insert({
+          church_id: churchResult.data.id,
+          user_id: user.id,
+          email: adminEmail.trim(),
+          name: adminName.trim() || adminEmail.trim(),
+          role: 'Admin',
+        });
+
+      if (memberResult.error) {
+        console.error('Error adding admin as member:', memberResult.error);
+        // Don't fail the whole process if this fails
+      }
+
+      // Success! The auth state change listener will handle the redirect
+      console.log('Onboarding complete, auth listener will redirect to app');
     } catch (err) {
       console.error('Error in onboarding:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -147,8 +163,8 @@ export default function OnboardingScreen() {
         return;
       }
 
-      console.log('Admin logged in successfully');
-      router.replace('/(tabs)');
+      console.log('Admin logged in successfully, auth listener will redirect');
+      // The auth state change listener in _layout.tsx will handle the redirect
     } catch (err) {
       console.error('Error in admin login:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -181,8 +197,8 @@ export default function OnboardingScreen() {
         return;
       }
 
-      console.log('Member logged in successfully');
-      router.replace('/(tabs)');
+      console.log('Member logged in successfully, auth listener will redirect');
+      // The auth state change listener in _layout.tsx will handle the redirect
     } catch (err) {
       console.error('Error in member login:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
