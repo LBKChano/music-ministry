@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import { Stack } from 'expo-router';
+import { colors } from '@/styles/commonStyles';
 import {
   StyleSheet,
   View,
@@ -9,133 +10,124 @@ import {
   TextInput,
   Modal,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
-import { useTheme } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
 import DateTimePicker from '@react-native-community/datetimepicker';
-
-interface Assignment {
-  id: string;
-  role: string;
-  personName: string;
-}
-
-interface Service {
-  id: string;
-  date: string;
-  serviceType: string;
-  notes: string;
-  assignments: Assignment[];
-}
+import { useTheme } from '@react-navigation/native';
+import React, { useState } from 'react';
+import { IconSymbol } from '@/components/IconSymbol';
+import { useChurch } from '@/hooks/useChurch';
+import { useServices } from '@/hooks/useServices';
 
 export default function HomeScreen() {
-  const theme = useTheme();
-  const [services, setServices] = useState<Service[]>([]);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showAssignmentModal, setShowAssignmentModal] = useState(false);
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
-  
-  // Form states
+  const { colors: themeColors } = useTheme();
+  const { currentChurch, members } = useChurch();
+  const {
+    services,
+    loading,
+    error,
+    createService,
+    deleteService,
+    addAssignment,
+    deleteAssignment,
+  } = useServices(currentChurch?.id || null);
+
+  const [isAddServiceModalVisible, setAddServiceModalVisible] = useState(false);
+  const [isAddAssignmentModalVisible, setAddAssignmentModalVisible] = useState(false);
+  const [isDeleteServiceModalVisible, setDeleteServiceModalVisible] = useState(false);
+  const [isDeleteAssignmentModalVisible, setDeleteAssignmentModalVisible] = useState(false);
+
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+  const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
+  const [assignmentToDelete, setAssignmentToDelete] = useState<{
+    serviceId: string;
+    assignmentId: string;
+  } | null>(null);
+
   const [newServiceDate, setNewServiceDate] = useState(new Date());
   const [newServiceType, setNewServiceType] = useState('');
   const [newServiceNotes, setNewServiceNotes] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
-  
-  // Assignment form states
-  const [newRole, setNewRole] = useState('');
-  const [newPersonName, setNewPersonName] = useState('');
 
-  console.log('HomeScreen rendered (iOS), services count:', services.length);
+  const [newAssignmentRole, setNewAssignmentRole] = useState('');
+  const [newAssignmentPerson, setNewAssignmentPerson] = useState('');
 
-  const handleAddService = () => {
-    console.log('User tapped Add Service button');
-    setShowAddModal(true);
+  const handleSaveService = async () => {
+    console.log('User tapped Save Service button');
+    if (!newServiceType.trim()) {
+      return;
+    }
+
+    const result = await createService(
+      newServiceDate.toISOString(),
+      newServiceType.trim(),
+      newServiceNotes.trim() || undefined
+    );
+
+    if (result) {
+      setNewServiceType('');
+      setNewServiceNotes('');
+      setNewServiceDate(new Date());
+      setAddServiceModalVisible(false);
+    }
   };
 
-  const handleSaveService = () => {
-    console.log('Saving new service:', { date: newServiceDate.toISOString(), serviceType: newServiceType, notes: newServiceNotes });
-    
-    // TODO: Backend Integration - POST /api/services with { date: ISO 8601 string, serviceType: string, notes?: string } → returns created service
-    const newService: Service = {
-      id: Date.now().toString(),
-      date: newServiceDate.toISOString(),
-      serviceType: newServiceType,
-      notes: newServiceNotes,
-      assignments: [],
-    };
-    
-    setServices([newService, ...services]);
-    setShowAddModal(false);
-    setNewServiceType('');
-    setNewServiceNotes('');
-    setNewServiceDate(new Date());
+  const handleDeleteService = async () => {
+    console.log('User confirmed delete service');
+    if (!serviceToDelete) {
+      return;
+    }
+
+    const success = await deleteService(serviceToDelete);
+    if (success) {
+      setServiceToDelete(null);
+      setDeleteServiceModalVisible(false);
+    }
   };
 
-  const handleDeleteService = (serviceId: string) => {
-    console.log('Deleting service:', serviceId);
-    // TODO: Backend Integration - DELETE /api/services/:id → { success: true }
-    setServices(services.filter(s => s.id !== serviceId));
+  const handleSaveAssignment = async () => {
+    console.log('User tapped Save Assignment button');
+    if (!selectedServiceId || !newAssignmentRole.trim() || !newAssignmentPerson.trim()) {
+      return;
+    }
+
+    const result = await addAssignment(
+      selectedServiceId,
+      newAssignmentRole.trim(),
+      newAssignmentPerson.trim()
+    );
+
+    if (result) {
+      setNewAssignmentRole('');
+      setNewAssignmentPerson('');
+      setSelectedServiceId(null);
+      setAddAssignmentModalVisible(false);
+    }
   };
 
-  const handleAddAssignment = (service: Service) => {
-    console.log('User tapped Add Assignment for service:', service.id);
-    setSelectedService(service);
-    setShowAssignmentModal(true);
-  };
+  const handleDeleteAssignment = async () => {
+    console.log('User confirmed delete assignment');
+    if (!assignmentToDelete) {
+      return;
+    }
 
-  const handleSaveAssignment = () => {
-    if (!selectedService) return;
-    
-    console.log('Saving assignment:', { serviceId: selectedService.id, role: newRole, personName: newPersonName });
-    
-    // TODO: Backend Integration - POST /api/services/:serviceId/assignments with { role: string, personName: string } → returns created assignment
-    const newAssignment: Assignment = {
-      id: Date.now().toString(),
-      role: newRole,
-      personName: newPersonName,
-    };
-    
-    const updatedServices = services.map(s => {
-      if (s.id === selectedService.id) {
-        return { ...s, assignments: [...s.assignments, newAssignment] };
-      }
-      return s;
-    });
-    
-    setServices(updatedServices);
-    setShowAssignmentModal(false);
-    setNewRole('');
-    setNewPersonName('');
-    setSelectedService(null);
-  };
-
-  const handleDeleteAssignment = (serviceId: string, assignmentId: string) => {
-    console.log('Deleting assignment:', assignmentId);
-    // TODO: Backend Integration - DELETE /api/assignments/:id → { success: true }
-    const updatedServices = services.map(s => {
-      if (s.id === serviceId) {
-        return { ...s, assignments: s.assignments.filter(a => a.id !== assignmentId) };
-      }
-      return s;
-    });
-    setServices(updatedServices);
+    const success = await deleteAssignment(assignmentToDelete.assignmentId);
+    if (success) {
+      setAssignmentToDelete(null);
+      setDeleteAssignmentModalVisible(false);
+    }
   };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    const dateDisplay = date.toLocaleDateString('en-US', { 
-      weekday: 'short', 
-      month: 'short', 
+    const options: Intl.DateTimeFormatOptions = {
+      weekday: 'short',
+      month: 'short',
       day: 'numeric',
-      year: 'numeric'
-    });
-    const timeDisplay = date.toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      minute: '2-digit'
-    });
-    return { dateDisplay, timeDisplay };
+      hour: 'numeric',
+      minute: '2-digit',
+    };
+    return date.toLocaleDateString('en-US', options);
   };
 
   const onDateChange = (event: any, selectedDate?: Date) => {
@@ -145,280 +137,392 @@ export default function HomeScreen() {
     }
   };
 
-  const commonRoles = ['Worship Leader', 'Piano', 'Guitar', 'Drums', 'Bass', 'Vocals', 'Sound Tech'];
+  const openDeleteServiceModal = (serviceId: string) => {
+    console.log('User tapped delete service:', serviceId);
+    setServiceToDelete(serviceId);
+    setDeleteServiceModalVisible(true);
+  };
+
+  const openDeleteAssignmentModal = (serviceId: string, assignmentId: string) => {
+    console.log('User tapped delete assignment:', assignmentId);
+    setAssignmentToDelete({ serviceId, assignmentId });
+    setDeleteAssignmentModalVisible(true);
+  };
+
+  const noChurchText = 'No church selected';
+  const selectChurchText = 'Please create or select a church in the Church tab';
+  const noServicesText = 'No services scheduled';
+  const addFirstServiceText = 'Tap + to schedule your first service';
+
+  if (!currentChurch) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Stack.Screen
+          options={{
+            title: 'Service Schedule',
+            headerStyle: { backgroundColor: colors.primary },
+            headerTintColor: '#fff',
+          }}
+        />
+        <View style={styles.emptyContainer}>
+          <IconSymbol
+            ios_icon_name="building.2"
+            android_material_icon_name="home"
+            size={64}
+            color={colors.textSecondary}
+          />
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>{noChurchText}</Text>
+          <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+            {selectChurchText}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Stack.Screen
+          options={{
+            title: 'Service Schedule',
+            headerStyle: { backgroundColor: colors.primary },
+            headerTintColor: '#fff',
+          }}
+        />
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen 
+      <Stack.Screen
         options={{
-          headerShown: true,
           title: 'Service Schedule',
           headerStyle: { backgroundColor: colors.primary },
-          headerTintColor: '#FFFFFF',
-          headerTitleStyle: { fontWeight: 'bold' },
+          headerTintColor: '#fff',
         }}
       />
-      
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+
+      <ScrollView style={styles.scrollView}>
         {services.length === 0 ? (
-          <View style={styles.emptyState}>
-            <IconSymbol 
+          <View style={styles.emptyContainer}>
+            <IconSymbol
               ios_icon_name="calendar"
-              android_material_icon_name="calendar-today" 
-              size={64} 
-              color={colors.textSecondary} 
+              android_material_icon_name="calendar-today"
+              size={64}
+              color={colors.textSecondary}
             />
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-              No services scheduled yet
-            </Text>
-            <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
-              Tap the + button to add your first service
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>{noServicesText}</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+              {addFirstServiceText}
             </Text>
           </View>
         ) : (
-          services.map((service) => {
-            const { dateDisplay, timeDisplay } = formatDate(service.date);
-            return (
-              <View key={service.id} style={[styles.serviceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.serviceHeader}>
-                  <View style={styles.serviceInfo}>
-                    <Text style={[styles.serviceType, { color: colors.text }]}>
-                      {service.serviceType}
-                    </Text>
-                    <Text style={[styles.serviceDate, { color: colors.textSecondary }]}>
-                      {dateDisplay}
-                    </Text>
-                    <Text style={[styles.serviceTime, { color: colors.textSecondary }]}>
-                      {timeDisplay}
-                    </Text>
-                    {service.notes ? (
-                      <Text style={[styles.serviceNotes, { color: colors.textSecondary }]}>
-                        {service.notes}
+          <View style={styles.servicesList}>
+            {services.map((service) => {
+              const formattedDate = formatDate(service.date);
+              const assignmentCount = service.assignments.length;
+              const assignmentCountText = `${assignmentCount} ${
+                assignmentCount === 1 ? 'assignment' : 'assignments'
+              }`;
+
+              return (
+                <View
+                  key={service.id}
+                  style={[styles.serviceCard, { backgroundColor: colors.cardBackground }]}
+                >
+                  <View style={styles.serviceHeader}>
+                    <View style={styles.serviceInfo}>
+                      <Text style={[styles.serviceType, { color: colors.text }]}>
+                        {service.service_type}
                       </Text>
-                    ) : null}
-                  </View>
-                  <TouchableOpacity 
-                    onPress={() => handleDeleteService(service.id)}
-                    style={styles.deleteButton}
-                  >
-                    <IconSymbol 
-                      ios_icon_name="trash"
-                      android_material_icon_name="delete" 
-                      size={24} 
-                      color={colors.textSecondary} 
-                    />
-                  </TouchableOpacity>
-                </View>
-
-                <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-                <View style={styles.assignmentsSection}>
-                  <View style={styles.assignmentsHeader}>
-                    <Text style={[styles.assignmentsTitle, { color: colors.text }]}>
-                      Team Members
-                    </Text>
-                    <TouchableOpacity 
-                      onPress={() => handleAddAssignment(service)}
-                      style={[styles.addAssignmentButton, { backgroundColor: colors.primary }]}
+                      <Text style={[styles.serviceDate, { color: colors.textSecondary }]}>
+                        {formattedDate}
+                      </Text>
+                      {service.notes && (
+                        <Text style={[styles.serviceNotes, { color: colors.textSecondary }]}>
+                          {service.notes}
+                        </Text>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => openDeleteServiceModal(service.id)}
+                      style={styles.deleteButton}
                     >
-                      <IconSymbol 
-                        ios_icon_name="plus"
-                        android_material_icon_name="add" 
-                        size={16} 
-                        color="#FFFFFF" 
+                      <IconSymbol
+                        ios_icon_name="trash"
+                        android_material_icon_name="delete"
+                        size={20}
+                        color="#ff3b30"
                       />
-                      <Text style={styles.addAssignmentText}>Add</Text>
                     </TouchableOpacity>
                   </View>
 
-                  {service.assignments.length === 0 ? (
-                    <Text style={[styles.noAssignments, { color: colors.textSecondary }]}>
-                      No team members assigned yet
-                    </Text>
-                  ) : (
-                    service.assignments.map((assignment) => (
+                  <View style={styles.assignmentsSection}>
+                    <View style={styles.assignmentsHeader}>
+                      <Text style={[styles.assignmentsTitle, { color: colors.text }]}>
+                        {assignmentCountText}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          console.log('User tapped Add Assignment for service:', service.id);
+                          setSelectedServiceId(service.id);
+                          setAddAssignmentModalVisible(true);
+                        }}
+                        style={[styles.addAssignmentButton, { backgroundColor: colors.primary }]}
+                      >
+                        <IconSymbol
+                          ios_icon_name="plus"
+                          android_material_icon_name="add"
+                          size={16}
+                          color="#fff"
+                        />
+                      </TouchableOpacity>
+                    </View>
+
+                    {service.assignments.map((assignment) => (
                       <View key={assignment.id} style={styles.assignmentRow}>
                         <View style={styles.assignmentInfo}>
                           <Text style={[styles.assignmentRole, { color: colors.primary }]}>
                             {assignment.role}
                           </Text>
                           <Text style={[styles.assignmentPerson, { color: colors.text }]}>
-                            {assignment.personName}
+                            {assignment.person_name}
                           </Text>
                         </View>
-                        <TouchableOpacity 
-                          onPress={() => handleDeleteAssignment(service.id, assignment.id)}
+                        <TouchableOpacity
+                          onPress={() =>
+                            openDeleteAssignmentModal(service.id, assignment.id)
+                          }
                         >
-                          <IconSymbol 
-                            ios_icon_name="xmark"
-                            android_material_icon_name="close" 
-                            size={20} 
-                            color={colors.textSecondary} 
+                          <IconSymbol
+                            ios_icon_name="xmark.circle"
+                            android_material_icon_name="close"
+                            size={20}
+                            color={colors.textSecondary}
                           />
                         </TouchableOpacity>
                       </View>
-                    ))
-                  )}
+                    ))}
+                  </View>
                 </View>
-              </View>
-            );
-          })
+              );
+            })}
+          </View>
+        )}
+
+        {error && (
+          <View style={[styles.errorContainer, { backgroundColor: '#ffebee' }]}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
         )}
       </ScrollView>
 
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.fab, { backgroundColor: colors.primary }]}
-        onPress={handleAddService}
+        onPress={() => {
+          console.log('User tapped Add Service FAB');
+          setAddServiceModalVisible(true);
+        }}
       >
-        <IconSymbol 
-          ios_icon_name="plus"
-          android_material_icon_name="add" 
-          size={28} 
-          color="#FFFFFF" 
-        />
+        <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={24} color="#fff" />
       </TouchableOpacity>
 
       {/* Add Service Modal */}
       <Modal
-        visible={showAddModal}
+        visible={isAddServiceModalVisible}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowAddModal(false)}
+        onRequestClose={() => setAddServiceModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>
-                Add New Service
-              </Text>
-              <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                <IconSymbol 
-                  ios_icon_name="xmark"
-                  android_material_icon_name="close" 
-                  size={24} 
-                  color={colors.text} 
-                />
-              </TouchableOpacity>
-            </View>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Add Service</Text>
 
-            <View style={styles.formGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>Service Type</Text>
-              <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                placeholder="e.g., Sunday Morning Service"
-                placeholderTextColor={colors.textSecondary}
-                value={newServiceType}
-                onChangeText={setNewServiceType}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>Date & Time</Text>
-              <TouchableOpacity 
-                style={[styles.dateButton, { borderColor: colors.border }]}
-                onPress={() => setShowDatePicker(true)}
-              >
-                <Text style={{ color: colors.text }}>
-                  {newServiceDate.toLocaleString()}
-                </Text>
-              </TouchableOpacity>
-              {showDatePicker && (
-                <DateTimePicker
-                  value={newServiceDate}
-                  mode="datetime"
-                  display="default"
-                  onChange={onDateChange}
-                />
-              )}
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>Notes (Optional)</Text>
-              <TextInput
-                style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.border }]}
-                placeholder="Add any notes..."
-                placeholderTextColor={colors.textSecondary}
-                value={newServiceNotes}
-                onChangeText={setNewServiceNotes}
-                multiline
-                numberOfLines={3}
-              />
-            </View>
-
-            <TouchableOpacity 
-              style={[styles.saveButton, { backgroundColor: colors.primary }]}
-              onPress={handleSaveService}
+            <TouchableOpacity
+              style={[styles.dateButton, { borderColor: colors.border }]}
+              onPress={() => setShowDatePicker(true)}
             >
-              <Text style={styles.saveButtonText}>Save Service</Text>
+              <Text style={[styles.dateButtonText, { color: colors.text }]}>
+                {newServiceDate.toLocaleDateString('en-US', {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </Text>
             </TouchableOpacity>
+
+            {showDatePicker && (
+              <DateTimePicker
+                value={newServiceDate}
+                mode="datetime"
+                display="default"
+                onChange={onDateChange}
+              />
+            )}
+
+            <TextInput
+              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+              placeholder="Service Type (e.g., Sunday Morning)"
+              placeholderTextColor={colors.textSecondary}
+              value={newServiceType}
+              onChangeText={setNewServiceType}
+            />
+
+            <TextInput
+              style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.border }]}
+              placeholder="Notes (optional)"
+              placeholderTextColor={colors.textSecondary}
+              value={newServiceNotes}
+              onChangeText={setNewServiceNotes}
+              multiline
+              numberOfLines={3}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  console.log('User cancelled add service');
+                  setAddServiceModalVisible(false);
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                onPress={handleSaveService}
+              >
+                <Text style={styles.saveButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
 
       {/* Add Assignment Modal */}
       <Modal
-        visible={showAssignmentModal}
+        visible={isAddAssignmentModalVisible}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowAssignmentModal(false)}
+        onRequestClose={() => setAddAssignmentModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>
-                Add Team Member
-              </Text>
-              <TouchableOpacity onPress={() => setShowAssignmentModal(false)}>
-                <IconSymbol 
-                  ios_icon_name="xmark"
-                  android_material_icon_name="close" 
-                  size={24} 
-                  color={colors.text} 
-                />
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Add Assignment</Text>
+
+            <TextInput
+              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+              placeholder="Role (e.g., Worship Leader, Piano)"
+              placeholderTextColor={colors.textSecondary}
+              value={newAssignmentRole}
+              onChangeText={setNewAssignmentRole}
+            />
+
+            <TextInput
+              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+              placeholder="Person Name"
+              placeholderTextColor={colors.textSecondary}
+              value={newAssignmentPerson}
+              onChangeText={setNewAssignmentPerson}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  console.log('User cancelled add assignment');
+                  setAddAssignmentModalVisible(false);
+                  setSelectedServiceId(null);
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                onPress={handleSaveAssignment}
+              >
+                <Text style={styles.saveButtonText}>Save</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
 
-            <View style={styles.formGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>Role</Text>
-              <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                placeholder="e.g., Worship Leader"
-                placeholderTextColor={colors.textSecondary}
-                value={newRole}
-                onChangeText={setNewRole}
-              />
-              <View style={styles.quickRoles}>
-                {commonRoles.map((role) => (
-                  <TouchableOpacity
-                    key={role}
-                    style={[styles.quickRoleButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
-                    onPress={() => setNewRole(role)}
-                  >
-                    <Text style={[styles.quickRoleText, { color: colors.primary }]}>
-                      {role}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+      {/* Delete Service Modal */}
+      <Modal
+        visible={isDeleteServiceModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setDeleteServiceModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Service</Text>
+            <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
+              Are you sure you want to delete this service and all its assignments?
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  console.log('User cancelled delete service');
+                  setDeleteServiceModalVisible(false);
+                  setServiceToDelete(null);
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: '#ff3b30' }]}
+                onPress={handleDeleteService}
+              >
+                <Text style={styles.saveButtonText}>Delete</Text>
+              </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
 
-            <View style={styles.formGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>Person Name</Text>
-              <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                placeholder="Enter name"
-                placeholderTextColor={colors.textSecondary}
-                value={newPersonName}
-                onChangeText={setNewPersonName}
-              />
+      {/* Delete Assignment Modal */}
+      <Modal
+        visible={isDeleteAssignmentModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setDeleteAssignmentModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Remove Assignment</Text>
+            <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
+              Are you sure you want to remove this assignment?
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  console.log('User cancelled delete assignment');
+                  setDeleteAssignmentModalVisible(false);
+                  setAssignmentToDelete(null);
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: '#ff3b30' }]}
+                onPress={handleDeleteAssignment}
+              >
+                <Text style={styles.saveButtonText}>Remove</Text>
+              </TouchableOpacity>
             </View>
-
-            <TouchableOpacity 
-              style={[styles.saveButton, { backgroundColor: colors.primary }]}
-              onPress={handleSaveAssignment}
-            >
-              <Text style={styles.saveButtonText}>Add Member</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -433,31 +537,30 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 100,
-  },
-  emptyState: {
+  emptyContainer: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 100,
+    alignItems: 'center',
+    padding: 32,
+    minHeight: 400,
   },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
     marginTop: 16,
+    marginBottom: 8,
   },
-  emptySubtext: {
-    fontSize: 14,
-    marginTop: 8,
+  emptySubtitle: {
+    fontSize: 16,
     textAlign: 'center',
+  },
+  servicesList: {
+    padding: 16,
+    gap: 16,
   },
   serviceCard: {
     borderRadius: 12,
     padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -467,7 +570,7 @@ const styles = StyleSheet.create({
   serviceHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    marginBottom: 12,
   },
   serviceInfo: {
     flex: 1,
@@ -479,65 +582,50 @@ const styles = StyleSheet.create({
   },
   serviceDate: {
     fontSize: 14,
-    marginBottom: 2,
-  },
-  serviceTime: {
-    fontSize: 14,
     marginBottom: 4,
   },
   serviceNotes: {
-    fontSize: 13,
+    fontSize: 14,
     fontStyle: 'italic',
-    marginTop: 4,
   },
   deleteButton: {
     padding: 4,
   },
-  divider: {
-    height: 1,
-    marginVertical: 12,
-  },
   assignmentsSection: {
-    marginTop: 4,
+    marginTop: 8,
   },
   assignmentsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   assignmentsTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
   addAssignmentButton: {
-    flexDirection: 'row',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  addAssignmentText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 4,
-  },
-  noAssignments: {
-    fontSize: 14,
-    fontStyle: 'italic',
   },
   assignmentRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(106, 13, 173, 0.05)',
   },
   assignmentInfo: {
     flex: 1,
   },
   assignmentRole: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     marginBottom: 2,
   },
@@ -546,88 +634,91 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    right: 20,
-    bottom: 90,
+    right: 16,
+    bottom: 16,
     width: 56,
     height: 56,
     borderRadius: 28,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 8,
   },
+  errorContainer: {
+    margin: 16,
+    padding: 12,
+    borderRadius: 8,
+  },
+  errorText: {
+    color: '#c62828',
+    fontSize: 14,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '80%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
+    width: '90%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 24,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
+    marginBottom: 16,
   },
-  formGroup: {
-    marginBottom: 20,
+  modalMessage: {
+    fontSize: 16,
+    marginBottom: 24,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
+  dateButton: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  dateButtonText: {
+    fontSize: 16,
   },
   input: {
     borderWidth: 1,
     borderRadius: 8,
     padding: 12,
+    marginBottom: 12,
     fontSize: 16,
   },
   textArea: {
     height: 80,
     textAlignVertical: 'top',
   },
-  dateButton: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-  },
-  quickRoles: {
+  modalButtons: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    gap: 12,
     marginTop: 8,
-    gap: 8,
   },
-  quickRoleButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  quickRoleText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  saveButton: {
-    padding: 16,
+  modalButton: {
+    flex: 1,
+    padding: 12,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 10,
+  },
+  cancelButton: {
+    backgroundColor: '#e0e0e0',
+  },
+  cancelButtonText: {
+    color: '#333',
+    fontSize: 16,
+    fontWeight: '600',
   },
   saveButtonText: {
-    color: '#FFFFFF',
+    color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
 });
