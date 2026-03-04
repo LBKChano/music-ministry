@@ -7,11 +7,15 @@ type Church = Tables<'churches'>;
 type ChurchMember = Tables<'church_members'>;
 type Service = Tables<'services'>;
 type Assignment = Tables<'assignments'>;
+type RecurringService = Tables<'recurring_services'>;
+type ChurchRole = Tables<'church_roles'>;
 
 export function useChurch() {
   const [churches, setChurches] = useState<Church[]>([]);
   const [currentChurch, setCurrentChurch] = useState<Church | null>(null);
   const [members, setMembers] = useState<ChurchMember[]>([]);
+  const [recurringServices, setRecurringServices] = useState<RecurringService[]>([]);
+  const [churchRoles, setChurchRoles] = useState<ChurchRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
@@ -241,19 +245,200 @@ export function useChurch() {
     }
   }, [user, fetchChurches]);
 
+  // Fetch recurring services for a specific church
+  const fetchRecurringServices = useCallback(async (churchId: string) => {
+    console.log('Fetching recurring services for church:', churchId);
+    try {
+      setError(null);
+
+      const { data, error: fetchError } = await supabase
+        .from('recurring_services')
+        .select('*')
+        .eq('church_id', churchId)
+        .order('day_of_week', { ascending: true })
+        .order('time', { ascending: true });
+
+      if (fetchError) {
+        console.error('Error fetching recurring services:', fetchError);
+        setError(fetchError.message);
+      } else {
+        console.log('Fetched recurring services:', data);
+        setRecurringServices(data || []);
+      }
+    } catch (err) {
+      console.error('Error in fetchRecurringServices:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    }
+  }, []);
+
+  // Fetch roles for a specific church
+  const fetchChurchRoles = useCallback(async (churchId: string) => {
+    console.log('Fetching roles for church:', churchId);
+    try {
+      setError(null);
+
+      const { data, error: fetchError } = await supabase
+        .from('church_roles')
+        .select('*')
+        .eq('church_id', churchId)
+        .order('name', { ascending: true });
+
+      if (fetchError) {
+        console.error('Error fetching church roles:', fetchError);
+        setError(fetchError.message);
+      } else {
+        console.log('Fetched church roles:', data);
+        setChurchRoles(data || []);
+      }
+    } catch (err) {
+      console.error('Error in fetchChurchRoles:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    }
+  }, []);
+
+  // Add a recurring service
+  const addRecurringService = useCallback(async (churchId: string, name: string, dayOfWeek: number, time: string, notes?: string) => {
+    console.log('Adding recurring service:', { churchId, name, dayOfWeek, time, notes });
+    try {
+      setError(null);
+
+      const newService: TablesInsert<'recurring_services'> = {
+        church_id: churchId,
+        name,
+        day_of_week: dayOfWeek,
+        time,
+        notes: notes || null,
+      };
+
+      const { data, error: insertError } = await supabase
+        .from('recurring_services')
+        .insert(newService)
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Error adding recurring service:', insertError);
+        setError(insertError.message);
+        return null;
+      }
+
+      console.log('Recurring service added successfully:', data);
+      await fetchRecurringServices(churchId);
+      return data;
+    } catch (err) {
+      console.error('Error in addRecurringService:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return null;
+    }
+  }, [fetchRecurringServices]);
+
+  // Delete a recurring service
+  const deleteRecurringService = useCallback(async (serviceId: string, churchId: string) => {
+    console.log('Deleting recurring service:', serviceId);
+    try {
+      setError(null);
+
+      const { error: deleteError } = await supabase
+        .from('recurring_services')
+        .delete()
+        .eq('id', serviceId);
+
+      if (deleteError) {
+        console.error('Error deleting recurring service:', deleteError);
+        setError(deleteError.message);
+        return false;
+      }
+
+      console.log('Recurring service deleted successfully');
+      await fetchRecurringServices(churchId);
+      return true;
+    } catch (err) {
+      console.error('Error in deleteRecurringService:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, [fetchRecurringServices]);
+
+  // Add a church role
+  const addChurchRole = useCallback(async (churchId: string, name: string, description?: string) => {
+    console.log('Adding church role:', { churchId, name, description });
+    try {
+      setError(null);
+
+      const newRole: TablesInsert<'church_roles'> = {
+        church_id: churchId,
+        name,
+        description: description || null,
+      };
+
+      const { data, error: insertError } = await supabase
+        .from('church_roles')
+        .insert(newRole)
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Error adding church role:', insertError);
+        setError(insertError.message);
+        return null;
+      }
+
+      console.log('Church role added successfully:', data);
+      await fetchChurchRoles(churchId);
+      return data;
+    } catch (err) {
+      console.error('Error in addChurchRole:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return null;
+    }
+  }, [fetchChurchRoles]);
+
+  // Delete a church role
+  const deleteChurchRole = useCallback(async (roleId: string, churchId: string) => {
+    console.log('Deleting church role:', roleId);
+    try {
+      setError(null);
+
+      const { error: deleteError } = await supabase
+        .from('church_roles')
+        .delete()
+        .eq('id', roleId);
+
+      if (deleteError) {
+        console.error('Error deleting church role:', deleteError);
+        setError(deleteError.message);
+        return false;
+      }
+
+      console.log('Church role deleted successfully');
+      await fetchChurchRoles(churchId);
+      return true;
+    } catch (err) {
+      console.error('Error in deleteChurchRole:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, [fetchChurchRoles]);
+
   useEffect(() => {
     if (currentChurch) {
       fetchMembers(currentChurch.id);
+      fetchRecurringServices(currentChurch.id);
+      fetchChurchRoles(currentChurch.id);
     } else {
       setMembers([]);
+      setRecurringServices([]);
+      setChurchRoles([]);
     }
-  }, [currentChurch, fetchMembers]);
+  }, [currentChurch, fetchMembers, fetchRecurringServices, fetchChurchRoles]);
 
   return {
     churches,
     currentChurch,
     setCurrentChurch,
     members,
+    recurringServices,
+    churchRoles,
     loading,
     error,
     user,
@@ -261,7 +446,13 @@ export function useChurch() {
     addMember,
     deleteMember,
     updateMember,
+    addRecurringService,
+    deleteRecurringService,
+    addChurchRole,
+    deleteChurchRole,
     refreshChurches: fetchChurches,
     refreshMembers: useCallback(() => currentChurch && fetchMembers(currentChurch.id), [currentChurch, fetchMembers]),
+    refreshRecurringServices: useCallback(() => currentChurch && fetchRecurringServices(currentChurch.id), [currentChurch, fetchRecurringServices]),
+    refreshChurchRoles: useCallback(() => currentChurch && fetchChurchRoles(currentChurch.id), [currentChurch, fetchChurchRoles]),
   };
 }

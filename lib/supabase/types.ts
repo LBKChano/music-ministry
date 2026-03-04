@@ -154,6 +154,82 @@ export type Database = {
           },
         ]
       }
+      recurring_services: {
+        Row: {
+          church_id: string
+          created_at: string
+          day_of_week: number
+          id: string
+          name: string
+          notes: string | null
+          time: string
+          updated_at: string
+        }
+        Insert: {
+          church_id: string
+          created_at?: string
+          day_of_week: number
+          id?: string
+          name: string
+          notes?: string | null
+          time: string
+          updated_at?: string
+        }
+        Update: {
+          church_id?: string
+          created_at?: string
+          day_of_week?: number
+          id?: string
+          name?: string
+          notes?: string | null
+          time?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_services_church_id_fkey"
+            columns: ["church_id"]
+            isOneToOne: false
+            referencedRelation: "churches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      church_roles: {
+        Row: {
+          church_id: string
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          church_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          church_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "church_roles_church_id_fkey"
+            columns: ["church_id"]
+            isOneToOne: false
+            referencedRelation: "churches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

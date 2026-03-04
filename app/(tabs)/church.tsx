@@ -27,6 +27,8 @@ export default function ChurchScreen() {
     currentChurch,
     setCurrentChurch,
     members,
+    recurringServices,
+    churchRoles,
     loading,
     error,
     user,
@@ -34,18 +36,35 @@ export default function ChurchScreen() {
     addMember,
     deleteMember,
     updateMember,
+    addRecurringService,
+    deleteRecurringService,
+    addChurchRole,
+    deleteChurchRole,
   } = useChurch();
 
+  const [activeTab, setActiveTab] = useState<'members' | 'services' | 'roles'>('members');
   const [isCreateChurchModalVisible, setCreateChurchModalVisible] = useState(false);
   const [isAddMemberModalVisible, setAddMemberModalVisible] = useState(false);
+  const [isAddServiceModalVisible, setAddServiceModalVisible] = useState(false);
+  const [isAddRoleModalVisible, setAddRoleModalVisible] = useState(false);
   const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [isDeleteServiceModalVisible, setDeleteServiceModalVisible] = useState(false);
+  const [isDeleteRoleModalVisible, setDeleteRoleModalVisible] = useState(false);
   const [isSignOutModalVisible, setSignOutModalVisible] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<string | null>(null);
+  const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
+  const [roleToDelete, setRoleToDelete] = useState<string | null>(null);
 
   const [newChurchName, setNewChurchName] = useState('');
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberRole, setNewMemberRole] = useState('');
+  const [newServiceName, setNewServiceName] = useState('');
+  const [newServiceDay, setNewServiceDay] = useState(0);
+  const [newServiceTime, setNewServiceTime] = useState('09:00');
+  const [newServiceNotes, setNewServiceNotes] = useState('');
+  const [newRoleName, setNewRoleName] = useState('');
+  const [newRoleDescription, setNewRoleDescription] = useState('');
 
   const handleCreateChurch = async () => {
     console.log('User tapped Create Church button');
@@ -110,6 +129,103 @@ export default function ChurchScreen() {
     console.log('User tapped delete member:', memberId);
     setMemberToDelete(memberId);
     setDeleteModalVisible(true);
+  };
+
+  const handleAddService = async () => {
+    console.log('User tapped Add Service button');
+    if (!currentChurch || !newServiceName.trim()) {
+      return;
+    }
+
+    const result = await addRecurringService(
+      currentChurch.id,
+      newServiceName.trim(),
+      newServiceDay,
+      newServiceTime,
+      newServiceNotes.trim() || undefined
+    );
+
+    if (result) {
+      setNewServiceName('');
+      setNewServiceDay(0);
+      setNewServiceTime('09:00');
+      setNewServiceNotes('');
+      setAddServiceModalVisible(false);
+    }
+  };
+
+  const handleDeleteService = async () => {
+    console.log('User confirmed delete service');
+    if (!serviceToDelete || !currentChurch) {
+      return;
+    }
+
+    const success = await deleteRecurringService(serviceToDelete, currentChurch.id);
+    if (success) {
+      setServiceToDelete(null);
+      setDeleteServiceModalVisible(false);
+    }
+  };
+
+  const openDeleteServiceModal = (serviceId: string) => {
+    console.log('User tapped delete service:', serviceId);
+    setServiceToDelete(serviceId);
+    setDeleteServiceModalVisible(true);
+  };
+
+  const handleAddRole = async () => {
+    console.log('User tapped Add Role button');
+    if (!currentChurch || !newRoleName.trim()) {
+      return;
+    }
+
+    const result = await addChurchRole(
+      currentChurch.id,
+      newRoleName.trim(),
+      newRoleDescription.trim() || undefined
+    );
+
+    if (result) {
+      setNewRoleName('');
+      setNewRoleDescription('');
+      setAddRoleModalVisible(false);
+    }
+  };
+
+  const handleDeleteRole = async () => {
+    console.log('User confirmed delete role');
+    if (!roleToDelete || !currentChurch) {
+      return;
+    }
+
+    const success = await deleteChurchRole(roleToDelete, currentChurch.id);
+    if (success) {
+      setRoleToDelete(null);
+      setDeleteRoleModalVisible(false);
+    }
+  };
+
+  const openDeleteRoleModal = (roleId: string) => {
+    console.log('User tapped delete role:', roleId);
+    setRoleToDelete(roleId);
+    setDeleteRoleModalVisible(true);
+  };
+
+  const getDayName = (day: number): string => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return days[day] || '';
+  };
+
+  const formatTime = (time: string): string => {
+    try {
+      const [hours, minutes] = time.split(':');
+      const hour = parseInt(hours, 10);
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const displayHour = hour % 12 || 12;
+      return `${displayHour}:${minutes} ${ampm}`;
+    } catch {
+      return time;
+    }
   };
 
   if (loading && churches.length === 0) {
@@ -229,84 +345,308 @@ export default function ChurchScreen() {
           )}
         </View>
 
-        {/* Members Section */}
+        {/* Tabs and Content */}
         {currentChurch && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Members</Text>
+          <>
+            {/* Tab Selector */}
+            <View style={styles.tabContainer}>
               <TouchableOpacity
-                style={[styles.addButton, { backgroundColor: colors.primary }]}
+                style={[
+                  styles.tab,
+                  activeTab === 'members' && [styles.activeTab, { borderBottomColor: colors.primary }],
+                ]}
                 onPress={() => {
-                  console.log('User tapped Add Member');
-                  setAddMemberModalVisible(true);
+                  console.log('User switched to Members tab');
+                  setActiveTab('members');
                 }}
               >
-                <IconSymbol
-                  ios_icon_name="person.badge.plus"
-                  android_material_icon_name="person-add"
-                  size={20}
-                  color="#fff"
-                />
+                <Text
+                  style={[
+                    styles.tabText,
+                    { color: activeTab === 'members' ? colors.primary : colors.textSecondary },
+                  ]}
+                >
+                  Members
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.tab,
+                  activeTab === 'services' && [styles.activeTab, { borderBottomColor: colors.primary }],
+                ]}
+                onPress={() => {
+                  console.log('User switched to Services tab');
+                  setActiveTab('services');
+                }}
+              >
+                <Text
+                  style={[
+                    styles.tabText,
+                    { color: activeTab === 'services' ? colors.primary : colors.textSecondary },
+                  ]}
+                >
+                  Services
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.tab,
+                  activeTab === 'roles' && [styles.activeTab, { borderBottomColor: colors.primary }],
+                ]}
+                onPress={() => {
+                  console.log('User switched to Roles tab');
+                  setActiveTab('roles');
+                }}
+              >
+                <Text
+                  style={[
+                    styles.tabText,
+                    { color: activeTab === 'roles' ? colors.primary : colors.textSecondary },
+                  ]}
+                >
+                  Roles
+                </Text>
               </TouchableOpacity>
             </View>
 
-            {members.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
-                  {noMembersText}
-                </Text>
-                <Text style={[styles.emptyStateSubtext, { color: colors.textSecondary }]}>
-                  {addFirstMemberText}
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.membersList}>
-                {members.map((member) => {
-                  const displayName = member.name || member.email;
-                  const displayRole = member.role || '';
-                  return (
-                    <View
-                      key={member.id}
-                      style={[styles.memberCard, { backgroundColor: colors.cardBackground }]}
-                    >
-                      <View style={styles.memberInfo}>
-                        <IconSymbol
-                          ios_icon_name="person.circle"
-                          android_material_icon_name="account-circle"
-                          size={40}
-                          color={colors.primary}
-                        />
-                        <View style={styles.memberDetails}>
-                          <Text style={[styles.memberName, { color: colors.text }]}>
-                            {displayName}
-                          </Text>
-                          <Text style={[styles.memberEmail, { color: colors.textSecondary }]}>
-                            {member.email}
-                          </Text>
-                          {displayRole && (
-                            <Text style={[styles.memberRole, { color: colors.primary }]}>
-                              {displayRole}
-                            </Text>
-                          )}
+            {/* Members Tab */}
+            {activeTab === 'members' && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Members</Text>
+                  <TouchableOpacity
+                    style={[styles.addButton, { backgroundColor: colors.primary }]}
+                    onPress={() => {
+                      console.log('User tapped Add Member');
+                      setAddMemberModalVisible(true);
+                    }}
+                  >
+                    <IconSymbol
+                      ios_icon_name="person.badge.plus"
+                      android_material_icon_name="person-add"
+                      size={20}
+                      color="#fff"
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {members.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
+                      {noMembersText}
+                    </Text>
+                    <Text style={[styles.emptyStateSubtext, { color: colors.textSecondary }]}>
+                      {addFirstMemberText}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.membersList}>
+                    {members.map((member) => {
+                      const displayName = member.name || member.email;
+                      const displayRole = member.role || '';
+                      return (
+                        <View
+                          key={member.id}
+                          style={[styles.memberCard, { backgroundColor: colors.cardBackground }]}
+                        >
+                          <View style={styles.memberInfo}>
+                            <IconSymbol
+                              ios_icon_name="person.circle"
+                              android_material_icon_name="account-circle"
+                              size={40}
+                              color={colors.primary}
+                            />
+                            <View style={styles.memberDetails}>
+                              <Text style={[styles.memberName, { color: colors.text }]}>
+                                {displayName}
+                              </Text>
+                              <Text style={[styles.memberEmail, { color: colors.textSecondary }]}>
+                                {member.email}
+                              </Text>
+                              {displayRole && (
+                                <Text style={[styles.memberRole, { color: colors.primary }]}>
+                                  {displayRole}
+                                </Text>
+                              )}
+                            </View>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => openDeleteModal(member.id)}
+                            style={styles.deleteButton}
+                          >
+                            <IconSymbol
+                              ios_icon_name="trash"
+                              android_material_icon_name="delete"
+                              size={20}
+                              color="#ff3b30"
+                            />
+                          </TouchableOpacity>
                         </View>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => openDeleteModal(member.id)}
-                        style={styles.deleteButton}
-                      >
-                        <IconSymbol
-                          ios_icon_name="trash"
-                          android_material_icon_name="delete"
-                          size={20}
-                          color="#ff3b30"
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  );
-                })}
+                      );
+                    })}
+                  </View>
+                )}
               </View>
             )}
-          </View>
+
+            {/* Services Tab */}
+            {activeTab === 'services' && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Weekly Services</Text>
+                  <TouchableOpacity
+                    style={[styles.addButton, { backgroundColor: colors.primary }]}
+                    onPress={() => {
+                      console.log('User tapped Add Service');
+                      setAddServiceModalVisible(true);
+                    }}
+                  >
+                    <IconSymbol
+                      ios_icon_name="plus"
+                      android_material_icon_name="add"
+                      size={20}
+                      color="#fff"
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {recurringServices.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
+                      No recurring services
+                    </Text>
+                    <Text style={[styles.emptyStateSubtext, { color: colors.textSecondary }]}>
+                      Add weekly services that repeat
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.servicesList}>
+                    {recurringServices.map((service) => {
+                      const dayName = getDayName(service.day_of_week);
+                      const timeDisplay = formatTime(service.time);
+                      return (
+                        <View
+                          key={service.id}
+                          style={[styles.serviceCard, { backgroundColor: colors.cardBackground }]}
+                        >
+                          <View style={styles.serviceInfo}>
+                            <IconSymbol
+                              ios_icon_name="calendar"
+                              android_material_icon_name="event"
+                              size={40}
+                              color={colors.primary}
+                            />
+                            <View style={styles.serviceDetails}>
+                              <Text style={[styles.serviceName, { color: colors.text }]}>
+                                {service.name}
+                              </Text>
+                              <Text style={[styles.serviceTime, { color: colors.textSecondary }]}>
+                                {dayName}
+                              </Text>
+                              <Text style={[styles.serviceTime, { color: colors.textSecondary }]}>
+                                {timeDisplay}
+                              </Text>
+                              {service.notes && (
+                                <Text style={[styles.serviceNotes, { color: colors.textSecondary }]}>
+                                  {service.notes}
+                                </Text>
+                              )}
+                            </View>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => openDeleteServiceModal(service.id)}
+                            style={styles.deleteButton}
+                          >
+                            <IconSymbol
+                              ios_icon_name="trash"
+                              android_material_icon_name="delete"
+                              size={20}
+                              color="#ff3b30"
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Roles Tab */}
+            {activeTab === 'roles' && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Church Roles</Text>
+                  <TouchableOpacity
+                    style={[styles.addButton, { backgroundColor: colors.primary }]}
+                    onPress={() => {
+                      console.log('User tapped Add Role');
+                      setAddRoleModalVisible(true);
+                    }}
+                  >
+                    <IconSymbol
+                      ios_icon_name="plus"
+                      android_material_icon_name="add"
+                      size={20}
+                      color="#fff"
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {churchRoles.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
+                      No roles defined
+                    </Text>
+                    <Text style={[styles.emptyStateSubtext, { color: colors.textSecondary }]}>
+                      Add roles for your church team
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.rolesList}>
+                    {churchRoles.map((role) => {
+                      return (
+                        <View
+                          key={role.id}
+                          style={[styles.roleCard, { backgroundColor: colors.cardBackground }]}
+                        >
+                          <View style={styles.roleInfo}>
+                            <IconSymbol
+                              ios_icon_name="person.badge.shield.checkmark"
+                              android_material_icon_name="badge"
+                              size={40}
+                              color={colors.primary}
+                            />
+                            <View style={styles.roleDetails}>
+                              <Text style={[styles.roleName, { color: colors.text }]}>
+                                {role.name}
+                              </Text>
+                              {role.description && (
+                                <Text style={[styles.roleDescription, { color: colors.textSecondary }]}>
+                                  {role.description}
+                                </Text>
+                              )}
+                            </View>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => openDeleteRoleModal(role.id)}
+                            style={styles.deleteButton}
+                          >
+                            <IconSymbol
+                              ios_icon_name="trash"
+                              android_material_icon_name="delete"
+                              size={20}
+                              color="#ff3b30"
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
+          </>
         )}
 
         {error && (
@@ -454,6 +794,221 @@ export default function ChurchScreen() {
         </View>
       </Modal>
 
+      {/* Add Service Modal */}
+      <Modal
+        visible={isAddServiceModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setAddServiceModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Add Weekly Service</Text>
+
+            <TextInput
+              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+              placeholder="Service Name (e.g., Sunday Morning)"
+              placeholderTextColor={colors.textSecondary}
+              value={newServiceName}
+              onChangeText={setNewServiceName}
+            />
+
+            <View style={styles.pickerContainer}>
+              <Text style={[styles.label, { color: colors.text }]}>Day of Week</Text>
+              <View style={styles.dayButtons}>
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.dayButton,
+                      { borderColor: colors.border },
+                      newServiceDay === index && { backgroundColor: colors.primary },
+                    ]}
+                    onPress={() => setNewServiceDay(index)}
+                  >
+                    <Text
+                      style={[
+                        styles.dayButtonText,
+                        { color: newServiceDay === index ? '#fff' : colors.text },
+                      ]}
+                    >
+                      {day}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.pickerContainer}>
+              <Text style={[styles.label, { color: colors.text }]}>Time</Text>
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                placeholder="HH:MM (e.g., 09:00)"
+                placeholderTextColor={colors.textSecondary}
+                value={newServiceTime}
+                onChangeText={setNewServiceTime}
+              />
+            </View>
+
+            <TextInput
+              style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.border }]}
+              placeholder="Notes (optional)"
+              placeholderTextColor={colors.textSecondary}
+              value={newServiceNotes}
+              onChangeText={setNewServiceNotes}
+              multiline
+              numberOfLines={3}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  console.log('User cancelled add service');
+                  setAddServiceModalVisible(false);
+                  setNewServiceName('');
+                  setNewServiceDay(0);
+                  setNewServiceTime('09:00');
+                  setNewServiceNotes('');
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                onPress={handleAddService}
+              >
+                <Text style={styles.saveButtonText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add Role Modal */}
+      <Modal
+        visible={isAddRoleModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setAddRoleModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Add Church Role</Text>
+
+            <TextInput
+              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+              placeholder="Role Name (e.g., Worship Leader)"
+              placeholderTextColor={colors.textSecondary}
+              value={newRoleName}
+              onChangeText={setNewRoleName}
+            />
+
+            <TextInput
+              style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.border }]}
+              placeholder="Description (optional)"
+              placeholderTextColor={colors.textSecondary}
+              value={newRoleDescription}
+              onChangeText={setNewRoleDescription}
+              multiline
+              numberOfLines={3}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  console.log('User cancelled add role');
+                  setAddRoleModalVisible(false);
+                  setNewRoleName('');
+                  setNewRoleDescription('');
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                onPress={handleAddRole}
+              >
+                <Text style={styles.saveButtonText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Service Confirmation Modal */}
+      <Modal
+        visible={isDeleteServiceModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setDeleteServiceModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Service</Text>
+            <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
+              Are you sure you want to delete this recurring service?
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  console.log('User cancelled delete service');
+                  setDeleteServiceModalVisible(false);
+                  setServiceToDelete(null);
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: '#ff3b30' }]}
+                onPress={handleDeleteService}
+              >
+                <Text style={styles.saveButtonText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Role Confirmation Modal */}
+      <Modal
+        visible={isDeleteRoleModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setDeleteRoleModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Role</Text>
+            <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
+              Are you sure you want to delete this role?
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  console.log('User cancelled delete role');
+                  setDeleteRoleModalVisible(false);
+                  setRoleToDelete(null);
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: '#ff3b30' }]}
+                onPress={handleDeleteRole}
+              >
+                <Text style={styles.saveButtonText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Sign Out Confirmation Modal */}
       <Modal
         visible={isSignOutModalVisible}
@@ -554,6 +1109,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  tabContainer: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    paddingHorizontal: 16,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  activeTab: {
+    borderBottomWidth: 2,
+  },
+  tabText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
   membersList: {
     gap: 12,
   },
@@ -586,6 +1161,66 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
+  servicesList: {
+    gap: 12,
+  },
+  serviceCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+  },
+  serviceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  serviceDetails: {
+    flex: 1,
+  },
+  serviceName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  serviceTime: {
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  serviceNotes: {
+    fontSize: 12,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  rolesList: {
+    gap: 12,
+  },
+  roleCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+  },
+  roleInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  roleDetails: {
+    flex: 1,
+  },
+  roleName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  roleDescription: {
+    fontSize: 14,
+  },
   deleteButton: {
     padding: 8,
   },
@@ -607,6 +1242,7 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '90%',
     maxWidth: 400,
+    maxHeight: '80%',
     borderRadius: 16,
     padding: 24,
     shadowColor: '#000',
@@ -630,6 +1266,33 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 12,
     fontSize: 16,
+  },
+  textArea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  pickerContainer: {
+    marginBottom: 16,
+  },
+  dayButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  dayButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  dayButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   modalButtons: {
     flexDirection: 'row',
