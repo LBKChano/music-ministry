@@ -1374,6 +1374,9 @@ export function useChurch() {
     };
   }, [currentChurch, fetchMembers, fetchChurchRoles, fetchRecurringServices, fetchFillInRequests, fetchNotificationSettings]);
 
+  // Check if current user is admin of current church
+  const isAdmin = currentChurch && user && currentChurch.admin_id === user.id;
+
   return {
     churches,
     currentChurch,
@@ -1387,6 +1390,7 @@ export function useChurch() {
     error,
     user,
     currentMember,
+    isAdmin,
     createChurch,
     addMember,
     inviteMember,
