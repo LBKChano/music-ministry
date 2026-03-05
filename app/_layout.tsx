@@ -70,20 +70,17 @@ async function checkUserHasChurches(userId: string, userEmail: string | undefine
 
   console.log('Admin churches query result:', adminChurchesResult);
 
-  // Check if user is a member of any church (by email)
-  let hasMemberChurches = false;
-  if (userEmail) {
-    const memberChurchesResult = await supabase
-      .from('church_members')
-      .select('church_id')
-      .eq('email', userEmail)
-      .limit(1);
+  // Check if user is a member of any church (by member_id, not email)
+  const memberChurchesResult = await supabase
+    .from('church_members')
+    .select('church_id')
+    .eq('member_id', userId)
+    .limit(1);
 
-    console.log('Member churches query result:', memberChurchesResult);
-    hasMemberChurches = memberChurchesResult.data ? memberChurchesResult.data.length > 0 : false;
-  }
+  console.log('Member churches query result:', memberChurchesResult);
 
   const hasAdminChurches = adminChurchesResult.data ? adminChurchesResult.data.length > 0 : false;
+  const hasMemberChurches = memberChurchesResult.data ? memberChurchesResult.data.length > 0 : false;
   const hasChurches = hasAdminChurches || hasMemberChurches;
   
   console.log('User has admin churches:', hasAdminChurches);
@@ -166,6 +163,11 @@ export default function RootLayout() {
         console.log('Auth change - User has churches:', hasChurches);
         setNeedsOnboarding(!hasChurches);
         setIsCheckingAuth(false);
+        
+        // If user has churches, redirect to app
+        if (hasChurches) {
+          console.log('Auth listener will redirect to app');
+        }
       } else if (!currentUser) {
         setNeedsOnboarding(true);
         setIsCheckingAuth(false);

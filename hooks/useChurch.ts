@@ -76,6 +76,13 @@ export function useChurch() {
 
       if (adminError) {
         console.error('Error fetching admin churches:', adminError);
+        // Check for infinite recursion error
+        if (adminError.code === '42P17') {
+          console.error('RLS policy infinite recursion detected - this is a database configuration issue');
+          setError('Database configuration error. Please contact support.');
+          setLoading(false);
+          return;
+        }
       }
 
       // Fetch churches where user is a member (by member_id)
@@ -86,6 +93,13 @@ export function useChurch() {
 
       if (memberError) {
         console.error('Error fetching member churches:', memberError);
+        // Check for infinite recursion error
+        if (memberError.code === '42P17') {
+          console.error('RLS policy infinite recursion detected - this is a database configuration issue');
+          setError('Database configuration error. Please contact support.');
+          setLoading(false);
+          return;
+        }
       }
 
       // Fetch the actual church data for member churches
