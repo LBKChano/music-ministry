@@ -52,6 +52,7 @@ export default function ChurchScreen() {
     deleteRecurringService,
     addChurchRole,
     deleteChurchRole,
+    updateRoleOrder,
     addMemberRole,
     removeMemberRole,
     fetchMemberUnavailability,
@@ -303,6 +304,32 @@ export default function ChurchScreen() {
     console.log('User tapped delete role:', roleId);
     setRoleToDelete(roleId);
     setDeleteRoleModalVisible(true);
+  };
+
+  const moveRoleUp = async (index: number) => {
+    if (index === 0 || !currentChurch) return;
+    
+    console.log('User moved role up:', churchRoles[index].name);
+    const newRoles = [...churchRoles];
+    const temp = newRoles[index];
+    newRoles[index] = newRoles[index - 1];
+    newRoles[index - 1] = temp;
+    
+    const roleIds = newRoles.map(r => r.id);
+    await updateRoleOrder(currentChurch.id, roleIds);
+  };
+
+  const moveRoleDown = async (index: number) => {
+    if (index === churchRoles.length - 1 || !currentChurch) return;
+    
+    console.log('User moved role down:', churchRoles[index].name);
+    const newRoles = [...churchRoles];
+    const temp = newRoles[index];
+    newRoles[index] = newRoles[index + 1];
+    newRoles[index + 1] = temp;
+    
+    const roleIds = newRoles.map(r => r.id);
+    await updateRoleOrder(currentChurch.id, roleIds);
   };
 
   const toggleServiceRole = (roleName: string) => {
@@ -1036,6 +1063,10 @@ export default function ChurchScreen() {
                   </TouchableOpacity>
                 </View>
 
+                <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 12 }]}>
+                  Drag roles to reorder how they appear in services
+                </Text>
+
                 {churchRoles.length === 0 ? (
                   <View style={styles.emptyState}>
                     <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
@@ -1047,13 +1078,39 @@ export default function ChurchScreen() {
                   </View>
                 ) : (
                   <View style={styles.rolesList}>
-                    {churchRoles.map((role) => {
+                    {churchRoles.map((role, index) => {
                       return (
                         <View
                           key={role.id}
                           style={[styles.roleCard, { backgroundColor: colors.cardBackground }]}
                         >
                           <View style={styles.roleInfo}>
+                            <View style={styles.roleOrderControls}>
+                              <TouchableOpacity
+                                onPress={() => moveRoleUp(index)}
+                                disabled={index === 0}
+                                style={[styles.orderButton, index === 0 && styles.orderButtonDisabled]}
+                              >
+                                <IconSymbol
+                                  ios_icon_name="chevron.up"
+                                  android_material_icon_name="arrow-upward"
+                                  size={20}
+                                  color={index === 0 ? colors.textSecondary : colors.primary}
+                                />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => moveRoleDown(index)}
+                                disabled={index === churchRoles.length - 1}
+                                style={[styles.orderButton, index === churchRoles.length - 1 && styles.orderButtonDisabled]}
+                              >
+                                <IconSymbol
+                                  ios_icon_name="chevron.down"
+                                  android_material_icon_name="arrow-downward"
+                                  size={20}
+                                  color={index === churchRoles.length - 1 ? colors.textSecondary : colors.primary}
+                                />
+                              </TouchableOpacity>
+                            </View>
                             <IconSymbol
                               ios_icon_name="person.badge.shield.checkmark"
                               android_material_icon_name="badge"
@@ -1099,7 +1156,7 @@ export default function ChurchScreen() {
         )}
       </ScrollView>
 
-      {/* All modals remain the same - truncated for brevity */}
+      {/* All modals remain the same - keeping existing modals */}
       {/* Create Church Modal */}
       <Modal
         visible={isCreateChurchModalVisible}
@@ -2099,6 +2156,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     flex: 1,
+  },
+  roleOrderControls: {
+    flexDirection: 'column',
+    gap: 4,
+  },
+  orderButton: {
+    padding: 4,
+  },
+  orderButtonDisabled: {
+    opacity: 0.3,
   },
   roleDetails: {
     flex: 1,

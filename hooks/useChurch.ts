@@ -188,12 +188,13 @@ export function useChurch() {
 
       console.log('Fetched member roles data:', memberRolesData);
 
-      // Fetch all church roles separately
+      // Fetch all church roles separately (ordered by display_order)
       const roleIds = [...new Set((memberRolesData || []).map(mr => mr.role_id))];
       const { data: rolesData, error: rolesDataError } = await supabase
         .from('church_roles')
         .select('id, name')
-        .in('id', roleIds);
+        .in('id', roleIds)
+        .order('display_order', { ascending: true });
 
       if (rolesDataError) {
         console.error('Error fetching church roles:', rolesDataError);
@@ -446,7 +447,7 @@ export function useChurch() {
 
       console.log('Fetched recurring services:', data);
 
-      // Fetch roles for each service
+      // Fetch roles for each service (ordered by display_order)
       const servicesWithRoles: RecurringServiceWithRoles[] = [];
       for (const service of data || []) {
         const { data: rolesData, error: rolesError } = await supabase
@@ -458,10 +459,30 @@ export function useChurch() {
           console.error('Error fetching service roles:', rolesError);
         }
 
-        servicesWithRoles.push({
-          ...service,
-          roles: rolesData?.map(r => r.role_name) || [],
-        });
+        // Sort roles by the display_order from church_roles
+        const roleNames = rolesData?.map(r => r.role_name) || [];
+        
+        // Fetch the display order for these roles
+        if (roleNames.length > 0) {
+          const { data: orderedRoles } = await supabase
+            .from('church_roles')
+            .select('name, display_order')
+            .eq('church_id', churchId)
+            .in('name', roleNames)
+            .order('display_order', { ascending: true });
+
+          const sortedRoleNames = orderedRoles?.map(r => r.name) || roleNames;
+          
+          servicesWithRoles.push({
+            ...service,
+            roles: sortedRoleNames,
+          });
+        } else {
+          servicesWithRoles.push({
+            ...service,
+            roles: [],
+          });
+        }
       }
 
       console.log('Services with roles:', servicesWithRoles);
@@ -472,7 +493,7 @@ export function useChurch() {
     }
   }, []);
 
-  // Fetch roles for a specific church
+  // Fetch roles for a specific church (ordered by display_order)
   const fetchChurchRoles = useCallback(async (churchId: string) => {
     console.log('Fetching roles for church:', churchId);
     try {
@@ -482,7 +503,7 @@ export function useChurch() {
         .from('church_roles')
         .select('*')
         .eq('church_id', churchId)
-        .order('name', { ascending: true });
+        .order('display_order', { ascending: true });
 
       if (fetchError) {
         console.error('Error fetching church roles:', fetchError);
@@ -583,10 +604,21 @@ export function useChurch() {
     try {
       setError(null);
 
+      // Get the max display_order for this church
+      const { data: existingRoles } = await supabase
+        .from('church_roles')
+        .select('display_order')
+        .eq('church_id', churchId)
+        .order('display_order', { ascending: false })
+        .limit(1);
+
+      const maxOrder = existingRoles && existingRoles.length > 0 ? existingRoles[0].display_order : -1;
+
       const newRole: TablesInsert<'church_roles'> = {
         church_id: churchId,
         name,
         description: description || null,
+        display_order: maxOrder + 1,
       };
 
       const { data, error: insertError } = await supabase
@@ -637,6 +669,41 @@ export function useChurch() {
       return false;
     }
   }, [fetchChurchRoles]);
+
+  // Update role order
+  const updateRoleOrder = useCallback(async (churchId: string, roleIds: string[]) => {
+    console.log('Updating role order:', roleIds);
+    try {
+      setError(null);
+
+      // Update each role's display_order
+      const updates = roleIds.map((roleId, index) => 
+        supabase
+          .from('church_roles')
+          .update({ display_order: index })
+          .eq('id', roleId)
+          .eq('church_id', churchId)
+      );
+
+      const results = await Promise.all(updates);
+      
+      const hasError = results.some(result => result.error);
+      if (hasError) {
+        console.error('Error updating role order');
+        setError('Failed to update role order');
+        return false;
+      }
+
+      console.log('Role order updated successfully');
+      await fetchChurchRoles(churchId);
+      await fetchRecurringServices(churchId);
+      return true;
+    } catch (err) {
+      console.error('Error in updateRoleOrder:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, [fetchChurchRoles, fetchRecurringServices]);
 
   // Add role to member - FIXED VERSION
   const addMemberRole = useCallback(async (memberId: string, roleId: string, churchId: string) => {
@@ -751,7 +818,7 @@ export function useChurch() {
         return;
       }
 
-      // Fetch church roles separately
+      // Fetch church roles separately (ordered by display_order)
       const roleIds = (memberRolesData || []).map(mr => mr.role_id);
       if (roleIds.length === 0) {
         setCurrentMember({
@@ -764,7 +831,8 @@ export function useChurch() {
       const { data: rolesData, error: rolesDataError } = await supabase
         .from('church_roles')
         .select('id, name')
-        .in('id', roleIds);
+        .in('id', roleIds)
+        .order('display_order', { ascending: true });
 
       if (rolesDataError) {
         console.error('Error fetching church roles:', rolesDataError);
@@ -930,6 +998,7 @@ export function useChurch() {
     deleteRecurringService,
     addChurchRole,
     deleteChurchRole,
+    updateRoleOrder,
     addMemberRole,
     removeMemberRole,
     fetchMemberUnavailability,

@@ -207,6 +207,7 @@ export type Database = {
           id: string
           name: string
           updated_at: string
+          display_order: number
         }
         Insert: {
           church_id: string
@@ -215,6 +216,7 @@ export type Database = {
           id?: string
           name: string
           updated_at?: string
+          display_order?: number
         }
         Update: {
           church_id?: string
@@ -223,6 +225,7 @@ export type Database = {
           id?: string
           name?: string
           updated_at?: string
+          display_order?: number
         }
         Relationships: [
           {
