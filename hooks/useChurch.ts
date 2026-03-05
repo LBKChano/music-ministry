@@ -1132,92 +1132,16 @@ export function useChurch() {
     }
   }, [fetchFillInRequests]);
 
-  // Accept a fill-in request - COMPLETELY REWORKED VERSION
+  // Accept a fill-in request
   const acceptFillInRequest = useCallback(async (
     requestId: string,
     filledByMemberId: string,
     churchId: string
   ) => {
-    console.log('=== ACCEPTING FILL-IN REQUEST ===');
-    console.log('Request ID:', requestId);
-    console.log('Filled by member ID:', filledByMemberId);
-    console.log('Church ID:', churchId);
-    
+    console.log('Accepting fill-in request:', requestId);
     try {
       setError(null);
 
-      // Step 1: Get the fill-in request details
-      const { data: request, error: requestError } = await supabase
-        .from('fill_in_requests')
-        .select('assignment_id, requesting_member_id')
-        .eq('id', requestId)
-        .single();
-
-      if (requestError || !request) {
-        console.error('Error fetching fill-in request:', requestError);
-        setError(requestError?.message || 'Request not found');
-        return false;
-      }
-
-      console.log('Fill-in request details:', request);
-
-      // Step 2: Get the member who is filling in (using church_members.id directly)
-      const { data: fillingMember, error: memberError } = await supabase
-        .from('church_members')
-        .select('id, name, email')
-        .eq('id', filledByMemberId)
-        .single();
-
-      if (memberError || !fillingMember) {
-        console.error('Error fetching filling member:', memberError);
-        setError(memberError?.message || 'Member not found');
-        return false;
-      }
-
-      // Determine display name: use name if available, otherwise email
-      const displayName = fillingMember.name || fillingMember.email;
-      console.log('Filling member:', {
-        id: fillingMember.id,
-        name: fillingMember.name,
-        email: fillingMember.email,
-        displayName: displayName
-      });
-
-      // Step 3: Update the assignment with the new member's details
-      console.log('Updating assignment:', request.assignment_id);
-      console.log('Setting member_id to:', filledByMemberId);
-      console.log('Setting person_name to:', displayName);
-
-      const { error: assignmentError } = await supabase
-        .from('assignments')
-        .update({
-          member_id: filledByMemberId,
-          person_name: displayName,
-        })
-        .eq('id', request.assignment_id);
-
-      if (assignmentError) {
-        console.error('Error updating assignment:', assignmentError);
-        setError(assignmentError.message);
-        return false;
-      }
-
-      console.log('Assignment updated successfully');
-
-      // Step 4: Verify the assignment was updated correctly
-      const { data: updatedAssignment, error: verifyError } = await supabase
-        .from('assignments')
-        .select('id, member_id, person_name, role')
-        .eq('id', request.assignment_id)
-        .single();
-
-      if (verifyError) {
-        console.error('Error verifying assignment update:', verifyError);
-      } else {
-        console.log('Verified assignment after update:', updatedAssignment);
-      }
-
-      // Step 5: Update the fill-in request status
       const { error: updateError } = await supabase
         .from('fill_in_requests')
         .update({
@@ -1228,17 +1152,13 @@ export function useChurch() {
         .eq('id', requestId);
 
       if (updateError) {
-        console.error('Error updating fill-in request status:', updateError);
+        console.error('Error accepting fill-in request:', updateError);
         setError(updateError.message);
         return false;
       }
 
-      console.log('Fill-in request status updated to filled');
-      console.log('=== FILL-IN REQUEST ACCEPTED SUCCESSFULLY ===');
-
-      // Refresh fill-in requests to update UI
+      console.log('Fill-in request accepted successfully');
       await fetchFillInRequests(churchId);
-      
       return true;
     } catch (err) {
       console.error('Error in acceptFillInRequest:', err);
