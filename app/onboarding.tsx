@@ -22,7 +22,7 @@ export default function OnboardingScreen() {
   const { colors: themeColors } = useTheme();
   const router = useRouter();
 
-  const [step, setStep] = useState<'welcome' | 'church' | 'admin' | 'adminLogin' | 'member'>('welcome');
+  const [step, setStep] = useState<'welcome' | 'church' | 'admin' | 'adminLogin' | 'member' | 'memberSignup'>('welcome');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,6 +41,11 @@ export default function OnboardingScreen() {
   // Member login data
   const [memberEmail, setMemberEmail] = useState('');
   const [memberPassword, setMemberPassword] = useState('');
+
+  // Member signup data
+  const [memberSignupEmail, setMemberSignupEmail] = useState('');
+  const [memberSignupPassword, setMemberSignupPassword] = useState('');
+  const [memberSignupName, setMemberSignupName] = useState('');
 
   const handleCreateChurchAndAdmin = async () => {
     console.log('User creating church and admin account');
@@ -112,7 +117,7 @@ export default function OnboardingScreen() {
 
       console.log('Church created successfully:', churchResult.data);
 
-      // Step 3: Add admin as a member of the church
+      // Step 3: Add admin as a member of the church with is_admin flag
       console.log('Adding admin as church member with email:', adminEmail.trim());
       const memberResult = await supabase
         .from('church_members')
@@ -121,6 +126,7 @@ export default function OnboardingScreen() {
           email: adminEmail.trim(),
           name: adminName.trim() || adminEmail.trim(),
           role: 'Admin',
+          is_admin: true,
         })
         .select()
         .single();
@@ -215,11 +221,74 @@ export default function OnboardingScreen() {
     }
   };
 
+  const handleMemberSignup = async () => {
+    console.log('User creating member account');
+
+    if (!memberSignupEmail.trim() || !memberSignupPassword.trim()) {
+      setError('Please enter email and password');
+      return;
+    }
+
+    if (!memberSignupName.trim()) {
+      setError('Please enter your name');
+      return;
+    }
+
+    if (memberSignupPassword.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Step 1: Sign up the member user
+      console.log('Signing up member user:', memberSignupEmail);
+      const signUpResult = await supabase.auth.signUp({
+        email: memberSignupEmail.trim(),
+        password: memberSignupPassword,
+        options: {
+          data: {
+            name: memberSignupName.trim(),
+          },
+        },
+      });
+
+      if (signUpResult.error) {
+        console.error('Error signing up member:', signUpResult.error);
+        setError(signUpResult.error.message);
+        setLoading(false);
+        return;
+      }
+
+      const user = signUpResult.data.user;
+      if (!user) {
+        setError('Failed to create user account');
+        setLoading(false);
+        return;
+      }
+
+      console.log('Member user created:', user.id);
+      console.log('Member account created! You can now be invited to churches.');
+      
+      // Success! The auth state change listener will handle the redirect
+      // Since this member has no church yet, they'll stay on onboarding until invited
+    } catch (err) {
+      console.error('Error in member signup:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred');
+      setLoading(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const welcomeTitle = 'Welcome to Church Scheduler';
   const welcomeSubtitle = 'Organize your church services and team assignments';
   const createChurchButton = 'Create Church & Admin Account';
   const loginAsAdminButton = 'Login as Admin';
   const loginAsMemberButton = 'Login as Member';
+  const createMemberAccountButton = 'Create Member Account';
   const churchStepTitle = 'Create Your Church';
   const churchStepSubtitle = 'Enter the name of your church';
   const adminStepTitle = 'Create Admin Account';
@@ -228,10 +297,13 @@ export default function OnboardingScreen() {
   const adminLoginSubtitle = 'Sign in with your admin credentials';
   const memberStepTitle = 'Member Login';
   const memberStepSubtitle = 'Sign in with your member credentials';
+  const memberSignupTitle = 'Create Member Account';
+  const memberSignupSubtitle = 'Register as a church member';
   const backButton = 'Back';
   const continueButton = 'Continue';
   const createButton = 'Create & Start';
   const loginButton = 'Login';
+  const signupButton = 'Create Account';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -277,6 +349,18 @@ export default function OnboardingScreen() {
                   }}
                 >
                   <Text style={styles.primaryButtonText}>{createChurchButton}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.secondaryButton, { borderColor: colors.primary }]}
+                  onPress={() => {
+                    console.log('User selected: Create Member Account');
+                    setStep('memberSignup');
+                  }}
+                >
+                  <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
+                    {createMemberAccountButton}
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -577,6 +661,85 @@ export default function OnboardingScreen() {
                       <ActivityIndicator color="#fff" />
                     ) : (
                       <Text style={styles.continueButtonText}>{loginButton}</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Member Signup Step */}
+          {step === 'memberSignup' && (
+            <View style={styles.stepContainer}>
+              <Text style={[styles.title, { color: colors.text }]}>
+                {memberSignupTitle}
+              </Text>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                {memberSignupSubtitle}
+              </Text>
+
+              <View style={styles.formContainer}>
+                <TextInput
+                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                  placeholder="Your Name"
+                  placeholderTextColor={colors.textSecondary}
+                  value={memberSignupName}
+                  onChangeText={setMemberSignupName}
+                  autoCapitalize="words"
+                />
+
+                <TextInput
+                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                  placeholder="Email"
+                  placeholderTextColor={colors.textSecondary}
+                  value={memberSignupEmail}
+                  onChangeText={setMemberSignupEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+
+                <TextInput
+                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                  placeholder="Password (min 6 characters)"
+                  placeholderTextColor={colors.textSecondary}
+                  value={memberSignupPassword}
+                  onChangeText={setMemberSignupPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+
+                {error && (
+                  <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                <View style={styles.navigationButtons}>
+                  <TouchableOpacity
+                    style={[styles.backButton, { borderColor: colors.border }]}
+                    onPress={() => {
+                      console.log('User tapped Back');
+                      setStep('welcome');
+                      setError(null);
+                    }}
+                    disabled={loading}
+                  >
+                    <Text style={[styles.backButtonText, { color: colors.text }]}>
+                      {backButton}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.continueButton, { backgroundColor: colors.primary }]}
+                    onPress={handleMemberSignup}
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.continueButtonText}>{signupButton}</Text>
                     )}
                   </TouchableOpacity>
                 </View>
