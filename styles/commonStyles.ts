@@ -9,8 +9,11 @@ export const colors = {
   text: '#1A202C',       // Dark text
   textSecondary: '#718096', // Gray text
   card: '#FFFFFF',       // White cards
+  cardBackground: '#FFFFFF', // Card background
   border: '#E2E8F0',     // Light border
   highlight: '#9F7AEA',  // Medium purple for highlights
+  inputBackground: '#F7FAFC', // Input background
+  error: '#E53E3E',      // Error red
 };
 
 export const buttonStyles = StyleSheet.create({
