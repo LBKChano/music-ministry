@@ -741,6 +741,45 @@ export function useChurch() {
     }, [currentChurch, fetchCurrentMember]),
   };
 }
+
+// Helper function to check if user has churches (used in _layout.tsx)
+export async function checkUserHasChurches(userId: string, userEmail: string | undefined): Promise<boolean> {
+  let attempts = 0;
+  const maxAttempts = 3;
+  const initialDelay = 1000;
+  let foundChurches = false;
+
+  while (attempts < maxAttempts && !foundChurches) {
+    if (attempts > 0) {
+      const delay = initialDelay * attempts;
+      console.log(`Retrying church check in ${delay}ms (Attempt ${attempts + 1}/${maxAttempts})...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+
+    const { data: adminChurches, error: adminError } = await supabase
+      .from('churches')
+      .select('id')
+      .eq('admin_id', userId)
+      .limit(1);
+
+    const { data: memberChurches, error: memberError } = await supabase
+      .from('church_members')
+      .select('id')
+      .eq('email', userEmail)
+      .limit(1);
+
+    if (adminError) console.error("Admin churches query error:", adminError);
+    if (memberError) console.error("Member churches query error:", memberError);
+
+    foundChurches = (adminChurches && adminChurches.length > 0) || (memberChurches && memberChurches.length > 0);
+    console.log(`Admin churches query result: ${JSON.stringify({ data: adminChurches, error: adminError })}`);
+    console.log(`Member churches query result: ${JSON.stringify({ data: memberChurches, error: memberError })}`);
+    console.log(`User has churches (attempt ${attempts + 1}): ${foundChurches}`);
+
+    attempts++;
+  }
+  return foundChurches;
+}
 </write file>
 
 Now I need to update the profile screen to match the iOS version:

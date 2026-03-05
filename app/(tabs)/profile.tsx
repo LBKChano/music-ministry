@@ -1,12 +1,12 @@
 
+import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity, Modal, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@react-navigation/native";
 import { colors } from "@/styles/commonStyles";
-import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity, Modal, ActivityIndicator } from "react-native";
-import { IconSymbol } from "@/components/IconSymbol";
-import { Stack, useRouter } from "expo-router";
 import { useChurch } from "@/hooks/useChurch";
+import React, { useState } from "react";
+import { Stack, useRouter } from "expo-router";
+import { IconSymbol } from "@/components/IconSymbol";
 
 export default function ProfileScreen() {
   const theme = useTheme();
@@ -53,6 +53,7 @@ export default function ProfileScreen() {
         <View style={styles.header}>
           <View style={[styles.avatarContainer, { backgroundColor: colors.primary }]}>
             <IconSymbol 
+              ios_icon_name="person.circle.fill"
               android_material_icon_name="person" 
               size={48} 
               color="#FFFFFF" 
@@ -69,6 +70,7 @@ export default function ProfileScreen() {
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.infoRow}>
               <IconSymbol 
+                ios_icon_name="briefcase.fill"
                 android_material_icon_name="work" 
                 size={24} 
                 color={colors.primary} 
@@ -97,6 +99,7 @@ export default function ProfileScreen() {
           }}
         >
           <IconSymbol 
+            ios_icon_name="arrow.right.square"
             android_material_icon_name="logout" 
             size={20} 
             color="#FFFFFF" 

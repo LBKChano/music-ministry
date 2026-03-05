@@ -25,6 +25,53 @@ export const unstable_settings = {
   initialRouteName: "(tabs)",
 };
 
+async function checkUserHasChurches(userId: string, userEmail: string | undefined, retryCount = 0): Promise<boolean> {
+  console.log(`Checking churches for user (attempt ${retryCount + 1}):`, userId, userEmail);
+  
+  try {
+    // Check if user is admin of any church
+    const adminChurchesResult = await supabase
+      .from('churches')
+      .select('id')
+      .eq('admin_id', userId)
+      .limit(1);
+
+    console.log('Admin churches query result:', adminChurchesResult);
+
+    // Check if user is a member of any church (by email)
+    let hasMemberChurches = false;
+    if (userEmail) {
+      const memberChurchesResult = await supabase
+        .from('church_members')
+        .select('church_id')
+        .eq('email', userEmail)
+        .limit(1);
+
+      console.log('Member churches query result:', memberChurchesResult);
+      hasMemberChurches = memberChurchesResult.data ? memberChurchesResult.data.length > 0 : false;
+    }
+
+    const hasAdminChurches = adminChurchesResult.data ? adminChurchesResult.data.length > 0 : false;
+    const hasChurches = hasAdminChurches || hasMemberChurches;
+    
+    console.log('User has admin churches:', hasAdminChurches);
+    console.log('User has member churches:', hasMemberChurches);
+    console.log('User has churches (total):', hasChurches);
+    
+    // If no churches found and we haven't retried too many times, retry after a delay
+    if (!hasChurches && retryCount < 3) {
+      console.log(`No churches found, retrying in ${(retryCount + 1) * 500}ms...`);
+      await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 500));
+      return checkUserHasChurches(userId, userEmail, retryCount + 1);
+    }
+    
+    return hasChurches;
+  } catch (error) {
+    console.error('Error checking churches:', error);
+    return false;
+  }
+}
+
 function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: boolean) {
   const segments = useSegments();
   const router = useRouter();
@@ -39,71 +86,25 @@ function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: 
     console.log('Protected route check:', { user: !!user, needsOnboarding, segments });
     
     const inOnboarding = segments[0] === 'onboarding';
+    const inTabs = segments[0] === '(tabs)';
 
     // If user needs onboarding and not on onboarding screen, redirect
     if (needsOnboarding && !inOnboarding) {
       console.log('Redirecting to onboarding');
-      // Use setTimeout to ensure navigation happens after layout is mounted
-      setTimeout(() => {
-        router.replace('/onboarding');
-      }, 100);
+      router.replace('/onboarding');
     } 
     // If user doesn't need onboarding and is on onboarding screen, redirect to app
     else if (!needsOnboarding && inOnboarding) {
       console.log('Redirecting to app');
-      setTimeout(() => {
-        router.replace('/(tabs)');
-      }, 100);
+      router.replace('/(tabs)');
     }
   }, [user, needsOnboarding, segments, isCheckingAuth, router]);
-}
-
-async function checkUserHasChurches(userId: string, userEmail: string | undefined, retryCount = 0): Promise<boolean> {
-  console.log(`Checking churches for user (attempt ${retryCount + 1}):`, userId, userEmail);
-  
-  // Check if user is admin of any church
-  const adminChurchesResult = await supabase
-    .from('churches')
-    .select('id')
-    .eq('admin_id', userId)
-    .limit(1);
-
-  console.log('Admin churches query result:', adminChurchesResult);
-
-  // Check if user is a member of any church (by email)
-  let hasMemberChurches = false;
-  if (userEmail) {
-    const memberChurchesResult = await supabase
-      .from('church_members')
-      .select('church_id')
-      .eq('email', userEmail)
-      .limit(1);
-
-    console.log('Member churches query result:', memberChurchesResult);
-    hasMemberChurches = memberChurchesResult.data ? memberChurchesResult.data.length > 0 : false;
-  }
-
-  const hasAdminChurches = adminChurchesResult.data ? adminChurchesResult.data.length > 0 : false;
-  const hasChurches = hasAdminChurches || hasMemberChurches;
-  
-  console.log('User has admin churches:', hasAdminChurches);
-  console.log('User has member churches:', hasMemberChurches);
-  console.log('User has churches (total):', hasChurches);
-  
-  // If no churches found and we haven't retried too many times, retry after a delay
-  if (!hasChurches && retryCount < 3) {
-    console.log(`No churches found, retrying in ${(retryCount + 1) * 500}ms...`);
-    await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 500));
-    return checkUserHasChurches(userId, userEmail, retryCount + 1);
-  }
-  
-  return hasChurches;
 }
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const networkState = useNetworkState();
-  const [loaded] = useFonts({
+  const [loaded, error] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
 
@@ -111,8 +112,18 @@ export default function RootLayout() {
   const [needsOnboarding, setNeedsOnboarding] = useState(true);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
+  // Handle font loading errors
+  useEffect(() => {
+    if (error) {
+      console.error('Font loading error:', error);
+      throw error;
+    }
+  }, [error]);
+
+  // Hide splash screen when ready
   useEffect(() => {
     if (loaded && !isCheckingAuth) {
+      console.log('Fonts loaded and auth checked, hiding splash screen');
       SplashScreen.hideAsync();
     }
   }, [loaded, isCheckingAuth]);
@@ -191,6 +202,7 @@ export default function RootLayout() {
     }
   }, [networkState.isConnected, networkState.isInternetReachable]);
 
+  // Don't render anything until fonts are loaded
   if (!loaded) {
     return null;
   }

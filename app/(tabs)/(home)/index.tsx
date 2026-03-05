@@ -303,7 +303,7 @@ export default function HomeScreen() {
   const [selectedQuarter, setSelectedQuarter] = useState<number>(1);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [blockedServices, setBlockedServices] = useState<Set<string>>(new Set());
-  const [specialServices, setSpecialServices] = useState<Array<{ date: Date; type: string; notes: string }>>([]);
+  const [specialServices, setSpecialServices] = useState<{ date: Date; type: string; notes: string }[]>([]);
   const [showAddSpecialService, setShowAddSpecialService] = useState(false);
   const [specialServiceDate, setSpecialServiceDate] = useState(new Date());
   const [specialServiceType, setSpecialServiceType] = useState('');
@@ -419,7 +419,7 @@ export default function HomeScreen() {
 
   const generateQuarterServices = () => {
     const { startDate, endDate } = getQuarterDates(selectedQuarter, selectedYear);
-    const generatedServices: Array<{ date: Date; template: any }> = [];
+    const generatedServices: { date: Date; template: any }[] = [];
 
     const currentDate = new Date(startDate);
     while (currentDate <= endDate) {
