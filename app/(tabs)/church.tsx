@@ -423,7 +423,7 @@ export default function ChurchScreen() {
         .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
         .filter((name): name is string => name !== undefined);
       
-      console.log('Creating special service with roles:', { name: special.name, roleNames });
+      console.log('Creating special service with roles:', { name: special.name, roleNames, time: special.time });
       await createServiceFromTemplate(currentChurch.id, dateString, special.name, special.notes, roleNames, special.time);
     }
 
@@ -442,6 +442,7 @@ export default function ChurchScreen() {
 
     console.log('User tapped Auto-Assign button');
 
+    // Build a map of role name to members who have that role
     const membersByRole: { [role: string]: any[] } = {};
     members.forEach(member => {
       if (member.memberRoles && member.memberRoles.length > 0) {
@@ -454,46 +455,69 @@ export default function ChurchScreen() {
       }
     });
 
+    // Track assignment counts for load balancing
     const assignmentCounts: { [memberId: string]: number } = {};
     members.forEach(member => {
       assignmentCounts[member.id] = 0;
     });
 
+    // Fetch unavailability dates for all members
     const memberUnavailability: { [memberId: string]: Set<string> } = {};
     for (const member of members) {
       const unavailableDates = await fetchMemberUnavailability(member.id);
       memberUnavailability[member.id] = new Set(
         unavailableDates.map(u => u.unavailable_date)
       );
+      console.log(`Member ${member.name || member.email} unavailable dates:`, Array.from(memberUnavailability[member.id]));
     }
 
+    // Filter services for current church
     const filteredServices = services.filter(s => s.church_id === currentChurch.id);
 
+    let assignedCount = 0;
+    let skippedCount = 0;
+
+    // Iterate through all services and their assignments
     for (const service of filteredServices) {
       const serviceDate = service.date;
+      console.log(`Processing service: ${service.service_type} on ${serviceDate}`);
       
       for (const assignment of service.assignments) {
+        // Only assign if the slot is currently open (no member_id)
         if (!assignment.member_id && assignment.role) {
+          console.log(`  Open slot found for role: ${assignment.role}`);
+          
+          // Get members who have this role
           const availableMembers = (membersByRole[assignment.role] || []).filter(member => {
             const isUnavailable = memberUnavailability[member.id]?.has(serviceDate);
+            if (isUnavailable) {
+              console.log(`    Member ${member.name || member.email} is unavailable on ${serviceDate}`);
+            }
             return !isUnavailable;
           });
           
           if (availableMembers.length > 0) {
+            // Sort by assignment count (least assigned first)
             availableMembers.sort((a, b) => 
               (assignmentCounts[a.id] || 0) - (assignmentCounts[b.id] || 0)
             );
 
             const selectedMember = availableMembers[0];
+            console.log(`    Assigning ${selectedMember.name || selectedMember.email} to ${assignment.role}`);
+            
             await updateAssignment(assignment.id, selectedMember.id, selectedMember.name || selectedMember.email);
             assignmentCounts[selectedMember.id] = (assignmentCounts[selectedMember.id] || 0) + 1;
+            assignedCount++;
+          } else {
+            console.log(`    No available members for role: ${assignment.role}`);
+            skippedCount++;
           }
         }
       }
     }
 
-    console.log('Auto-assignment completed');
-    Alert.alert('Success', 'Auto-assignment completed!');
+    console.log(`Auto-assignment completed: ${assignedCount} assigned, ${skippedCount} skipped`);
+    Alert.alert('Success', `Auto-assignment completed!\n${assignedCount} slots assigned\n${skippedCount} slots remain open (no available members)`);
   };
 
   const toggleBlockService = (serviceKey: string) => {
@@ -528,7 +552,7 @@ export default function ChurchScreen() {
       return;
     }
 
-    console.log('User added special service with roles:', specialServiceRoles);
+    console.log('User added special service with roles:', specialServiceRoles, 'time:', specialServiceTime);
     const newSpecialService: SpecialService = {
       id: `special-${Date.now()}`,
       name: specialServiceName,
@@ -1787,7 +1811,7 @@ export default function ChurchScreen() {
         </View>
       </Modal>
 
-      {/* Add Special Service Modal */}
+      {/* Add Special Service Modal - UPDATED WITH DATE AND TIME PICKERS */}
       <Modal visible={showAddSpecialService} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <ScrollView contentContainerStyle={styles.modalScrollContent}>
@@ -1804,7 +1828,10 @@ export default function ChurchScreen() {
 
               <TouchableOpacity
                 style={[styles.dateButton, { backgroundColor: colors.inputBackground }]}
-                onPress={() => setShowSpecialServiceDatePicker(true)}
+                onPress={() => {
+                  console.log('User tapped date picker button');
+                  setShowSpecialServiceDatePicker(true);
+                }}
               >
                 <Text style={[styles.dateButtonText, { color: colors.text }]}>
                   Date: {formatDate(specialServiceDate.toISOString())}
@@ -1816,6 +1843,7 @@ export default function ChurchScreen() {
                   mode="date"
                   display="default"
                   onChange={(event, date) => {
+                    console.log('User selected date:', date);
                     setShowSpecialServiceDatePicker(false);
                     if (date) setSpecialServiceDate(date);
                   }}
@@ -1824,7 +1852,10 @@ export default function ChurchScreen() {
 
               <TouchableOpacity
                 style={[styles.dateButton, { backgroundColor: colors.inputBackground }]}
-                onPress={() => setShowSpecialServiceTimePicker(true)}
+                onPress={() => {
+                  console.log('User tapped time picker button');
+                  setShowSpecialServiceTimePicker(true);
+                }}
               >
                 <Text style={[styles.dateButtonText, { color: colors.text }]}>
                   Time: {specialServiceTime}
@@ -1836,6 +1867,7 @@ export default function ChurchScreen() {
                   mode="time"
                   display="default"
                   onChange={(event, date) => {
+                    console.log('User selected time:', date);
                     setShowSpecialServiceTimePicker(false);
                     if (date) {
                       const hours = date.getHours().toString().padStart(2, '0');
