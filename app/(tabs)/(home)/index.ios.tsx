@@ -1,6 +1,8 @@
 
-import { Stack } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
+import { useChurch } from '@/hooks/useChurch';
+import { useServices } from '@/hooks/useServices';
+import { Stack } from 'expo-router';
 import {
   StyleSheet,
   View,
@@ -16,902 +18,20 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '@react-navigation/native';
 import React, { useState } from 'react';
 import { IconSymbol } from '@/components/IconSymbol';
-import { useChurch } from '@/hooks/useChurch';
-import { useServices } from '@/hooks/useServices';
-
-export default function HomeScreen() {
-  const { colors: themeColors } = useTheme();
-  const { currentChurch, members, recurringServices, churchRoles } = useChurch();
-  const {
-    services,
-    loading,
-    error,
-    createService,
-    createServiceFromTemplate,
-    deleteService,
-    addAssignment,
-    updateAssignment,
-    deleteAssignment,
-  } = useServices(currentChurch?.id || null);
-
-  const [isAddServiceModalVisible, setAddServiceModalVisible] = useState(false);
-  const [isAddAssignmentModalVisible, setAddAssignmentModalVisible] = useState(false);
-  const [isAssignMemberModalVisible, setAssignMemberModalVisible] = useState(false);
-  const [isDeleteServiceModalVisible, setDeleteServiceModalVisible] = useState(false);
-  const [isDeleteAssignmentModalVisible, setDeleteAssignmentModalVisible] = useState(false);
-  const [isRecurringServicePickerVisible, setRecurringServicePickerVisible] = useState(false);
-
-  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
-  const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
-  const [assignmentToDelete, setAssignmentToDelete] = useState<{
-    serviceId: string;
-    assignmentId: string;
-  } | null>(null);
-
-  const [newServiceDate, setNewServiceDate] = useState(new Date());
-  const [newServiceType, setNewServiceType] = useState('');
-  const [newServiceNotes, setNewServiceNotes] = useState('');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-
-  const [newAssignmentRole, setNewAssignmentRole] = useState('');
-  const [newAssignmentPerson, setNewAssignmentPerson] = useState('');
-  const [showRolePicker, setShowRolePicker] = useState(false);
-  const [showMemberPicker, setShowMemberPicker] = useState(false);
-  const [showAssignMemberPicker, setShowAssignMemberPicker] = useState(false);
-  const [selectedMemberForAssignment, setSelectedMemberForAssignment] = useState<string>('');
-
-  const handleSaveService = async () => {
-    console.log('User tapped Save Service button');
-    if (!newServiceType.trim()) {
-      return;
-    }
-
-    const result = await createService(
-      newServiceDate.toISOString(),
-      newServiceType.trim(),
-      newServiceNotes.trim() || undefined
-    );
-
-    if (result) {
-      setNewServiceType('');
-      setNewServiceNotes('');
-      setNewServiceDate(new Date());
-      setAddServiceModalVisible(false);
-    }
-  };
-
-  const handleDeleteService = async () => {
-    console.log('User confirmed delete service');
-    if (!serviceToDelete) {
-      return;
-    }
-
-    const success = await deleteService(serviceToDelete);
-    if (success) {
-      setServiceToDelete(null);
-      setDeleteServiceModalVisible(false);
-    }
-  };
-
-  const handleSaveAssignment = async () => {
-    console.log('User tapped Save Assignment button');
-    if (!selectedServiceId || !newAssignmentRole.trim() || !newAssignmentPerson.trim()) {
-      return;
-    }
-
-    const result = await addAssignment(
-      selectedServiceId,
-      newAssignmentRole.trim(),
-      newAssignmentPerson.trim()
-    );
-
-    if (result) {
-      setNewAssignmentRole('');
-      setNewAssignmentPerson('');
-      setSelectedServiceId(null);
-      setShowRolePicker(false);
-      setShowMemberPicker(false);
-      setAddAssignmentModalVisible(false);
-    }
-  };
-
-  const handleSelectRecurringService = (recurringService: any) => {
-    console.log('User selected recurring service:', recurringService.name);
-    
-    // Calculate next occurrence of this day
-    const today = new Date();
-    const targetDay = recurringService.day_of_week;
-    const currentDay = today.getDay();
-    let daysUntilTarget = targetDay - currentDay;
-    if (daysUntilTarget <= 0) {
-      daysUntilTarget += 7;
-    }
-    
-    const nextDate = new Date(today);
-    nextDate.setDate(today.getDate() + daysUntilTarget);
-    
-    // Set time
-    const [hours, minutes] = recurringService.time.split(':');
-    nextDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
-    
-    // Create service with role slots
-    createServiceFromTemplate(
-      nextDate.toISOString(),
-      recurringService.name,
-      recurringService.notes || undefined,
-      recurringService.roles || []
-    );
-    
-    setRecurringServicePickerVisible(false);
-  };
-
-  const handleAssignMember = async () => {
-    console.log('User assigned member to slot');
-    if (!selectedAssignmentId || !selectedMemberForAssignment) {
-      return;
-    }
-
-    const member = members.find(m => m.id === selectedMemberForAssignment);
-    if (!member) {
-      return;
-    }
-
-    const displayName = member.name || member.email;
-    const success = await updateAssignment(selectedAssignmentId, member.id, displayName);
-    
-    if (success) {
-      setSelectedAssignmentId(null);
-      setSelectedMemberForAssignment('');
-      setAssignMemberModalVisible(false);
-    }
-  };
-
-  const handleDeleteAssignment = async () => {
-    console.log('User confirmed delete assignment');
-    if (!assignmentToDelete) {
-      return;
-    }
-
-    const success = await deleteAssignment(assignmentToDelete.assignmentId);
-    if (success) {
-      setAssignmentToDelete(null);
-      setDeleteAssignmentModalVisible(false);
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const options: Intl.DateTimeFormatOptions = {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    };
-    return date.toLocaleDateString('en-US', options);
-  };
-
-  const onDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      setNewServiceDate(selectedDate);
-    }
-  };
-
-  const openDeleteServiceModal = (serviceId: string) => {
-    console.log('User tapped delete service:', serviceId);
-    setServiceToDelete(serviceId);
-    setDeleteServiceModalVisible(true);
-  };
-
-  const openDeleteAssignmentModal = (serviceId: string, assignmentId: string) => {
-    console.log('User tapped delete assignment:', assignmentId);
-    setAssignmentToDelete({ serviceId, assignmentId });
-    setDeleteAssignmentModalVisible(true);
-  };
-
-  const openAssignMemberModal = (assignmentId: string) => {
-    console.log('User tapped assign member to slot:', assignmentId);
-    setSelectedAssignmentId(assignmentId);
-    setSelectedMemberForAssignment('');
-    setAssignMemberModalVisible(true);
-  };
-
-  const noChurchText = 'No church selected';
-  const selectChurchText = 'Please create or select a church in the Church tab';
-  const noServicesText = 'No services scheduled';
-  const addFirstServiceText = 'Tap + to schedule your first service';
-
-  if (!currentChurch) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <Stack.Screen
-          options={{
-            title: 'Service Schedule',
-            headerStyle: { backgroundColor: colors.primary },
-            headerTintColor: '#fff',
-          }}
-        />
-        <View style={styles.emptyContainer}>
-          <IconSymbol
-            ios_icon_name="building.2"
-            android_material_icon_name="home"
-            size={64}
-            color={colors.textSecondary}
-          />
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>{noChurchText}</Text>
-          <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-            {selectChurchText}
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (loading) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <Stack.Screen
-          options={{
-            title: 'Service Schedule',
-            headerStyle: { backgroundColor: colors.primary },
-            headerTintColor: '#fff',
-          }}
-        />
-        <View style={styles.emptyContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen
-        options={{
-          title: 'Service Schedule',
-          headerStyle: { backgroundColor: colors.primary },
-          headerTintColor: '#fff',
-        }}
-      />
-
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
-        {services.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <IconSymbol
-              ios_icon_name="calendar"
-              android_material_icon_name="calendar-today"
-              size={64}
-              color={colors.textSecondary}
-            />
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>{noServicesText}</Text>
-            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-              {addFirstServiceText}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.servicesList}>
-            {services.map((service) => {
-              const formattedDate = formatDate(service.date);
-              const assignmentCount = service.assignments.length;
-              const assignmentCountText = `${assignmentCount} ${
-                assignmentCount === 1 ? 'slot' : 'slots'
-              }`;
-
-              return (
-                <View
-                  key={service.id}
-                  style={[styles.serviceCard, { backgroundColor: colors.cardBackground }]}
-                >
-                  <View style={styles.serviceHeader}>
-                    <View style={styles.serviceInfo}>
-                      <Text style={[styles.serviceType, { color: colors.text }]}>
-                        {service.service_type}
-                      </Text>
-                      <Text style={[styles.serviceDate, { color: colors.textSecondary }]}>
-                        {formattedDate}
-                      </Text>
-                      {service.notes && (
-                        <Text style={[styles.serviceNotes, { color: colors.textSecondary }]}>
-                          {service.notes}
-                        </Text>
-                      )}
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => openDeleteServiceModal(service.id)}
-                      style={styles.deleteButton}
-                    >
-                      <IconSymbol
-                        ios_icon_name="trash"
-                        android_material_icon_name="delete"
-                        size={20}
-                        color="#ff3b30"
-                      />
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.assignmentsSection}>
-                    <View style={styles.assignmentsHeader}>
-                      <Text style={[styles.assignmentsTitle, { color: colors.text }]}>
-                        {assignmentCountText}
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => {
-                          console.log('User tapped Add Assignment for service:', service.id);
-                          setSelectedServiceId(service.id);
-                          setAddAssignmentModalVisible(true);
-                        }}
-                        style={[styles.addAssignmentButton, { backgroundColor: colors.primary }]}
-                      >
-                        <IconSymbol
-                          ios_icon_name="plus"
-                          android_material_icon_name="add"
-                          size={16}
-                          color="#fff"
-                        />
-                      </TouchableOpacity>
-                    </View>
-
-                    {service.assignments.map((assignment) => {
-                      const isEmptySlot = !assignment.person_name || assignment.person_name.trim() === '';
-                      const displayText = isEmptySlot ? 'Open Slot' : assignment.person_name;
-                      
-                      return (
-                        <View key={assignment.id} style={styles.assignmentRow}>
-                          <View style={styles.assignmentInfo}>
-                            <Text style={[styles.assignmentRole, { color: colors.primary }]}>
-                              {assignment.role}
-                            </Text>
-                            <Text style={[
-                              styles.assignmentPerson,
-                              { color: isEmptySlot ? colors.textSecondary : colors.text }
-                            ]}>
-                              {displayText}
-                            </Text>
-                          </View>
-                          <View style={styles.assignmentActions}>
-                            {isEmptySlot ? (
-                              <TouchableOpacity
-                                onPress={() => openAssignMemberModal(assignment.id)}
-                                style={[styles.assignButton, { backgroundColor: colors.primary }]}
-                              >
-                                <Text style={styles.assignButtonText}>Assign</Text>
-                              </TouchableOpacity>
-                            ) : (
-                              <TouchableOpacity
-                                onPress={() => openAssignMemberModal(assignment.id)}
-                                style={[styles.editButton, { borderColor: colors.primary }]}
-                              >
-                                <IconSymbol
-                                  ios_icon_name="pencil"
-                                  android_material_icon_name="edit"
-                                  size={16}
-                                  color={colors.primary}
-                                />
-                              </TouchableOpacity>
-                            )}
-                            <TouchableOpacity
-                              onPress={() =>
-                                openDeleteAssignmentModal(service.id, assignment.id)
-                              }
-                            >
-                              <IconSymbol
-                                ios_icon_name="xmark.circle"
-                                android_material_icon_name="close"
-                                size={20}
-                                color={colors.textSecondary}
-                              />
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        )}
-
-        {error && (
-          <View style={[styles.errorContainer, { backgroundColor: '#ffebee' }]}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        )}
-      </ScrollView>
-
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.primary }]}
-        onPress={() => {
-          console.log('User tapped Add Service FAB');
-          if (recurringServices.length > 0) {
-            setRecurringServicePickerVisible(true);
-          } else {
-            setAddServiceModalVisible(true);
-          }
-        }}
-      >
-        <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={24} color="#fff" />
-      </TouchableOpacity>
-
-      {/* Recurring Service Picker Modal */}
-      <Modal
-        visible={isRecurringServicePickerVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setRecurringServicePickerVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Select Service Type</Text>
-            
-            <ScrollView style={styles.recurringServiceList}>
-              {recurringServices.map((recurringService) => {
-                const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][recurringService.day_of_week];
-                const rolesText = recurringService.roles && recurringService.roles.length > 0 
-                  ? `${recurringService.roles.length} roles` 
-                  : 'No roles';
-                return (
-                  <TouchableOpacity
-                    key={recurringService.id}
-                    style={[styles.recurringServiceItem, { borderColor: colors.border }]}
-                    onPress={() => handleSelectRecurringService(recurringService)}
-                  >
-                    <Text style={[styles.recurringServiceName, { color: colors.text }]}>
-                      {recurringService.name}
-                    </Text>
-                    <Text style={[styles.recurringServiceDay, { color: colors.textSecondary }]}>
-                      {dayName}
-                    </Text>
-                    <Text style={[styles.recurringServiceDay, { color: colors.textSecondary }]}>
-                      {rolesText}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-              <TouchableOpacity
-                style={[styles.recurringServiceItem, { borderColor: colors.border }]}
-                onPress={() => {
-                  console.log('User chose custom service');
-                  setRecurringServicePickerVisible(false);
-                  setAddServiceModalVisible(true);
-                }}
-              >
-                <Text style={[styles.recurringServiceName, { color: colors.primary }]}>
-                  Custom Service
-                </Text>
-                <Text style={[styles.recurringServiceDay, { color: colors.textSecondary }]}>
-                  Create a one-time service
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-
-            <TouchableOpacity
-              style={[styles.modalButton, styles.cancelButton, { marginTop: 16 }]}
-              onPress={() => {
-                console.log('User cancelled service picker');
-                setRecurringServicePickerVisible(false);
-              }}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Add Service Modal */}
-      <Modal
-        visible={isAddServiceModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setAddServiceModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Add Service</Text>
-
-            <TouchableOpacity
-              style={[styles.dateButton, { borderColor: colors.border }]}
-              onPress={() => setShowDatePicker(true)}
-            >
-              <Text style={[styles.dateButtonText, { color: colors.text }]}>
-                {newServiceDate.toLocaleDateString('en-US', {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                  hour: 'numeric',
-                  minute: '2-digit',
-                })}
-              </Text>
-            </TouchableOpacity>
-
-            {showDatePicker && (
-              <DateTimePicker
-                value={newServiceDate}
-                mode="datetime"
-                display="default"
-                onChange={onDateChange}
-              />
-            )}
-
-            <TextInput
-              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Service Type (e.g., Sunday Morning)"
-              placeholderTextColor={colors.textSecondary}
-              value={newServiceType}
-              onChangeText={setNewServiceType}
-            />
-
-            <TextInput
-              style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Notes (optional)"
-              placeholderTextColor={colors.textSecondary}
-              value={newServiceNotes}
-              onChangeText={setNewServiceNotes}
-              multiline
-              numberOfLines={3}
-            />
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => {
-                  console.log('User cancelled add service');
-                  setAddServiceModalVisible(false);
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.primary }]}
-                onPress={handleSaveService}
-              >
-                <Text style={styles.saveButtonText}>Save</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Add Assignment Modal */}
-      <Modal
-        visible={isAddAssignmentModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setAddAssignmentModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalScrollContent}>
-            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Add Assignment</Text>
-
-              <View style={styles.pickerContainer}>
-                <Text style={[styles.label, { color: colors.text }]}>Role</Text>
-                {churchRoles.length > 0 ? (
-                  <>
-                    <TouchableOpacity
-                      style={[styles.input, { borderColor: colors.border, justifyContent: 'center' }]}
-                      onPress={() => {
-                        console.log('User tapped role picker');
-                        setShowRolePicker(!showRolePicker);
-                      }}
-                    >
-                      <Text style={[{ color: newAssignmentRole ? colors.text : colors.textSecondary }]}>
-                        {newAssignmentRole || 'Select a role'}
-                      </Text>
-                    </TouchableOpacity>
-                    {showRolePicker && (
-                      <View style={[styles.pickerList, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
-                        {churchRoles.map((role) => (
-                          <TouchableOpacity
-                            key={role.id}
-                            style={styles.pickerItem}
-                            onPress={() => {
-                              console.log('User selected role:', role.name);
-                              setNewAssignmentRole(role.name);
-                              setShowRolePicker(false);
-                            }}
-                          >
-                            <Text style={[styles.pickerItemText, { color: colors.text }]}>
-                              {role.name}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    )}
-                  </>
-                ) : (
-                  <TextInput
-                    style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                    placeholder="Role (e.g., Worship Leader, Piano)"
-                    placeholderTextColor={colors.textSecondary}
-                    value={newAssignmentRole}
-                    onChangeText={setNewAssignmentRole}
-                  />
-                )}
-              </View>
-
-              <View style={styles.pickerContainer}>
-                <Text style={[styles.label, { color: colors.text }]}>Person</Text>
-                {members.length > 0 ? (
-                  <>
-                    <TouchableOpacity
-                      style={[styles.input, { borderColor: colors.border, justifyContent: 'center' }]}
-                      onPress={() => {
-                        console.log('User tapped member picker');
-                        setShowMemberPicker(!showMemberPicker);
-                      }}
-                    >
-                      <Text style={[{ color: newAssignmentPerson ? colors.text : colors.textSecondary }]}>
-                        {newAssignmentPerson || 'Select a member'}
-                      </Text>
-                    </TouchableOpacity>
-                    {showMemberPicker && (
-                      <View style={[styles.pickerList, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
-                        {members.map((member) => {
-                          const displayName = member.name || member.email;
-                          return (
-                            <TouchableOpacity
-                              key={member.id}
-                              style={styles.pickerItem}
-                              onPress={() => {
-                                console.log('User selected member:', displayName);
-                                setNewAssignmentPerson(displayName);
-                                setShowMemberPicker(false);
-                              }}
-                            >
-                              <Text style={[styles.pickerItemText, { color: colors.text }]}>
-                                {displayName}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </>
-                ) : (
-                  <TextInput
-                    style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                    placeholder="Person Name"
-                    placeholderTextColor={colors.textSecondary}
-                    value={newAssignmentPerson}
-                    onChangeText={setNewAssignmentPerson}
-                  />
-                )}
-              </View>
-
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.cancelButton]}
-                  onPress={() => {
-                    console.log('User cancelled add assignment');
-                    setAddAssignmentModalVisible(false);
-                    setSelectedServiceId(null);
-                    setShowRolePicker(false);
-                    setShowMemberPicker(false);
-                  }}
-                >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, { backgroundColor: colors.primary }]}
-                  onPress={handleSaveAssignment}
-                >
-                  <Text style={styles.saveButtonText}>Save</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* Assign Member Modal */}
-      <Modal
-        visible={isAssignMemberModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setAssignMemberModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Assign Member</Text>
-
-            {members.length === 0 ? (
-              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                No members available. Add members in the Church tab first.
-              </Text>
-            ) : (
-              <ScrollView style={styles.memberPickerList}>
-                {members.map((member) => {
-                  const displayName = member.name || member.email;
-                  const roleText = member.role || '';
-                  const isSelected = selectedMemberForAssignment === member.id;
-                  
-                  return (
-                    <TouchableOpacity
-                      key={member.id}
-                      style={[
-                        styles.memberPickerItem,
-                        { borderColor: colors.border },
-                        isSelected && { backgroundColor: colors.primary, borderColor: colors.primary }
-                      ]}
-                      onPress={() => {
-                        console.log('User selected member for assignment:', displayName);
-                        setSelectedMemberForAssignment(member.id);
-                      }}
-                    >
-                      <View style={styles.memberPickerInfo}>
-                        <Text style={[
-                          styles.memberPickerName,
-                          { color: isSelected ? '#fff' : colors.text }
-                        ]}>
-                          {displayName}
-                        </Text>
-                        {roleText && (
-                          <Text style={[
-                            styles.memberPickerRole,
-                            { color: isSelected ? '#fff' : colors.textSecondary }
-                          ]}>
-                            {roleText}
-                          </Text>
-                        )}
-                      </View>
-                      {isSelected && (
-                        <IconSymbol
-                          ios_icon_name="checkmark.circle.fill"
-                          android_material_icon_name="check-circle"
-                          size={24}
-                          color="#fff"
-                        />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            )}
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => {
-                  console.log('User cancelled assign member');
-                  setAssignMemberModalVisible(false);
-                  setSelectedAssignmentId(null);
-                  setSelectedMemberForAssignment('');
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.modalButton,
-                  { backgroundColor: selectedMemberForAssignment ? colors.primary : '#ccc' }
-                ]}
-                onPress={handleAssignMember}
-                disabled={!selectedMemberForAssignment}
-              >
-                <Text style={styles.saveButtonText}>Assign</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Delete Service Modal */}
-      <Modal
-        visible={isDeleteServiceModalVisible}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setDeleteServiceModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Service</Text>
-            <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
-              Are you sure you want to delete this service and all its assignments?
-            </Text>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => {
-                  console.log('User cancelled delete service');
-                  setDeleteServiceModalVisible(false);
-                  setServiceToDelete(null);
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: '#ff3b30' }]}
-                onPress={handleDeleteService}
-              >
-                <Text style={styles.saveButtonText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Delete Assignment Modal */}
-      <Modal
-        visible={isDeleteAssignmentModalVisible}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setDeleteAssignmentModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Remove Assignment</Text>
-            <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
-              Are you sure you want to remove this assignment?
-            </Text>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => {
-                  console.log('User cancelled delete assignment');
-                  setDeleteAssignmentModalVisible(false);
-                  setAssignmentToDelete(null);
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: '#ff3b30' }]}
-                onPress={handleDeleteAssignment}
-              >
-                <Text style={styles.saveButtonText}>Remove</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </View>
-  );
-}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollViewContent: {
+  scrollContent: {
+    padding: 16,
     paddingBottom: 100,
   },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-    minHeight: 400,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  emptyText: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginVertical: 16,
-  },
-  servicesList: {
-    padding: 16,
-    gap: 16,
-  },
   serviceCard: {
+    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     padding: 16,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -921,250 +41,859 @@ const styles = StyleSheet.create({
   serviceHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  serviceInfo: {
-    flex: 1,
-  },
-  serviceType: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  serviceDate: {
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  serviceNotes: {
-    fontSize: 14,
-    fontStyle: 'italic',
-  },
-  deleteButton: {
-    padding: 4,
-  },
-  assignmentsSection: {
-    marginTop: 8,
-  },
-  assignmentsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
   },
-  assignmentsTitle: {
-    fontSize: 14,
+  serviceType: {
+    fontSize: 18,
     fontWeight: '600',
+    color: colors.text,
+    flex: 1,
   },
-  addAssignmentButton: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
+  serviceDate: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 12,
   },
   assignmentRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginTop: 4,
-    borderRadius: 8,
-    backgroundColor: 'rgba(106, 13, 173, 0.05)',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
-  assignmentInfo: {
-    flex: 1,
-  },
-  assignmentRole: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  assignmentPerson: {
+  roleText: {
     fontSize: 14,
+    fontWeight: '500',
+    color: colors.text,
   },
-  assignmentActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  personText: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
-  assignButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  assignButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  editButton: {
-    padding: 6,
-    borderRadius: 6,
-    borderWidth: 1,
+  openSlotText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontStyle: 'italic',
   },
   fab: {
     position: 'absolute',
-    right: 16,
-    bottom: 96,
+    right: 20,
+    bottom: 90,
     width: 56,
     height: 56,
     borderRadius: 28,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowRadius: 8,
     elevation: 8,
   },
-  errorContainer: {
-    margin: 16,
-    padding: 12,
-    borderRadius: 8,
+  prepareQuarterFab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 160,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  errorText: {
-    color: '#c62828',
-    fontSize: 14,
-  },
-  modalOverlay: {
+  modalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalScrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
   modalContent: {
-    width: '90%',
-    maxWidth: 400,
-    maxHeight: '80%',
+    backgroundColor: colors.background,
     borderRadius: 16,
     padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    width: '90%',
+    maxHeight: '80%',
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: colors.text,
     marginBottom: 16,
   },
-  modalMessage: {
+  input: {
+    backgroundColor: colors.inputBackground,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    color: colors.text,
     fontSize: 16,
-    marginBottom: 24,
   },
   dateButton: {
-    borderWidth: 1,
+    backgroundColor: colors.inputBackground,
     borderRadius: 8,
     padding: 12,
     marginBottom: 12,
   },
   dateButtonText: {
+    color: colors.text,
     fontSize: 16,
   },
-  input: {
-    borderWidth: 1,
+  button: {
+    backgroundColor: colors.primary,
     borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    fontSize: 16,
-  },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  pickerContainer: {
-    marginBottom: 16,
-  },
-  pickerList: {
-    borderWidth: 1,
-    borderRadius: 8,
-    marginTop: 4,
-    maxHeight: 200,
-  },
-  pickerItem: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  pickerItemText: {
-    fontSize: 16,
-  },
-  recurringServiceList: {
-    maxHeight: 400,
-  },
-  recurringServiceItem: {
-    padding: 16,
-    borderWidth: 1,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  recurringServiceName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  recurringServiceDay: {
-    fontSize: 14,
-  },
-  memberPickerList: {
-    maxHeight: 300,
-    marginBottom: 16,
-  },
-  memberPickerItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    padding: 14,
     alignItems: 'center',
-    padding: 12,
-    borderWidth: 1,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  memberPickerInfo: {
-    flex: 1,
-  },
-  memberPickerName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  memberPickerRole: {
-    fontSize: 12,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: 12,
     marginTop: 8,
   },
-  modalButton: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: '#e0e0e0',
-  },
-  cancelButtonText: {
-    color: '#333',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  saveButtonText: {
+  buttonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
+  cancelButton: {
+    backgroundColor: colors.border,
+    borderRadius: 8,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  cancelButtonText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    backgroundColor: colors.error,
+    borderRadius: 8,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: 12,
+  },
+  templateItem: {
+    backgroundColor: colors.inputBackground,
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+  },
+  templateName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  templateDetails: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  memberItem: {
+    backgroundColor: colors.inputBackground,
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+  },
+  memberName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  memberRole: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  quarterButton: {
+    backgroundColor: colors.inputBackground,
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  quarterButtonSelected: {
+    backgroundColor: colors.primary,
+  },
+  quarterButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  quarterButtonTextSelected: {
+    color: '#fff',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  autoAssignButton: {
+    backgroundColor: colors.accent,
+    borderRadius: 8,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  blockServiceItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.inputBackground,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+  },
+  blockServiceText: {
+    fontSize: 14,
+    color: colors.text,
+    flex: 1,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+  },
 });
+
+export default function HomeScreen() {
+  const { services, loading, createServiceFromTemplate, deleteService, addAssignment, updateAssignment, deleteAssignment } = useServices(null);
+  const { colors: themeColors } = useTheme();
+  const { currentChurch, members, recurringServices } = useChurch();
+
+  const [showAddServiceModal, setShowAddServiceModal] = useState(false);
+  const [showRecurringServicePicker, setShowRecurringServicePicker] = useState(false);
+  const [showAssignMemberModal, setShowAssignMemberModal] = useState(false);
+  const [showDeleteServiceModal, setShowDeleteServiceModal] = useState(false);
+  const [showDeleteAssignmentModal, setShowDeleteAssignmentModal] = useState(false);
+  const [showPrepareQuarterModal, setShowPrepareQuarterModal] = useState(false);
+
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [serviceType, setServiceType] = useState('');
+  const [serviceNotes, setServiceNotes] = useState('');
+
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+  const [assignmentRole, setAssignmentRole] = useState('');
+  const [assignmentPersonName, setAssignmentPersonName] = useState('');
+
+  const [selectedQuarter, setSelectedQuarter] = useState<number>(1);
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [blockedServices, setBlockedServices] = useState<Set<string>>(new Set());
+  const [specialServices, setSpecialServices] = useState<Array<{ date: Date; type: string; notes: string }>>([]);
+  const [showAddSpecialService, setShowAddSpecialService] = useState(false);
+  const [specialServiceDate, setSpecialServiceDate] = useState(new Date());
+  const [specialServiceType, setSpecialServiceType] = useState('');
+  const [specialServiceNotes, setSpecialServiceNotes] = useState('');
+
+  const handleSaveService = async () => {
+    if (!currentChurch || !serviceType.trim()) {
+      console.log('Missing required fields');
+      return;
+    }
+
+    console.log('User tapped Save Service button');
+    const dateString = selectedDate.toISOString().split('T')[0];
+    await createServiceFromTemplate(dateString, serviceType, serviceNotes, []);
+    setShowAddServiceModal(false);
+    setServiceType('');
+    setServiceNotes('');
+    setSelectedDate(new Date());
+  };
+
+  const handleDeleteService = async () => {
+    if (!selectedServiceId) return;
+
+    console.log('User confirmed delete service');
+    await deleteService(selectedServiceId);
+    setShowDeleteServiceModal(false);
+    setSelectedServiceId(null);
+  };
+
+  const handleSaveAssignment = async () => {
+    if (!selectedServiceId || !assignmentRole.trim()) {
+      console.log('Missing required fields for assignment');
+      return;
+    }
+
+    console.log('User tapped Save Assignment button');
+    await addAssignment(selectedServiceId, assignmentRole, assignmentPersonName || 'Open Slot');
+    setShowAddServiceModal(false);
+    setAssignmentRole('');
+    setAssignmentPersonName('');
+  };
+
+  const handleSelectRecurringService = async (recurringService: any) => {
+    if (!currentChurch) return;
+
+    console.log('User selected recurring service template:', recurringService.name);
+    const dateString = selectedDate.toISOString().split('T')[0];
+    await createServiceFromTemplate(dateString, recurringService.name, recurringService.notes, recurringService.roles);
+    setShowRecurringServicePicker(false);
+    setShowAddServiceModal(false);
+  };
+
+  const handleAssignMember = async () => {
+    if (!selectedAssignmentId) return;
+
+    console.log('User assigned member to slot');
+    const member = members.find(m => m.name === assignmentPersonName);
+    await updateAssignment(selectedAssignmentId, member?.id || '', assignmentPersonName);
+    setShowAssignMemberModal(false);
+    setSelectedAssignmentId(null);
+    setAssignmentPersonName('');
+  };
+
+  const handleDeleteAssignment = async () => {
+    if (!selectedAssignmentId) return;
+
+    console.log('User confirmed delete assignment');
+    await deleteAssignment(selectedAssignmentId);
+    setShowDeleteAssignmentModal(false);
+    setSelectedAssignmentId(null);
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const month = date.toLocaleDateString('en-US', { month: 'short' });
+    const day = date.getDate();
+    const year = date.getFullYear();
+    return `${month} ${day}, ${year}`;
+  };
+
+  const onDateChange = (event: any) => {
+    setShowDatePicker(false);
+    if (event.type === 'set' && event.nativeEvent?.timestamp) {
+      setSelectedDate(new Date(event.nativeEvent.timestamp));
+    }
+  };
+
+  const openDeleteServiceModal = (serviceId: string) => {
+    console.log('User tapped delete service button');
+    setSelectedServiceId(serviceId);
+    setShowDeleteServiceModal(true);
+  };
+
+  const openDeleteAssignmentModal = (serviceId: string, assignmentId: string) => {
+    console.log('User tapped delete assignment button');
+    setSelectedServiceId(serviceId);
+    setSelectedAssignmentId(assignmentId);
+    setShowDeleteAssignmentModal(true);
+  };
+
+  const openAssignMemberModal = (assignmentId: string) => {
+    console.log('User tapped assign member button');
+    setSelectedAssignmentId(assignmentId);
+    setShowAssignMemberModal(true);
+  };
+
+  const getQuarterDates = (quarter: number, year: number) => {
+    const startMonth = (quarter - 1) * 3;
+    const startDate = new Date(year, startMonth, 1);
+    const endDate = new Date(year, startMonth + 3, 0);
+    return { startDate, endDate };
+  };
+
+  const generateQuarterServices = () => {
+    const { startDate, endDate } = getQuarterDates(selectedQuarter, selectedYear);
+    const generatedServices: Array<{ date: Date; template: any }> = [];
+
+    const currentDate = new Date(startDate);
+    while (currentDate <= endDate) {
+      const dayOfWeek = currentDate.getDay();
+
+      recurringServices.forEach(template => {
+        if (template.day_of_week === dayOfWeek) {
+          const serviceKey = `${template.id}-${currentDate.toISOString().split('T')[0]}`;
+          if (!blockedServices.has(serviceKey)) {
+            generatedServices.push({
+              date: new Date(currentDate),
+              template,
+            });
+          }
+        }
+      });
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return generatedServices;
+  };
+
+  const handlePrepareQuarter = async () => {
+    if (!currentChurch) return;
+
+    console.log('User tapped Prepare Quarter button');
+    const generatedServices = generateQuarterServices();
+
+    for (const { date, template } of generatedServices) {
+      const dateString = date.toISOString().split('T')[0];
+      await createServiceFromTemplate(dateString, template.name, template.notes, template.roles);
+    }
+
+    for (const special of specialServices) {
+      const dateString = special.date.toISOString().split('T')[0];
+      await createServiceFromTemplate(dateString, special.type, special.notes, []);
+    }
+
+    setShowPrepareQuarterModal(false);
+    setBlockedServices(new Set());
+    setSpecialServices([]);
+  };
+
+  const handleAutoAssign = async () => {
+    if (!currentChurch) return;
+
+    console.log('User tapped Auto-Assign button');
+
+    const membersByRole: { [role: string]: any[] } = {};
+    members.forEach(member => {
+      if (member.role) {
+        if (!membersByRole[member.role]) {
+          membersByRole[member.role] = [];
+        }
+        membersByRole[member.role].push(member);
+      }
+    });
+
+    const assignmentCounts: { [memberId: string]: number } = {};
+    members.forEach(member => {
+      assignmentCounts[member.id] = 0;
+    });
+
+    for (const service of services) {
+      for (const assignment of service.assignments) {
+        if (!assignment.member_id && assignment.role) {
+          const availableMembers = membersByRole[assignment.role] || [];
+          
+          if (availableMembers.length > 0) {
+            availableMembers.sort((a, b) => 
+              (assignmentCounts[a.id] || 0) - (assignmentCounts[b.id] || 0)
+            );
+
+            const selectedMember = availableMembers[0];
+            await updateAssignment(assignment.id, selectedMember.id, selectedMember.name || selectedMember.email);
+            assignmentCounts[selectedMember.id] = (assignmentCounts[selectedMember.id] || 0) + 1;
+          }
+        }
+      }
+    }
+
+    console.log('Auto-assignment completed');
+  };
+
+  const toggleBlockService = (serviceKey: string) => {
+    const newBlocked = new Set(blockedServices);
+    if (newBlocked.has(serviceKey)) {
+      newBlocked.delete(serviceKey);
+    } else {
+      newBlocked.add(serviceKey);
+    }
+    setBlockedServices(newBlocked);
+  };
+
+  const handleAddSpecialService = () => {
+    if (!specialServiceType.trim()) return;
+
+    console.log('User added special service');
+    setSpecialServices([...specialServices, {
+      date: specialServiceDate,
+      type: specialServiceType,
+      notes: specialServiceNotes,
+    }]);
+    setShowAddSpecialService(false);
+    setSpecialServiceType('');
+    setSpecialServiceNotes('');
+    setSpecialServiceDate(new Date());
+  };
+
+  const filteredServices = currentChurch 
+    ? services.filter(s => s.church_id === currentChurch.id)
+    : [];
+
+  return (
+    <View style={styles.container}>
+      <Stack.Screen
+        options={{
+          title: 'Schedule',
+          headerStyle: { backgroundColor: themeColors.card },
+          headerTintColor: themeColors.text,
+        }}
+      />
+
+      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+        {loading ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : filteredServices.length === 0 ? (
+          <View style={styles.emptyState}>
+            <IconSymbol ios_icon_name="calendar" android_material_icon_name="calendar-today" size={48} color={colors.textSecondary} />
+            <Text style={styles.emptyStateText}>No services scheduled yet</Text>
+          </View>
+        ) : (
+          filteredServices.map((service) => {
+            const formattedDate = formatDate(service.date);
+            return (
+              <View key={service.id} style={styles.serviceCard}>
+                <View style={styles.serviceHeader}>
+                  <Text style={styles.serviceType}>{service.service_type}</Text>
+                  <TouchableOpacity onPress={() => openDeleteServiceModal(service.id)}>
+                    <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.serviceDate}>{formattedDate}</Text>
+
+                {service.assignments.map((assignment) => {
+                  const isOpenSlot = !assignment.member_id;
+                  const displayName = assignment.person_name || 'Open Slot';
+                  return (
+                    <TouchableOpacity
+                      key={assignment.id}
+                      style={styles.assignmentRow}
+                      onPress={() => openAssignMemberModal(assignment.id)}
+                    >
+                      <Text style={styles.roleText}>{assignment.role}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={isOpenSlot ? styles.openSlotText : styles.personText}>
+                          {displayName}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => openDeleteAssignmentModal(service.id, assignment.id)}
+                          style={{ marginLeft: 8 }}
+                        >
+                          <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color={colors.error} />
+                        </TouchableOpacity>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+
+                <TouchableOpacity
+                  style={{ marginTop: 12 }}
+                  onPress={() => {
+                    setSelectedServiceId(service.id);
+                    setShowAddServiceModal(true);
+                  }}
+                >
+                  <Text style={{ color: colors.primary, fontSize: 14 }}>+ Add Assignment</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })
+        )}
+      </ScrollView>
+
+      <TouchableOpacity
+        style={styles.prepareQuarterFab}
+        onPress={() => setShowPrepareQuarterModal(true)}
+      >
+        <IconSymbol ios_icon_name="calendar.badge.plus" android_material_icon_name="event" size={24} color="#fff" />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => setShowRecurringServicePicker(true)}
+      >
+        <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={24} color="#fff" />
+      </TouchableOpacity>
+
+      <Modal visible={showRecurringServicePicker} animationType="slide" transparent>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select Service Template</Text>
+            <ScrollView style={{ maxHeight: 400 }}>
+              {recurringServices.map((template) => {
+                const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][template.day_of_week];
+                return (
+                  <TouchableOpacity
+                    key={template.id}
+                    style={styles.templateItem}
+                    onPress={() => handleSelectRecurringService(template)}
+                  >
+                    <Text style={styles.templateName}>{template.name}</Text>
+                    <Text style={styles.templateDetails}>
+                      {dayName} at {template.time} • {template.roles.length} roles
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowRecurringServicePicker(false)}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showAddServiceModal} animationType="slide" transparent>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add Assignment</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Role (e.g., Worship Leader)"
+              placeholderTextColor={colors.textSecondary}
+              value={assignmentRole}
+              onChangeText={setAssignmentRole}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Person Name (optional)"
+              placeholderTextColor={colors.textSecondary}
+              value={assignmentPersonName}
+              onChangeText={setAssignmentPersonName}
+            />
+            <TouchableOpacity style={styles.button} onPress={handleSaveAssignment}>
+              <Text style={styles.buttonText}>Save Assignment</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowAddServiceModal(false)}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showAssignMemberModal} animationType="slide" transparent>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Assign Member</Text>
+            <ScrollView style={{ maxHeight: 400 }}>
+              {members.map((member) => {
+                const displayName = member.name || member.email;
+                const roleText = member.role || 'No role';
+                return (
+                  <TouchableOpacity
+                    key={member.id}
+                    style={styles.memberItem}
+                    onPress={() => {
+                      setAssignmentPersonName(displayName);
+                      handleAssignMember();
+                    }}
+                  >
+                    <Text style={styles.memberName}>{displayName}</Text>
+                    <Text style={styles.memberRole}>{roleText}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowAssignMemberModal(false)}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showDeleteServiceModal} animationType="fade" transparent>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Delete Service?</Text>
+            <Text style={{ color: colors.text, marginBottom: 16 }}>
+              This will delete the service and all its assignments.
+            </Text>
+            <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteService}>
+              <Text style={styles.buttonText}>Delete</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowDeleteServiceModal(false)}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showDeleteAssignmentModal} animationType="fade" transparent>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Delete Assignment?</Text>
+            <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAssignment}>
+              <Text style={styles.buttonText}>Delete</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowDeleteAssignmentModal(false)}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showPrepareQuarterModal} animationType="slide" transparent>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Prepare Quarter</Text>
+            
+            <Text style={styles.sectionTitle}>Select Quarter</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              {[1, 2, 3, 4].map(q => {
+                const isSelected = selectedQuarter === q;
+                const quarterText = `Q${q}`;
+                return (
+                  <TouchableOpacity
+                    key={q}
+                    style={[styles.quarterButton, { flex: 1, marginHorizontal: 4 }, isSelected && styles.quarterButtonSelected]}
+                    onPress={() => setSelectedQuarter(q)}
+                  >
+                    <Text style={[styles.quarterButtonText, isSelected && styles.quarterButtonTextSelected]}>
+                      {quarterText}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.sectionTitle}>Year</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Year"
+              placeholderTextColor={colors.textSecondary}
+              value={selectedYear.toString()}
+              onChangeText={(text) => setSelectedYear(parseInt(text) || new Date().getFullYear())}
+              keyboardType="number-pad"
+            />
+
+            <Text style={styles.sectionTitle}>Block Recurring Services</Text>
+            <ScrollView style={{ maxHeight: 150 }}>
+              {recurringServices.map(template => {
+                const { startDate, endDate } = getQuarterDates(selectedQuarter, selectedYear);
+                const currentDate = new Date(startDate);
+                const serviceDates: Date[] = [];
+
+                while (currentDate <= endDate) {
+                  if (currentDate.getDay() === template.day_of_week) {
+                    serviceDates.push(new Date(currentDate));
+                  }
+                  currentDate.setDate(currentDate.getDate() + 1);
+                }
+
+                return serviceDates.map(date => {
+                  const serviceKey = `${template.id}-${date.toISOString().split('T')[0]}`;
+                  const isBlocked = blockedServices.has(serviceKey);
+                  const dateText = formatDate(date.toISOString());
+                  return (
+                    <TouchableOpacity
+                      key={serviceKey}
+                      style={styles.blockServiceItem}
+                      onPress={() => toggleBlockService(serviceKey)}
+                    >
+                      <Text style={styles.blockServiceText}>
+                        {template.name} - {dateText}
+                      </Text>
+                      <View style={[styles.checkbox, isBlocked && styles.checkboxChecked]}>
+                        {isBlocked && (
+                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                });
+              })}
+            </ScrollView>
+
+            <Text style={styles.sectionTitle}>Special Services</Text>
+            {specialServices.map((special, index) => {
+              const dateText = formatDate(special.date.toISOString());
+              return (
+                <View key={index} style={styles.blockServiceItem}>
+                  <Text style={styles.blockServiceText}>
+                    {special.type} - {dateText}
+                  </Text>
+                  <TouchableOpacity onPress={() => {
+                    const newSpecial = [...specialServices];
+                    newSpecial.splice(index, 1);
+                    setSpecialServices(newSpecial);
+                  }}>
+                    <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color={colors.error} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+            <TouchableOpacity
+              style={{ marginTop: 8 }}
+              onPress={() => setShowAddSpecialService(true)}
+            >
+              <Text style={{ color: colors.primary, fontSize: 14 }}>+ Add Special Service</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.button} onPress={handlePrepareQuarter}>
+              <Text style={styles.buttonText}>Generate Services</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.autoAssignButton} onPress={handleAutoAssign}>
+              <Text style={styles.buttonText}>Auto-Assign Members</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowPrepareQuarterModal(false)}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showAddSpecialService} animationType="slide" transparent>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add Special Service</Text>
+            <TouchableOpacity
+              style={styles.dateButton}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Text style={styles.dateButtonText}>
+                {formatDate(specialServiceDate.toISOString())}
+              </Text>
+            </TouchableOpacity>
+            {showDatePicker && (
+              <DateTimePicker
+                value={specialServiceDate}
+                mode="date"
+                display="default"
+                onChange={(event, date) => {
+                  setShowDatePicker(false);
+                  if (date) setSpecialServiceDate(date);
+                }}
+              />
+            )}
+            <TextInput
+              style={styles.input}
+              placeholder="Service Type"
+              placeholderTextColor={colors.textSecondary}
+              value={specialServiceType}
+              onChangeText={setSpecialServiceType}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Notes (optional)"
+              placeholderTextColor={colors.textSecondary}
+              value={specialServiceNotes}
+              onChangeText={setSpecialServiceNotes}
+            />
+            <TouchableOpacity style={styles.button} onPress={handleAddSpecialService}>
+              <Text style={styles.buttonText}>Add Service</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowAddSpecialService(false)}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
