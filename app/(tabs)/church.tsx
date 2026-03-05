@@ -57,7 +57,7 @@ export default function ChurchScreen() {
     fetchMemberUnavailability,
   } = useChurch();
 
-  const { services, createServiceFromTemplate, updateAssignment } = useServices(currentChurch?.id || null);
+  const { services, batchUpdateAssignments, createServiceFromTemplate } = useServices(currentChurch?.id || null);
 
   const [activeTab, setActiveTab] = useState<'members' | 'services' | 'roles'>('members');
   const [isCreateChurchModalVisible, setCreateChurchModalVisible] = useState(false);
@@ -101,6 +101,7 @@ export default function ChurchScreen() {
   const [specialServiceRoles, setSpecialServiceRoles] = useState<string[]>([]);
   const [showSpecialServiceTimePicker, setShowSpecialServiceTimePicker] = useState(false);
   const [showSpecialServiceDatePicker, setShowSpecialServiceDatePicker] = useState(false);
+  const [isAutoAssigning, setIsAutoAssigning] = useState(false);
 
   const handleCreateChurch = async () => {
     console.log('User tapped Create Church button');
@@ -347,7 +348,7 @@ export default function ChurchScreen() {
 
   const generateQuarterServices = () => {
     const { startDate, endDate } = getQuarterDates(selectedQuarter, selectedYear);
-    const generatedServices: Array<{ date: Date; template: any }> = [];
+    const generatedServices: { date: Date; template: any }[] = [];
 
     const currentDate = new Date(startDate);
     while (currentDate <= endDate) {
@@ -415,75 +416,115 @@ export default function ChurchScreen() {
     }
 
     console.log('User tapped Auto-Assign button');
+    setIsAutoAssigning(true);
 
-    const membersByRole: { [role: string]: any[] } = {};
-    members.forEach(member => {
-      if (member.memberRoles && member.memberRoles.length > 0) {
-        member.memberRoles.forEach(memberRole => {
-          if (!membersByRole[memberRole.role_name]) {
-            membersByRole[memberRole.role_name] = [];
-          }
-          membersByRole[memberRole.role_name].push(member);
-        });
-      }
-    });
-
-    const assignmentCounts: { [memberId: string]: number } = {};
-    members.forEach(member => {
-      assignmentCounts[member.id] = 0;
-    });
-
-    const memberUnavailability: { [memberId: string]: Set<string> } = {};
-    for (const member of members) {
-      const unavailableDates = await fetchMemberUnavailability(member.id);
-      memberUnavailability[member.id] = new Set(
-        unavailableDates.map(u => u.unavailable_date)
-      );
-      console.log(`Member ${member.name || member.email} unavailable dates:`, Array.from(memberUnavailability[member.id]));
-    }
-
-    const filteredServices = services.filter(s => s.church_id === currentChurch.id);
-
-    let assignedCount = 0;
-    let skippedCount = 0;
-
-    for (const service of filteredServices) {
-      const serviceDate = service.date;
-      console.log(`Processing service: ${service.service_type} on ${serviceDate}`);
-      
-      for (const assignment of service.assignments) {
-        if (!assignment.member_id && assignment.role) {
-          console.log(`  Open slot found for role: ${assignment.role}`);
-          
-          const availableMembers = (membersByRole[assignment.role] || []).filter(member => {
-            const isUnavailable = memberUnavailability[member.id]?.has(serviceDate);
-            if (isUnavailable) {
-              console.log(`    Member ${member.name || member.email} is unavailable on ${serviceDate}`);
+    try {
+      // OPTIMIZATION 1: Build member-by-role map once
+      const membersByRole: { [role: string]: any[] } = {};
+      members.forEach(member => {
+        if (member.memberRoles && member.memberRoles.length > 0) {
+          member.memberRoles.forEach(memberRole => {
+            if (!membersByRole[memberRole.role_name]) {
+              membersByRole[memberRole.role_name] = [];
             }
-            return !isUnavailable;
+            membersByRole[memberRole.role_name].push(member);
           });
-          
-          if (availableMembers.length > 0) {
-            availableMembers.sort((a, b) => 
-              (assignmentCounts[a.id] || 0) - (assignmentCounts[b.id] || 0)
-            );
+        }
+      });
 
-            const selectedMember = availableMembers[0];
-            console.log(`    Assigning ${selectedMember.name || selectedMember.email} to ${assignment.role}`);
+      // OPTIMIZATION 2: Fetch ALL unavailability in a single query
+      console.log('Fetching all member unavailability in one query...');
+      const { data: allUnavailability, error: unavailError } = await supabase
+        .from('member_unavailability')
+        .select('member_id, unavailable_date')
+        .in('member_id', members.map(m => m.id));
+
+      if (unavailError) {
+        console.error('Error fetching unavailability:', unavailError);
+        Alert.alert('Error', 'Failed to fetch member availability');
+        setIsAutoAssigning(false);
+        return;
+      }
+
+      // Build unavailability map
+      const memberUnavailability: { [memberId: string]: Set<string> } = {};
+      members.forEach(member => {
+        memberUnavailability[member.id] = new Set();
+      });
+      
+      (allUnavailability || []).forEach(unavail => {
+        if (!memberUnavailability[unavail.member_id]) {
+          memberUnavailability[unavail.member_id] = new Set();
+        }
+        memberUnavailability[unavail.member_id].add(unavail.unavailable_date);
+      });
+
+      console.log('Unavailability data loaded for', members.length, 'members');
+
+      // OPTIMIZATION 3: Track assignment counts
+      const assignmentCounts: { [memberId: string]: number } = {};
+      members.forEach(member => {
+        assignmentCounts[member.id] = 0;
+      });
+
+      // OPTIMIZATION 4: Collect all updates for batch processing
+      const assignmentUpdates: { id: string; member_id: string; person_name: string }[] = [];
+      const filteredServices = services.filter(s => s.church_id === currentChurch.id);
+
+      let skippedCount = 0;
+
+      for (const service of filteredServices) {
+        const serviceDate = service.date;
+        
+        for (const assignment of service.assignments) {
+          if (!assignment.member_id && assignment.role) {
+            const availableMembers = (membersByRole[assignment.role] || []).filter(member => {
+              const isUnavailable = memberUnavailability[member.id]?.has(serviceDate);
+              return !isUnavailable;
+            });
             
-            await updateAssignment(assignment.id, selectedMember.id, selectedMember.name || selectedMember.email);
-            assignmentCounts[selectedMember.id] = (assignmentCounts[selectedMember.id] || 0) + 1;
-            assignedCount++;
-          } else {
-            console.log(`    No available members for role: ${assignment.role}`);
-            skippedCount++;
+            if (availableMembers.length > 0) {
+              // Sort by current assignment count for load balancing
+              availableMembers.sort((a, b) => 
+                (assignmentCounts[a.id] || 0) - (assignmentCounts[b.id] || 0)
+              );
+
+              const selectedMember = availableMembers[0];
+              
+              assignmentUpdates.push({
+                id: assignment.id,
+                member_id: selectedMember.id,
+                person_name: selectedMember.name || selectedMember.email,
+              });
+              
+              assignmentCounts[selectedMember.id] = (assignmentCounts[selectedMember.id] || 0) + 1;
+            } else {
+              skippedCount++;
+            }
           }
         }
       }
-    }
 
-    console.log(`Auto-assignment completed: ${assignedCount} assigned, ${skippedCount} skipped`);
-    Alert.alert('Success', `Auto-assignment completed!\n${assignedCount} slots assigned\n${skippedCount} slots remain open (no available members)`);
+      // OPTIMIZATION 5: Batch update all assignments at once
+      console.log('Batch updating', assignmentUpdates.length, 'assignments...');
+      if (assignmentUpdates.length > 0) {
+        const success = await batchUpdateAssignments(assignmentUpdates);
+        
+        if (success) {
+          console.log(`Auto-assignment completed: ${assignmentUpdates.length} assigned, ${skippedCount} skipped`);
+          Alert.alert('Success', `Auto-assignment completed!\n${assignmentUpdates.length} slots assigned\n${skippedCount} slots remain open (no available members)`);
+        } else {
+          Alert.alert('Error', 'Some assignments failed to update');
+        }
+      } else {
+        Alert.alert('Info', 'No open slots to assign');
+      }
+    } catch (err) {
+      console.error('Error in auto-assign:', err);
+      Alert.alert('Error', 'Auto-assignment failed');
+    } finally {
+      setIsAutoAssigning(false);
+    }
   };
 
   const toggleBlockService = (serviceKey: string) => {
@@ -721,14 +762,21 @@ export default function ChurchScreen() {
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: colors.primary, marginTop: 12 }]}
               onPress={handleAutoAssign}
+              disabled={isAutoAssigning}
             >
-              <IconSymbol
-                ios_icon_name="person.2.fill"
-                android_material_icon_name="group"
-                size={24}
-                color="#fff"
-              />
-              <Text style={styles.actionButtonText}>Auto-Assign Members</Text>
+              {isAutoAssigning ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <IconSymbol
+                    ios_icon_name="person.2.fill"
+                    android_material_icon_name="group"
+                    size={24}
+                    color="#fff"
+                  />
+                  <Text style={styles.actionButtonText}>Auto-Assign Members</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         )}
@@ -1051,6 +1099,7 @@ export default function ChurchScreen() {
         )}
       </ScrollView>
 
+      {/* All modals remain the same - truncated for brevity */}
       {/* Create Church Modal */}
       <Modal
         visible={isCreateChurchModalVisible}

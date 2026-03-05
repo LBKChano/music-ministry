@@ -15,7 +15,7 @@ export function useServices(churchId: string | null) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch services for a church
+  // Fetch services for a church - OPTIMIZED with single query
   const fetchServices = useCallback(async () => {
     if (!churchId) {
       console.log('No church selected, skipping service fetch');
@@ -29,9 +29,13 @@ export function useServices(churchId: string | null) {
       setLoading(true);
       setError(null);
 
+      // OPTIMIZATION: Fetch services and assignments in a single query using join
       const { data: servicesData, error: fetchError } = await supabase
         .from('services')
-        .select('*')
+        .select(`
+          *,
+          assignments (*)
+        `)
         .eq('church_id', churchId)
         .order('date', { ascending: true });
 
@@ -42,26 +46,13 @@ export function useServices(churchId: string | null) {
         return;
       }
 
-      // Fetch assignments for each service
-      const servicesWithAssignments: ServiceWithAssignments[] = [];
-      
-      for (const service of servicesData || []) {
-        const { data: assignmentsData, error: assignError } = await supabase
-          .from('assignments')
-          .select('*')
-          .eq('service_id', service.id);
+      // Transform the data to match our interface
+      const servicesWithAssignments: ServiceWithAssignments[] = (servicesData || []).map(service => ({
+        ...service,
+        assignments: service.assignments || [],
+      }));
 
-        if (assignError) {
-          console.error('Error fetching assignments:', assignError);
-        }
-
-        servicesWithAssignments.push({
-          ...service,
-          assignments: assignmentsData || [],
-        });
-      }
-
-      console.log('Fetched services with assignments:', servicesWithAssignments);
+      console.log('Fetched services with assignments:', servicesWithAssignments.length, 'services');
       setServices(servicesWithAssignments);
     } catch (err) {
       console.error('Error in fetchServices:', err);
@@ -184,7 +175,7 @@ export function useServices(churchId: string | null) {
     }
   }, [fetchServices]);
 
-  // Delete a service
+  // Delete a service - OPTIMIZED: No need to refetch all services
   const deleteService = useCallback(async (serviceId: string) => {
     console.log('Deleting service:', serviceId);
     try {
@@ -202,14 +193,17 @@ export function useServices(churchId: string | null) {
       }
 
       console.log('Service deleted successfully');
-      await fetchServices();
+      
+      // OPTIMIZATION: Update local state instead of refetching all services
+      setServices(prevServices => prevServices.filter(s => s.id !== serviceId));
+      
       return true;
     } catch (err) {
       console.error('Error in deleteService:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       return false;
     }
-  }, [fetchServices]);
+  }, []);
 
   // Add an assignment to a service
   const addAssignment = useCallback(async (serviceId: string, role: string, personName: string, memberId?: string) => {
@@ -246,7 +240,7 @@ export function useServices(churchId: string | null) {
     }
   }, [fetchServices]);
 
-  // Update an assignment (assign a member to a slot)
+  // Update an assignment (assign a member to a slot) - OPTIMIZED
   const updateAssignment = useCallback(async (assignmentId: string, memberId: string, personName: string) => {
     console.log('Updating assignment:', { assignmentId, memberId, personName });
     try {
@@ -267,14 +261,74 @@ export function useServices(churchId: string | null) {
       }
 
       console.log('Assignment updated successfully');
-      await fetchServices();
+      
+      // OPTIMIZATION: Update local state instead of refetching
+      setServices(prevServices => 
+        prevServices.map(service => ({
+          ...service,
+          assignments: service.assignments.map(assignment =>
+            assignment.id === assignmentId
+              ? { ...assignment, member_id: memberId, person_name: personName }
+              : assignment
+          ),
+        }))
+      );
+      
       return true;
     } catch (err) {
       console.error('Error in updateAssignment:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       return false;
     }
-  }, [fetchServices]);
+  }, []);
+
+  // Batch update assignments - NEW OPTIMIZED METHOD
+  const batchUpdateAssignments = useCallback(async (updates: { id: string; member_id: string; person_name: string }[]) => {
+    console.log('Batch updating assignments:', updates.length, 'assignments');
+    try {
+      setError(null);
+
+      // Use Promise.all for parallel updates
+      const updatePromises = updates.map(update =>
+        supabase
+          .from('assignments')
+          .update({
+            member_id: update.member_id,
+            person_name: update.person_name,
+          })
+          .eq('id', update.id)
+      );
+
+      const results = await Promise.all(updatePromises);
+      
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) {
+        console.error('Errors in batch update:', errors);
+        return false;
+      }
+
+      console.log('Batch update completed successfully');
+      
+      // Update local state
+      setServices(prevServices => 
+        prevServices.map(service => ({
+          ...service,
+          assignments: service.assignments.map(assignment => {
+            const update = updates.find(u => u.id === assignment.id);
+            return update
+              ? { ...assignment, member_id: update.member_id, person_name: update.person_name }
+              : assignment;
+          }),
+        }))
+      );
+      
+      return true;
+    } catch (err) {
+      console.error('Error in batchUpdateAssignments:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, []);
 
   // Delete an assignment
   const deleteAssignment = useCallback(async (assignmentId: string) => {
@@ -316,6 +370,7 @@ export function useServices(churchId: string | null) {
     deleteService,
     addAssignment,
     updateAssignment,
+    batchUpdateAssignments,
     deleteAssignment,
     refreshServices: fetchServices,
   };
