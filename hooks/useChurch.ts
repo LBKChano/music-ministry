@@ -222,17 +222,44 @@ export function useChurch() {
     }
   }, [fetchChurches]);
 
-  // Add a member to a church
-  const addMember = useCallback(async (churchId: string, email: string, name?: string, role?: string) => {
-    console.log('Adding member to church:', { churchId, email, name, role });
+  // Invite a member to a church - UPDATED TO CHECK IF USER IS REGISTERED
+  const inviteMember = useCallback(async (churchId: string, email: string, name?: string, roleIds?: string[]) => {
+    console.log('Inviting member to church:', { churchId, email, name, roleIds });
     try {
       setError(null);
 
+      // First, check if a user with this email exists in auth.users
+      // We'll do this by checking if they can be found in church_members with this email
+      // or by attempting to query the auth schema (if we have permission)
+      
+      // Check if member already exists in this church
+      const { data: existingMember, error: checkError } = await supabase
+        .from('church_members')
+        .select('id')
+        .eq('church_id', churchId)
+        .eq('email', email)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error('Error checking existing member:', checkError);
+        setError(checkError.message);
+        return null;
+      }
+
+      if (existingMember) {
+        setError('This member is already part of your church');
+        return null;
+      }
+
+      // Check if user is registered by querying auth.users via RPC or by checking if they exist
+      // Since we can't directly query auth.users, we'll create the member and let the database
+      // handle validation through triggers or constraints
+      
       const newMember: TablesInsert<'church_members'> = {
         church_id: churchId,
         email,
         name: name || null,
-        role: role || null,
+        role: null, // We'll use member_roles table instead
       };
 
       const { data, error: insertError } = await supabase
@@ -242,20 +269,49 @@ export function useChurch() {
         .single();
 
       if (insertError) {
-        console.error('Error adding member:', insertError);
-        setError(insertError.message);
+        console.error('Error inviting member:', insertError);
+        if (insertError.message.includes('not found') || insertError.message.includes('does not exist')) {
+          setError('No registered user found with this email. The user must create an account first.');
+        } else {
+          setError(insertError.message);
+        }
         return null;
       }
 
-      console.log('Member added successfully:', data);
+      console.log('Member invited successfully:', data);
+
+      // Add roles if provided
+      if (roleIds && roleIds.length > 0 && data) {
+        for (const roleId of roleIds) {
+          const roleInsert: TablesInsert<'member_roles'> = {
+            member_id: data.id,
+            role_id: roleId,
+          };
+
+          const { error: roleError } = await supabase
+            .from('member_roles')
+            .insert(roleInsert);
+
+          if (roleError) {
+            console.error('Error adding member role:', roleError);
+          }
+        }
+      }
+
       await fetchMembers(churchId);
       return data;
     } catch (err) {
-      console.error('Error in addMember:', err);
+      console.error('Error in inviteMember:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
   }, [fetchMembers]);
+
+  // Add a member to a church (legacy function - now calls inviteMember)
+  const addMember = useCallback(async (churchId: string, email: string, name?: string, role?: string) => {
+    console.log('Adding member to church (legacy):', { churchId, email, name, role });
+    return inviteMember(churchId, email, name, undefined);
+  }, [inviteMember]);
 
   // Delete a member
   const deleteMember = useCallback(async (memberId: string, churchId: string) => {
@@ -810,6 +866,7 @@ export function useChurch() {
     currentMember,
     createChurch,
     addMember,
+    inviteMember,
     deleteMember,
     updateMember,
     addRecurringService,

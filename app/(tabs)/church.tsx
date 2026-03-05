@@ -45,7 +45,7 @@ export default function ChurchScreen() {
     error,
     user,
     createChurch,
-    addMember,
+    inviteMember,
     deleteMember,
     updateMember,
     addRecurringService,
@@ -77,7 +77,7 @@ export default function ChurchScreen() {
   const [newChurchName, setNewChurchName] = useState('');
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberName, setNewMemberName] = useState('');
-  const [newMemberRoles, setNewMemberRoles] = useState<string[]>([]);
+  const [newMemberRoleIds, setNewMemberRoleIds] = useState<string[]>([]);
   const [editMemberEmail, setEditMemberEmail] = useState('');
   const [editMemberName, setEditMemberName] = useState('');
   const [editMemberRoles, setEditMemberRoles] = useState<string[]>([]);
@@ -120,32 +120,29 @@ export default function ChurchScreen() {
   };
 
   const handleAddMember = async () => {
-    console.log('User tapped Add Member button');
+    console.log('User tapped Invite Member button');
     if (!currentChurch || !newMemberEmail.trim()) {
+      Alert.alert('Error', 'Please enter an email address');
       return;
     }
 
-    const result = await addMember(
+    // Use the new inviteMember function with role IDs
+    const result = await inviteMember(
       currentChurch.id,
       newMemberEmail.trim(),
       newMemberName.trim() || undefined,
-      undefined
+      newMemberRoleIds.length > 0 ? newMemberRoleIds : undefined
     );
-
-    if (result && newMemberRoles.length > 0) {
-      for (const roleName of newMemberRoles) {
-        const role = churchRoles.find(r => r.name === roleName);
-        if (role) {
-          await addMemberRole(result.id, role.id, currentChurch.id);
-        }
-      }
-    }
 
     if (result) {
       setNewMemberEmail('');
       setNewMemberName('');
-      setNewMemberRoles([]);
+      setNewMemberRoleIds([]);
       setAddMemberModalVisible(false);
+      Alert.alert('Success', 'Member invited successfully!');
+    } else {
+      // Error message is already set in the hook
+      Alert.alert('Error', error || 'Failed to invite member. Make sure the user has registered with this email.');
     }
   };
 
@@ -336,6 +333,15 @@ export default function ChurchScreen() {
       setSelectedServiceRoles(selectedServiceRoles.filter(r => r !== roleName));
     } else {
       setSelectedServiceRoles([...selectedServiceRoles, roleName]);
+    }
+  };
+
+  const toggleMemberRole = (roleId: string) => {
+    console.log('User toggled member role:', roleId);
+    if (newMemberRoleIds.includes(roleId)) {
+      setNewMemberRoleIds(newMemberRoleIds.filter(r => r !== roleId));
+    } else {
+      setNewMemberRoleIds([...newMemberRoleIds, roleId]);
     }
   };
 
@@ -591,7 +597,7 @@ export default function ChurchScreen() {
   const noChurchesText = 'No churches yet';
   const createFirstChurchText = 'Create your first church to get started';
   const noMembersText = 'No members yet';
-  const addFirstMemberText = 'Add members to your church';
+  const addFirstMemberText = 'Invite members to your church';
   const signOutText = 'Sign Out';
 
   return (
@@ -797,7 +803,7 @@ export default function ChurchScreen() {
                   <TouchableOpacity
                     style={[styles.addButton, { backgroundColor: colors.primary }]}
                     onPress={() => {
-                      console.log('User tapped Add Member');
+                      console.log('User tapped Invite Member');
                       setAddMemberModalVisible(true);
                     }}
                   >
@@ -1057,7 +1063,6 @@ export default function ChurchScreen() {
         )}
       </ScrollView>
 
-      {/* All modals remain the same as before... */}
       {/* Create Church Modal */}
       <Modal
         visible={isCreateChurchModalVisible}
@@ -1099,7 +1104,7 @@ export default function ChurchScreen() {
         </View>
       </Modal>
 
-      {/* Add Member Modal */}
+      {/* Invite Member Modal - UPDATED */}
       <Modal
         visible={isAddMemberModalVisible}
         animationType="slide"
@@ -1109,7 +1114,10 @@ export default function ChurchScreen() {
         <View style={styles.modalOverlay}>
           <ScrollView contentContainerStyle={styles.modalScrollContent}>
             <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Add Member</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Invite Member</Text>
+              <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 12 }]}>
+                Enter the email and name of a registered member to invite them to your church.
+              </Text>
 
               <TextInput
                 style={[styles.input, { color: colors.text, borderColor: colors.border }]}
@@ -1134,7 +1142,7 @@ export default function ChurchScreen() {
                 {churchRoles.length > 0 ? (
                   <View style={styles.roleCheckboxContainer}>
                     {churchRoles.map((role) => {
-                      const isSelected = newMemberRoles.includes(role.name);
+                      const isSelected = newMemberRoleIds.includes(role.id);
                       return (
                         <TouchableOpacity
                           key={role.id}
@@ -1143,14 +1151,7 @@ export default function ChurchScreen() {
                             { borderColor: colors.border },
                             isSelected && { backgroundColor: colors.primary },
                           ]}
-                          onPress={() => {
-                            console.log('User toggled role:', role.name);
-                            if (isSelected) {
-                              setNewMemberRoles(newMemberRoles.filter(r => r !== role.name));
-                            } else {
-                              setNewMemberRoles([...newMemberRoles, role.name]);
-                            }
-                          }}
+                          onPress={() => toggleMemberRole(role.id)}
                         >
                           <Text
                             style={[
@@ -1175,11 +1176,11 @@ export default function ChurchScreen() {
                 <TouchableOpacity
                   style={[styles.modalButton, styles.cancelButton]}
                   onPress={() => {
-                    console.log('User cancelled add member');
+                    console.log('User cancelled invite member');
                     setAddMemberModalVisible(false);
                     setNewMemberEmail('');
                     setNewMemberName('');
-                    setNewMemberRoles([]);
+                    setNewMemberRoleIds([]);
                   }}
                 >
                   <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -1188,7 +1189,7 @@ export default function ChurchScreen() {
                   style={[styles.modalButton, { backgroundColor: colors.primary }]}
                   onPress={handleAddMember}
                 >
-                  <Text style={styles.saveButtonText}>Add</Text>
+                  <Text style={styles.saveButtonText}>Invite</Text>
                 </TouchableOpacity>
               </View>
             </View>
