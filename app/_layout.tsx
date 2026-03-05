@@ -61,40 +61,66 @@ function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: 
 async function checkUserHasChurches(userId: string, userEmail: string | undefined, retryCount = 0): Promise<boolean> {
   console.log(`Checking churches for user (attempt ${retryCount + 1}):`, userId, userEmail);
   
-  // Check if user is admin of any church
-  const adminChurchesResult = await supabase
-    .from('churches')
-    .select('id')
-    .eq('admin_id', userId)
-    .limit(1);
+  try {
+    // Check if user is admin of any church
+    const adminChurchesResult = await supabase
+      .from('churches')
+      .select('id')
+      .eq('admin_id', userId)
+      .limit(1);
 
-  console.log('Admin churches query result:', adminChurchesResult);
+    console.log('Admin churches query result:', adminChurchesResult);
 
-  // Check if user is a member of any church (by member_id, not email)
-  const memberChurchesResult = await supabase
-    .from('church_members')
-    .select('church_id')
-    .eq('member_id', userId)
-    .limit(1);
+    // Handle RLS errors specifically
+    if (adminChurchesResult.error) {
+      if (adminChurchesResult.error.code === '42P17') {
+        console.error('RLS infinite recursion error detected - database policies need to be fixed');
+        // Return false to send user to onboarding where they can see the error
+        return false;
+      }
+      console.error('Error checking admin churches:', adminChurchesResult.error);
+    }
 
-  console.log('Member churches query result:', memberChurchesResult);
+    // Check if user is a member of any church (by member_id, not email)
+    const memberChurchesResult = await supabase
+      .from('church_members')
+      .select('church_id')
+      .eq('member_id', userId)
+      .limit(1);
 
-  const hasAdminChurches = adminChurchesResult.data ? adminChurchesResult.data.length > 0 : false;
-  const hasMemberChurches = memberChurchesResult.data ? memberChurchesResult.data.length > 0 : false;
-  const hasChurches = hasAdminChurches || hasMemberChurches;
-  
-  console.log('User has admin churches:', hasAdminChurches);
-  console.log('User has member churches:', hasMemberChurches);
-  console.log('User has churches (total):', hasChurches);
-  
-  // If no churches found and we haven't retried too many times, retry after a delay
-  if (!hasChurches && retryCount < 3) {
-    console.log(`No churches found, retrying in ${(retryCount + 1) * 500}ms...`);
-    await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 500));
-    return checkUserHasChurches(userId, userEmail, retryCount + 1);
+    console.log('Member churches query result:', memberChurchesResult);
+
+    // Handle RLS errors specifically
+    if (memberChurchesResult.error) {
+      if (memberChurchesResult.error.code === '42P17') {
+        console.error('RLS infinite recursion error detected - database policies need to be fixed');
+        // Return false to send user to onboarding where they can see the error
+        return false;
+      }
+      console.error('Error checking member churches:', memberChurchesResult.error);
+    }
+
+    const hasAdminChurches = adminChurchesResult.data ? adminChurchesResult.data.length > 0 : false;
+    const hasMemberChurches = memberChurchesResult.data ? memberChurchesResult.data.length > 0 : false;
+    const hasChurches = hasAdminChurches || hasMemberChurches;
+    
+    console.log('User has admin churches:', hasAdminChurches);
+    console.log('User has member churches:', hasMemberChurches);
+    console.log('User has churches (total):', hasChurches);
+    
+    // If no churches found and we haven't retried too many times, retry after a delay
+    // Only retry if there were no errors (errors indicate a real problem, not just timing)
+    if (!hasChurches && retryCount < 3 && !adminChurchesResult.error && !memberChurchesResult.error) {
+      console.log(`No churches found, retrying in ${(retryCount + 1) * 500}ms...`);
+      await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 500));
+      return checkUserHasChurches(userId, userEmail, retryCount + 1);
+    }
+    
+    return hasChurches;
+  } catch (error) {
+    console.error('Unexpected error in checkUserHasChurches:', error);
+    return false;
   }
-  
-  return hasChurches;
 }
 
 export default function RootLayout() {
