@@ -21,6 +21,7 @@ import { useServices } from '@/hooks/useServices';
 import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import Constants from 'expo-constants';
 
 // Configure notification handler
 Notifications.setNotificationHandler({
@@ -44,7 +45,7 @@ interface SpecialService {
 // This avoids timezone shifts when displaying dates
 const createLocalDate = (dateString: string): Date => {
   if (!dateString || typeof dateString !== 'string') {
-    console.error('[InternalBytecode.js:1] createLocalDate received invalid dateString:', dateString);
+    console.error('createLocalDate received invalid dateString:', dateString);
     return new Date(NaN);
   }
 
@@ -53,7 +54,7 @@ const createLocalDate = (dateString: string): Date => {
   const parts = datePart.split('-');
   
   if (parts.length !== 3) {
-    console.error('[InternalBytecode.js:1] createLocalDate: Invalid date format:', dateString);
+    console.error('createLocalDate: Invalid date format:', dateString);
     return new Date(NaN);
   }
 
@@ -62,7 +63,7 @@ const createLocalDate = (dateString: string): Date => {
   const day = parseInt(parts[2], 10);
 
   if (isNaN(year) || isNaN(month) || isNaN(day)) {
-    console.error('[InternalBytecode.js:1] createLocalDate: Failed to parse date parts:', { dateString, datePart, year, month, day });
+    console.error('createLocalDate: Failed to parse date parts:', { dateString, datePart, year, month, day });
     return new Date(NaN);
   }
 
@@ -394,7 +395,7 @@ export default function HomeScreen() {
 
     const registerForPushNotifications = async () => {
       try {
-        console.log('[InternalBytecode.js:1] Registering for push notifications...');
+        console.log('Registering for push notifications...');
         
         // Request permissions
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -406,28 +407,35 @@ export default function HomeScreen() {
         }
         
         if (finalStatus !== 'granted') {
-          console.log('[InternalBytecode.js:1] Push notification permissions not granted');
+          console.log('Push notification permissions not granted');
           return;
         }
 
+        // Get the project ID from app.json via Constants
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId || 
+                         Constants.manifest?.extra?.eas?.projectId ||
+                         Constants.manifest2?.extra?.eas?.projectId;
+
+        console.log('Expo project ID:', projectId);
+
         // Get the Expo push token
         const tokenData = await Notifications.getExpoPushTokenAsync({
-          projectId: 'your-project-id', // Replace with your actual project ID from app.json
+          projectId: projectId,
         });
         
         const token = tokenData.data;
-        console.log('[InternalBytecode.js:1] Got Expo push token:', token);
+        console.log('Got Expo push token:', token);
 
         // Register the token with the backend
         const success = await registerPushToken(currentMember.id, token, Platform.OS);
         
         if (success) {
-          console.log('[InternalBytecode.js:1] Push token registered successfully');
+          console.log('Push token registered successfully');
         } else {
-          console.error('[InternalBytecode.js:1] Failed to register push token');
+          console.error('Failed to register push token');
         }
       } catch (error) {
-        console.error('[InternalBytecode.js:1] Error registering for push notifications:', error);
+        console.error('Error registering for push notifications:', error);
       }
     };
 
@@ -437,16 +445,19 @@ export default function HomeScreen() {
   // Listen for incoming notifications
   useEffect(() => {
     const subscription = Notifications.addNotificationReceivedListener(notification => {
-      console.log('[InternalBytecode.js:1] Notification received:', notification);
+      console.log('Notification received:', notification);
     });
 
     const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('[InternalBytecode.js:1] Notification response:', response);
+      console.log('Notification response:', response);
       const data = response.notification.request.content.data;
       
       if (data.type === 'fill_in_request') {
         // Handle fill-in request notification tap
-        console.log('[InternalBytecode.js:1] User tapped fill-in request notification:', data.fillInRequestId);
+        console.log('User tapped fill-in request notification:', data.fillInRequestId);
+      } else if (data.type === 'service_reminder') {
+        // Handle service reminder notification tap
+        console.log('User tapped service reminder notification:', data.serviceId);
       }
     });
 
@@ -461,7 +472,7 @@ export default function HomeScreen() {
   // Refresh services when church changes
   useEffect(() => {
     if (currentChurch?.id) {
-      console.log('[InternalBytecode.js:1] Church changed, refreshing services');
+      console.log('Church changed, refreshing services');
       refreshServices();
     }
   }, [currentChurch?.id, refreshServices]);
@@ -499,7 +510,7 @@ export default function HomeScreen() {
     
     // Check if date is valid
     if (isNaN(serviceDate.getTime())) {
-      console.warn('[InternalBytecode.js:1] Skipping service with invalid date:', service.date);
+      console.warn('Skipping service with invalid date:', service.date);
       return false;
     }
     
@@ -510,7 +521,7 @@ export default function HomeScreen() {
     const isFutureOrToday = serviceDate >= today;
     
     // Log for debugging
-    console.log('[InternalBytecode.js:1] Filtering service:', {
+    console.log('Filtering service:', {
       name: service.service_type,
       date: service.date,
       serviceDate: serviceDate.toISOString(),
@@ -525,12 +536,12 @@ export default function HomeScreen() {
   const sortedRoles = [...churchRoles].sort((a, b) => a.display_order - b.display_order);
 
   // Log service counts for debugging
-  console.log('[InternalBytecode.js:1] Total services fetched:', services.length);
-  console.log('[InternalBytecode.js:1] Filtered services (future/current):', filteredServices.length);
-  console.log('[InternalBytecode.js:1] Current church ID:', currentChurch?.id);
+  console.log('Total services fetched:', services.length);
+  console.log('Filtered services (future/current):', filteredServices.length);
+  console.log('Current church ID:', currentChurch?.id);
 
   const onRefresh = useCallback(async () => {
-    console.log('[InternalBytecode.js:1] User pulled to refresh schedules');
+    console.log('User pulled to refresh schedules');
     setRefreshing(true);
     try {
       // Refresh both services and fill-in requests to ensure UI is up to date
@@ -538,16 +549,16 @@ export default function HomeScreen() {
         refreshServices(),
         refreshFillInRequests ? refreshFillInRequests() : Promise.resolve()
       ]);
-      console.log('[InternalBytecode.js:1] Refresh completed successfully');
+      console.log('Refresh completed successfully');
     } catch (error) {
-      console.error('[InternalBytecode.js:1] Error refreshing data:', error);
+      console.error('Error refreshing data:', error);
     } finally {
       setRefreshing(false);
     }
   }, [refreshServices, refreshFillInRequests]);
 
   const handleSaveService = async () => {
-    console.log('[InternalBytecode.js:1] User tapped save service button');
+    console.log('User tapped save service button');
     if (!currentChurch || !newServiceType) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
@@ -561,7 +572,7 @@ export default function HomeScreen() {
   };
 
   const handleDeleteService = async () => {
-    console.log('[InternalBytecode.js:1] User confirmed delete service');
+    console.log('User confirmed delete service');
     if (!serviceToDelete) return;
 
     const success = await deleteService(serviceToDelete);
@@ -576,20 +587,20 @@ export default function HomeScreen() {
   };
 
   const handleSaveAssignment = async () => {
-    console.log('[InternalBytecode.js:1] User tapped save assignment button');
+    console.log('User tapped save assignment button');
     // Implementation handled by useServices hook
     setEditServiceModalVisible(false);
     setSelectedService(null);
   };
 
   const handleSelectRecurringService = (recurringService: any) => {
-    console.log('[InternalBytecode.js:1] User selected recurring service:', recurringService.name);
+    console.log('User selected recurring service:', recurringService.name);
     setNewServiceType(recurringService.name);
     setShowRecurringServicePicker(false);
   };
 
   const handleAssignMember = async () => {
-    console.log('[InternalBytecode.js:1] User tapped assign member button');
+    console.log('User tapped assign member button');
     if (!selectedAssignment || !selectedMemberId) {
       Alert.alert('Error', 'Please select a member');
       return;
@@ -616,7 +627,7 @@ export default function HomeScreen() {
   };
 
   const handleDeleteAssignment = async () => {
-    console.log('[InternalBytecode.js:1] User confirmed delete assignment');
+    console.log('User confirmed delete assignment');
     if (!assignmentToDelete) return;
 
     // Clear the assignment by setting member_id to null and person_name to empty
@@ -672,26 +683,26 @@ export default function HomeScreen() {
   };
 
   const openDeleteServiceModal = (serviceId: string) => {
-    console.log('[InternalBytecode.js:1] User tapped delete service button');
+    console.log('User tapped delete service button');
     setServiceToDelete(serviceId);
     setDeleteServiceModalVisible(true);
   };
 
   const openDeleteAssignmentModal = (serviceId: string, assignmentId: string) => {
-    console.log('[InternalBytecode.js:1] User tapped delete assignment button');
+    console.log('User tapped delete assignment button');
     setAssignmentToDelete({ serviceId, assignmentId });
     setDeleteAssignmentModalVisible(true);
   };
 
   const openAssignMemberModal = (assignmentId: string) => {
-    console.log('[InternalBytecode.js:1] User tapped assign member button');
+    console.log('User tapped assign member button');
     setSelectedAssignment(assignmentId);
     setSelectedMemberId('');
     setAssignMemberModalVisible(true);
   };
 
   const openFillInRequestModal = (assignmentId: string, serviceId: string, roleName: string) => {
-    console.log('[InternalBytecode.js:1] User tapped request fill-in button');
+    console.log('User tapped request fill-in button');
     setFillInAssignmentId(assignmentId);
     setFillInServiceId(serviceId);
     setFillInRoleName(roleName);
@@ -699,13 +710,13 @@ export default function HomeScreen() {
   };
 
   const handleCreateFillInRequest = async () => {
-    console.log('[InternalBytecode.js:1] User submitted fill-in request');
+    console.log('User submitted fill-in request');
     if (!currentChurch || !currentMember || !fillInAssignmentId) {
       Alert.alert('Error', 'Missing required information');
       return;
     }
 
-    console.log('[InternalBytecode.js:1] Creating fill-in request:', {
+    console.log('Creating fill-in request:', {
       assignmentId: fillInAssignmentId,
       serviceId: fillInServiceId,
       roleName: fillInRoleName,
@@ -721,7 +732,7 @@ export default function HomeScreen() {
     );
 
     if (result) {
-      Alert.alert('Success', 'Fill-in request created successfully');
+      Alert.alert('Success', 'Fill-in request created successfully. Members with the same role will be notified.');
       setFillInRequestModalVisible(false);
       setFillInReason('');
       setFillInAssignmentId('');
@@ -733,7 +744,7 @@ export default function HomeScreen() {
   };
 
   const handleAcceptFillInRequest = async (requestId: string, assignmentId: string) => {
-    console.log('[InternalBytecode.js:1] User accepted fill-in request');
+    console.log('User accepted fill-in request');
     if (!currentChurch || !currentMember) return;
 
     const success = await acceptFillInRequest(requestId, currentMember.id, currentChurch.id);
@@ -748,7 +759,7 @@ export default function HomeScreen() {
   };
 
   const handleCancelFillInRequest = async (requestId: string) => {
-    console.log('[InternalBytecode.js:1] User cancelled fill-in request');
+    console.log('User cancelled fill-in request');
     if (!currentChurch) return;
 
     const success = await cancelFillInRequest(requestId, currentChurch.id);

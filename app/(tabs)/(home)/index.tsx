@@ -8,6 +8,7 @@ import { Stack } from 'expo-router';
 import { useServices } from '@/hooks/useServices';
 import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
+import Constants from 'expo-constants';
 import {
   StyleSheet,
   View,
@@ -372,9 +373,16 @@ export default function HomeScreen() {
           return;
         }
 
+        // Get the project ID from app.json via Constants
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId || 
+                         Constants.manifest?.extra?.eas?.projectId ||
+                         Constants.manifest2?.extra?.eas?.projectId;
+
+        console.log('Expo project ID:', projectId);
+
         // Get the Expo push token
         const tokenData = await Notifications.getExpoPushTokenAsync({
-          projectId: 'your-project-id', // Replace with your actual project ID from app.json
+          projectId: projectId,
         });
         
         const token = tokenData.data;
@@ -409,6 +417,9 @@ export default function HomeScreen() {
       if (data.type === 'fill_in_request') {
         // Handle fill-in request notification tap
         console.log('User tapped fill-in request notification:', data.fillInRequestId);
+      } else if (data.type === 'service_reminder') {
+        // Handle service reminder notification tap
+        console.log('User tapped service reminder notification:', data.serviceId);
       }
     });
 
@@ -683,7 +694,7 @@ export default function HomeScreen() {
     );
 
     if (result) {
-      Alert.alert('Success', 'Fill-in request created successfully');
+      Alert.alert('Success', 'Fill-in request created successfully. Members with the same role will be notified.');
       setFillInRequestModalVisible(false);
       setFillInReason('');
       setFillInAssignmentId('');
