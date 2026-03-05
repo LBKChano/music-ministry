@@ -335,6 +335,7 @@ export default function HomeScreen() {
   const [specialServiceNotes, setSpecialServiceNotes] = useState('');
   const [specialServiceRoles, setSpecialServiceRoles] = useState<string[]>([]);
   const [showSpecialServiceTimePicker, setShowSpecialServiceTimePicker] = useState(false);
+  const [showSpecialServiceDatePicker, setShowSpecialServiceDatePicker] = useState(false);
 
   const handleSaveService = async () => {
     if (!currentChurch || !serviceType.trim()) {
@@ -471,7 +472,7 @@ export default function HomeScreen() {
   };
 
   const handlePrepareQuarter = async () => {
-    if (!currentChurch) {
+    if (!currentChurch?.id) {
       Alert.alert('Error', 'No church selected. Please ensure your account is linked to a church.');
       return;
     }
@@ -479,19 +480,29 @@ export default function HomeScreen() {
     console.log('User tapped Prepare Quarter button for church:', currentChurch.id);
     const generatedServices = generateQuarterServices();
 
+    // Generate recurring services
     for (const { date, template } of generatedServices) {
       const dateString = date.toISOString().split('T')[0];
-      await createServiceFromTemplate(currentChurch.id, dateString, template.name, template.notes, template.roles);
+      await createServiceFromTemplate(currentChurch.id, dateString, template.name, template.notes, template.roles, template.time);
     }
 
+    // Generate special services - convert role IDs to role names
     for (const special of specialServices) {
       const dateString = special.date.toISOString().split('T')[0];
-      await createServiceFromTemplate(currentChurch.id, dateString, special.name, special.notes, special.selectedRoleIds);
+      
+      // Convert role IDs to role names
+      const roleNames = special.selectedRoleIds
+        .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
+        .filter((name): name is string => name !== undefined);
+      
+      console.log('Creating special service with roles:', { name: special.name, roleNames });
+      await createServiceFromTemplate(currentChurch.id, dateString, special.name, special.notes, roleNames, special.time);
     }
 
     setShowPrepareQuarterModal(false);
     setBlockedServices(new Set());
     setSpecialServices([]);
+    Alert.alert('Success', 'Quarter services generated successfully!');
   };
 
   const handleAutoAssign = async () => {
@@ -533,6 +544,7 @@ export default function HomeScreen() {
     }
 
     console.log('Auto-assignment completed');
+    Alert.alert('Success', 'Auto-assignment completed!');
   };
 
   const toggleBlockService = (serviceKey: string) => {
@@ -562,7 +574,12 @@ export default function HomeScreen() {
       return;
     }
 
-    console.log('User added special service');
+    if (specialServiceRoles.length === 0) {
+      Alert.alert('Error', 'Please select at least one role for this service');
+      return;
+    }
+
+    console.log('User added special service with roles:', specialServiceRoles);
     const newSpecialService: SpecialService = {
       id: `special-${Date.now()}`,
       name: specialServiceName,
@@ -924,19 +941,19 @@ export default function HomeScreen() {
 
             <TouchableOpacity
               style={styles.dateButton}
-              onPress={() => setShowDatePicker(true)}
+              onPress={() => setShowSpecialServiceDatePicker(true)}
             >
               <Text style={styles.dateButtonText}>
                 Date: {formatDate(specialServiceDate.toISOString())}
               </Text>
             </TouchableOpacity>
-            {showDatePicker && (
+            {showSpecialServiceDatePicker && (
               <DateTimePicker
                 value={specialServiceDate}
                 mode="date"
                 display="default"
                 onChange={(event, date) => {
-                  setShowDatePicker(false);
+                  setShowSpecialServiceDatePicker(false);
                   if (date) setSpecialServiceDate(date);
                 }}
               />

@@ -71,20 +71,21 @@ export function useServices(churchId: string | null) {
     }
   }, [churchId]);
 
-  // Create a new service with role slots from recurring service template
+  // Create a new service with role slots from recurring service template or special service
   const createServiceFromTemplate = useCallback(async (
     serviceChurchId: string,
     date: string,
     serviceType: string,
     notes: string | undefined,
-    roleSlots: string[]
+    roleSlots: string[], // Array of role names (strings)
+    time?: string // Optional time for special services
   ) => {
     if (!serviceChurchId) {
       console.error('No church ID provided');
       return null;
     }
 
-    console.log('Creating service from template:', { churchId: serviceChurchId, date, serviceType, notes, roleSlots });
+    console.log('Creating service from template:', { churchId: serviceChurchId, date, serviceType, notes, roleSlots, time });
     try {
       setError(null);
 
@@ -93,6 +94,7 @@ export function useServices(churchId: string | null) {
         date,
         service_type: serviceType,
         notes: notes || null,
+        time: time || null,
       };
 
       const { data: serviceData, error: insertError } = await supabase
