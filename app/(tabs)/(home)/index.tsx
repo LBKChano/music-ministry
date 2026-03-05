@@ -417,11 +417,26 @@ export default function HomeScreen() {
     const serviceDate = new Date(service.date);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    
+    // Log for debugging
+    console.log('Filtering service:', {
+      name: service.service_type,
+      date: service.date,
+      serviceDate: serviceDate.toISOString(),
+      today: today.toISOString(),
+      willShow: serviceDate >= today
+    });
+    
     return serviceDate >= today;
   });
 
   // Sort roles by display_order
   const sortedRoles = [...churchRoles].sort((a, b) => a.display_order - b.display_order);
+
+  // Log service counts for debugging
+  console.log('Total services fetched:', services.length);
+  console.log('Filtered services (future/current):', filteredServices.length);
+  console.log('Current church ID:', currentChurch?.id);
 
   const onRefresh = useCallback(async () => {
     console.log('User pulled to refresh schedules');

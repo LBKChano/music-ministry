@@ -92,6 +92,8 @@ export function useServices(churchId: string | null) {
         newService.time = time;
       }
 
+      console.log('Inserting service into database:', newService);
+
       const { data: serviceData, error: insertError } = await supabase
         .from('services')
         .insert(newService)
@@ -105,6 +107,7 @@ export function useServices(churchId: string | null) {
       }
 
       console.log('Service created successfully:', serviceData);
+      console.log('Service ID:', serviceData.id, 'Date:', serviceData.date, 'Type:', serviceData.service_type);
 
       // Create empty assignment slots for each role
       if (roleSlots && roleSlots.length > 0) {
@@ -383,8 +386,12 @@ export function useServices(churchId: string | null) {
           filter: `church_id=eq.${churchId}`,
         },
         (payload) => {
-          console.log('Services realtime update:', payload.eventType, payload.new);
+          console.log('Services realtime update:', payload.eventType);
+          if (payload.new) {
+            console.log('New/updated service:', payload.new);
+          }
           // Refetch services to get updated data with assignments
+          console.log('Refetching services due to realtime update...');
           fetchServices();
         }
       )
