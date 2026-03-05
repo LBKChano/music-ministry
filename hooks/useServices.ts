@@ -73,22 +73,23 @@ export function useServices(churchId: string | null) {
 
   // Create a new service with role slots from recurring service template
   const createServiceFromTemplate = useCallback(async (
+    serviceChurchId: string,
     date: string,
     serviceType: string,
     notes: string | undefined,
     roleSlots: string[]
   ) => {
-    if (!churchId) {
-      console.error('No church selected');
+    if (!serviceChurchId) {
+      console.error('No church ID provided');
       return null;
     }
 
-    console.log('Creating service from template:', { date, serviceType, notes, roleSlots });
+    console.log('Creating service from template:', { churchId: serviceChurchId, date, serviceType, notes, roleSlots });
     try {
       setError(null);
 
       const newService: TablesInsert<'services'> = {
-        church_id: churchId,
+        church_id: serviceChurchId,
         date,
         service_type: serviceType,
         notes: notes || null,
@@ -135,21 +136,21 @@ export function useServices(churchId: string | null) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  }, [churchId, fetchServices]);
+  }, [fetchServices]);
 
   // Create a new service (custom, without template)
-  const createService = useCallback(async (date: string, serviceType: string, notes?: string) => {
-    if (!churchId) {
-      console.error('No church selected');
+  const createService = useCallback(async (serviceChurchId: string, date: string, serviceType: string, notes?: string) => {
+    if (!serviceChurchId) {
+      console.error('No church ID provided');
       return null;
     }
 
-    console.log('Creating custom service:', { date, serviceType, notes });
+    console.log('Creating custom service:', { churchId: serviceChurchId, date, serviceType, notes });
     try {
       setError(null);
 
       const newService: TablesInsert<'services'> = {
-        church_id: churchId,
+        church_id: serviceChurchId,
         date,
         service_type: serviceType,
         notes: notes || null,
@@ -175,7 +176,7 @@ export function useServices(churchId: string | null) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  }, [churchId, fetchServices]);
+  }, [fetchServices]);
 
   // Delete a service
   const deleteService = useCallback(async (serviceId: string) => {

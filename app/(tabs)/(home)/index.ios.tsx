@@ -13,6 +13,7 @@ import {
   Modal,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '@react-navigation/native';
@@ -276,12 +277,35 @@ const styles = StyleSheet.create({
   checkboxChecked: {
     backgroundColor: colors.primary,
   },
+  roleItem: {
+    backgroundColor: colors.inputBackground,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  roleItemText: {
+    fontSize: 14,
+    color: colors.text,
+    flex: 1,
+  },
 });
+
+interface SpecialService {
+  id: string;
+  name: string;
+  date: Date;
+  time: string;
+  notes: string;
+  selectedRoleIds: string[];
+}
 
 export default function HomeScreen() {
   const { services, loading, createServiceFromTemplate, deleteService, addAssignment, updateAssignment, deleteAssignment } = useServices(null);
   const { colors: themeColors } = useTheme();
-  const { currentChurch, members, recurringServices } = useChurch();
+  const { currentChurch, members, recurringServices, churchRoles } = useChurch();
 
   const [showAddServiceModal, setShowAddServiceModal] = useState(false);
   const [showRecurringServicePicker, setShowRecurringServicePicker] = useState(false);
@@ -303,11 +327,14 @@ export default function HomeScreen() {
   const [selectedQuarter, setSelectedQuarter] = useState<number>(1);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [blockedServices, setBlockedServices] = useState<Set<string>>(new Set());
-  const [specialServices, setSpecialServices] = useState<Array<{ date: Date; type: string; notes: string }>>([]);
+  const [specialServices, setSpecialServices] = useState<SpecialService[]>([]);
   const [showAddSpecialService, setShowAddSpecialService] = useState(false);
   const [specialServiceDate, setSpecialServiceDate] = useState(new Date());
-  const [specialServiceType, setSpecialServiceType] = useState('');
+  const [specialServiceName, setSpecialServiceName] = useState('');
+  const [specialServiceTime, setSpecialServiceTime] = useState('10:00');
   const [specialServiceNotes, setSpecialServiceNotes] = useState('');
+  const [specialServiceRoles, setSpecialServiceRoles] = useState<string[]>([]);
+  const [showSpecialServiceTimePicker, setShowSpecialServiceTimePicker] = useState(false);
 
   const handleSaveService = async () => {
     if (!currentChurch || !serviceType.trim()) {
@@ -317,7 +344,7 @@ export default function HomeScreen() {
 
     console.log('User tapped Save Service button');
     const dateString = selectedDate.toISOString().split('T')[0];
-    await createServiceFromTemplate(dateString, serviceType, serviceNotes, []);
+    await createServiceFromTemplate(currentChurch.id, dateString, serviceType, serviceNotes, []);
     setShowAddServiceModal(false);
     setServiceType('');
     setServiceNotes('');
@@ -351,7 +378,7 @@ export default function HomeScreen() {
 
     console.log('User selected recurring service template:', recurringService.name);
     const dateString = selectedDate.toISOString().split('T')[0];
-    await createServiceFromTemplate(dateString, recurringService.name, recurringService.notes, recurringService.roles);
+    await createServiceFromTemplate(currentChurch.id, dateString, recurringService.name, recurringService.notes, recurringService.roles);
     setShowRecurringServicePicker(false);
     setShowAddServiceModal(false);
   };
@@ -444,19 +471,22 @@ export default function HomeScreen() {
   };
 
   const handlePrepareQuarter = async () => {
-    if (!currentChurch) return;
+    if (!currentChurch) {
+      Alert.alert('Error', 'No church selected. Please ensure your account is linked to a church.');
+      return;
+    }
 
-    console.log('User tapped Prepare Quarter button');
+    console.log('User tapped Prepare Quarter button for church:', currentChurch.id);
     const generatedServices = generateQuarterServices();
 
     for (const { date, template } of generatedServices) {
       const dateString = date.toISOString().split('T')[0];
-      await createServiceFromTemplate(dateString, template.name, template.notes, template.roles);
+      await createServiceFromTemplate(currentChurch.id, dateString, template.name, template.notes, template.roles);
     }
 
     for (const special of specialServices) {
       const dateString = special.date.toISOString().split('T')[0];
-      await createServiceFromTemplate(dateString, special.type, special.notes, []);
+      await createServiceFromTemplate(currentChurch.id, dateString, special.name, special.notes, special.selectedRoleIds);
     }
 
     setShowPrepareQuarterModal(false);
@@ -515,18 +545,39 @@ export default function HomeScreen() {
     setBlockedServices(newBlocked);
   };
 
+  const toggleSpecialServiceRole = (roleId: string) => {
+    const newRoles = [...specialServiceRoles];
+    const index = newRoles.indexOf(roleId);
+    if (index > -1) {
+      newRoles.splice(index, 1);
+    } else {
+      newRoles.push(roleId);
+    }
+    setSpecialServiceRoles(newRoles);
+  };
+
   const handleAddSpecialService = () => {
-    if (!specialServiceType.trim()) return;
+    if (!specialServiceName.trim()) {
+      Alert.alert('Error', 'Please enter a service name');
+      return;
+    }
 
     console.log('User added special service');
-    setSpecialServices([...specialServices, {
+    const newSpecialService: SpecialService = {
+      id: `special-${Date.now()}`,
+      name: specialServiceName,
       date: specialServiceDate,
-      type: specialServiceType,
+      time: specialServiceTime,
       notes: specialServiceNotes,
-    }]);
+      selectedRoleIds: specialServiceRoles,
+    };
+
+    setSpecialServices([...specialServices, newSpecialService]);
     setShowAddSpecialService(false);
-    setSpecialServiceType('');
+    setSpecialServiceName('');
+    setSpecialServiceTime('10:00');
     setSpecialServiceNotes('');
+    setSpecialServiceRoles([]);
     setSpecialServiceDate(new Date());
   };
 
@@ -740,7 +791,7 @@ export default function HomeScreen() {
 
       <Modal visible={showPrepareQuarterModal} animationType="slide" transparent>
         <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
+          <ScrollView style={styles.modalContent}>
             <Text style={styles.modalTitle}>Prepare Quarter</Text>
             
             <Text style={styles.sectionTitle}>Select Quarter</Text>
@@ -811,16 +862,26 @@ export default function HomeScreen() {
             </ScrollView>
 
             <Text style={styles.sectionTitle}>Special Services</Text>
-            {specialServices.map((special, index) => {
+            {specialServices.map((special) => {
               const dateText = formatDate(special.date.toISOString());
+              const roleNames = special.selectedRoleIds
+                .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
+                .filter(Boolean)
+                .join(', ');
               return (
-                <View key={index} style={styles.blockServiceItem}>
-                  <Text style={styles.blockServiceText}>
-                    {special.type} - {dateText}
-                  </Text>
+                <View key={special.id} style={styles.blockServiceItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.blockServiceText}>
+                      {special.name} - {dateText} at {special.time}
+                    </Text>
+                    {roleNames && (
+                      <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>
+                        Roles: {roleNames}
+                      </Text>
+                    )}
+                  </View>
                   <TouchableOpacity onPress={() => {
-                    const newSpecial = [...specialServices];
-                    newSpecial.splice(index, 1);
+                    const newSpecial = specialServices.filter(s => s.id !== special.id);
                     setSpecialServices(newSpecial);
                   }}>
                     <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color={colors.error} />
@@ -844,20 +905,29 @@ export default function HomeScreen() {
             <TouchableOpacity style={styles.cancelButton} onPress={() => setShowPrepareQuarterModal(false)}>
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
 
       <Modal visible={showAddSpecialService} animationType="slide" transparent>
         <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
+          <ScrollView style={styles.modalContent}>
             <Text style={styles.modalTitle}>Add Special Service</Text>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Service Name (e.g., Christmas Eve)"
+              placeholderTextColor={colors.textSecondary}
+              value={specialServiceName}
+              onChangeText={setSpecialServiceName}
+            />
+
             <TouchableOpacity
               style={styles.dateButton}
               onPress={() => setShowDatePicker(true)}
             >
               <Text style={styles.dateButtonText}>
-                {formatDate(specialServiceDate.toISOString())}
+                Date: {formatDate(specialServiceDate.toISOString())}
               </Text>
             </TouchableOpacity>
             {showDatePicker && (
@@ -871,27 +941,68 @@ export default function HomeScreen() {
                 }}
               />
             )}
-            <TextInput
-              style={styles.input}
-              placeholder="Service Type"
-              placeholderTextColor={colors.textSecondary}
-              value={specialServiceType}
-              onChangeText={setSpecialServiceType}
-            />
+
+            <TouchableOpacity
+              style={styles.dateButton}
+              onPress={() => setShowSpecialServiceTimePicker(true)}
+            >
+              <Text style={styles.dateButtonText}>
+                Time: {specialServiceTime}
+              </Text>
+            </TouchableOpacity>
+            {showSpecialServiceTimePicker && (
+              <DateTimePicker
+                value={new Date(`2000-01-01T${specialServiceTime}:00`)}
+                mode="time"
+                display="default"
+                onChange={(event, date) => {
+                  setShowSpecialServiceTimePicker(false);
+                  if (date) {
+                    const hours = date.getHours().toString().padStart(2, '0');
+                    const minutes = date.getMinutes().toString().padStart(2, '0');
+                    setSpecialServiceTime(`${hours}:${minutes}`);
+                  }
+                }}
+              />
+            )}
+
+            <Text style={styles.sectionTitle}>Select Roles</Text>
+            <ScrollView style={{ maxHeight: 200 }}>
+              {churchRoles.map(role => {
+                const isSelected = specialServiceRoles.includes(role.id);
+                return (
+                  <TouchableOpacity
+                    key={role.id}
+                    style={styles.roleItem}
+                    onPress={() => toggleSpecialServiceRole(role.id)}
+                  >
+                    <Text style={styles.roleItemText}>{role.name}</Text>
+                    <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
+                      {isSelected && (
+                        <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
             <TextInput
               style={styles.input}
               placeholder="Notes (optional)"
               placeholderTextColor={colors.textSecondary}
               value={specialServiceNotes}
               onChangeText={setSpecialServiceNotes}
+              multiline
             />
+
             <TouchableOpacity style={styles.button} onPress={handleAddSpecialService}>
               <Text style={styles.buttonText}>Add Service</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.cancelButton} onPress={() => setShowAddSpecialService(false)}>
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
