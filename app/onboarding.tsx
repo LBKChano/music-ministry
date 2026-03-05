@@ -364,7 +364,7 @@ export default function OnboardingScreen() {
   };
 
   const welcomeTitle = 'Welcome to Music Ministry';
-  const welcomeSubtitle = 'Organize your church services and team assignments';
+  const welcomeSubtitle = 'Streamline your worship team scheduling with smart assignments, role management, and automated reminders for every service';
   const createChurchButton = 'Create Church & Admin Account';
   const loginAsAdminButton = 'Login as Admin';
   const loginAsMemberButton = 'Login as Member';
@@ -874,6 +874,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 40,
+    lineHeight: 24,
+    paddingHorizontal: 8,
   },
   formContainer: {
     width: '100%',
