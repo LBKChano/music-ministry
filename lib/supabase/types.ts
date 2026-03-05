@@ -337,6 +337,41 @@ export type Database = {
           },
         ]
       }
+      notification_settings: {
+        Row: {
+          id: string
+          church_id: string
+          notification_hours: number[]
+          enabled: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          church_id: string
+          notification_hours?: number[]
+          enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          church_id?: string
+          notification_hours?: number[]
+          enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_settings_church_id_fkey"
+            columns: ["church_id"]
+            isOneToOne: true
+            referencedRelation: "churches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

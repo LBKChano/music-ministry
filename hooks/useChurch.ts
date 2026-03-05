@@ -12,6 +12,7 @@ type ChurchRole = Tables<'church_roles'>;
 type RecurringServiceRole = Tables<'recurring_service_roles'>;
 type MemberUnavailability = Tables<'member_unavailability'>;
 type MemberRole = Tables<'member_roles'>;
+type NotificationSettings = Tables<'notification_settings'>;
 
 export interface RecurringServiceWithRoles extends RecurringService {
   roles: string[];
@@ -27,6 +28,7 @@ export function useChurch() {
   const [members, setMembers] = useState<ChurchMemberWithRoles[]>([]);
   const [recurringServices, setRecurringServices] = useState<RecurringServiceWithRoles[]>([]);
   const [churchRoles, setChurchRoles] = useState<ChurchRole[]>([]);
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
@@ -518,6 +520,92 @@ export function useChurch() {
     }
   }, []);
 
+  // Fetch notification settings for a specific church
+  const fetchNotificationSettings = useCallback(async (churchId: string) => {
+    console.log('Fetching notification settings for church:', churchId);
+    try {
+      setError(null);
+
+      const { data, error: fetchError } = await supabase
+        .from('notification_settings')
+        .select('*')
+        .eq('church_id', churchId)
+        .maybeSingle();
+
+      if (fetchError) {
+        console.error('Error fetching notification settings:', fetchError);
+        setError(fetchError.message);
+        setNotificationSettings(null);
+        return;
+      }
+
+      console.log('Fetched notification settings:', data);
+      setNotificationSettings(data);
+    } catch (err) {
+      console.error('Error in fetchNotificationSettings:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      setNotificationSettings(null);
+    }
+  }, []);
+
+  // Update or create notification settings
+  const updateNotificationSettings = useCallback(async (churchId: string, notificationHours: number[], enabled: boolean) => {
+    console.log('Updating notification settings:', { churchId, notificationHours, enabled });
+    try {
+      setError(null);
+
+      // Check if settings already exist
+      const { data: existing } = await supabase
+        .from('notification_settings')
+        .select('id')
+        .eq('church_id', churchId)
+        .maybeSingle();
+
+      if (existing) {
+        // Update existing settings
+        const { error: updateError } = await supabase
+          .from('notification_settings')
+          .update({
+            notification_hours: notificationHours,
+            enabled,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('church_id', churchId);
+
+        if (updateError) {
+          console.error('Error updating notification settings:', updateError);
+          setError(updateError.message);
+          return false;
+        }
+      } else {
+        // Create new settings
+        const newSettings: TablesInsert<'notification_settings'> = {
+          church_id: churchId,
+          notification_hours: notificationHours,
+          enabled,
+        };
+
+        const { error: insertError } = await supabase
+          .from('notification_settings')
+          .insert(newSettings);
+
+        if (insertError) {
+          console.error('Error creating notification settings:', insertError);
+          setError(insertError.message);
+          return false;
+        }
+      }
+
+      console.log('Notification settings updated successfully');
+      await fetchNotificationSettings(churchId);
+      return true;
+    } catch (err) {
+      console.error('Error in updateNotificationSettings:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, [fetchNotificationSettings]);
+
   // Add a recurring service
   const addRecurringService = useCallback(async (churchId: string, name: string, dayOfWeek: number, time: string, notes?: string, roles?: string[]) => {
     console.log('Adding recurring service:', { churchId, name, dayOfWeek, time, notes, roles });
@@ -957,6 +1045,7 @@ export function useChurch() {
       setRecurringServices([]);
       setChurchRoles([]);
       setCurrentMember(null);
+      setNotificationSettings(null);
       setUser(null);
     } catch (err) {
       console.error('Error in signOut:', err);
@@ -970,13 +1059,15 @@ export function useChurch() {
       fetchRecurringServices(currentChurch.id);
       fetchChurchRoles(currentChurch.id);
       fetchCurrentMember(currentChurch.id);
+      fetchNotificationSettings(currentChurch.id);
     } else {
       setMembers([]);
       setRecurringServices([]);
       setChurchRoles([]);
       setCurrentMember(null);
+      setNotificationSettings(null);
     }
-  }, [currentChurch, fetchMembers, fetchRecurringServices, fetchChurchRoles, fetchCurrentMember]);
+  }, [currentChurch, fetchMembers, fetchRecurringServices, fetchChurchRoles, fetchCurrentMember, fetchNotificationSettings]);
 
   return {
     churches,
@@ -985,6 +1076,7 @@ export function useChurch() {
     members,
     recurringServices,
     churchRoles,
+    notificationSettings,
     loading,
     error,
     user,
@@ -1004,11 +1096,14 @@ export function useChurch() {
     fetchMemberUnavailability,
     addMemberUnavailability,
     removeMemberUnavailability,
+    fetchNotificationSettings,
+    updateNotificationSettings,
     signOut,
     refreshChurches: fetchChurches,
     refreshMembers: useCallback(() => currentChurch && fetchMembers(currentChurch.id), [currentChurch, fetchMembers]),
     refreshRecurringServices: useCallback(() => currentChurch && fetchRecurringServices(currentChurch.id), [currentChurch, fetchRecurringServices]),
     refreshChurchRoles: useCallback(() => currentChurch && fetchChurchRoles(currentChurch.id), [currentChurch, fetchChurchRoles]),
     refreshCurrentMember: useCallback(() => currentChurch && fetchCurrentMember(currentChurch.id), [currentChurch, fetchCurrentMember]),
+    refreshNotificationSettings: useCallback(() => currentChurch && fetchNotificationSettings(currentChurch.id), [currentChurch, fetchNotificationSettings]),
   };
 }

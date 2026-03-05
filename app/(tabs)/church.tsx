@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
+  Switch,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -42,6 +43,7 @@ export default function ChurchScreen() {
     members,
     recurringServices,
     churchRoles,
+    notificationSettings,
     loading,
     error,
     user,
@@ -56,11 +58,12 @@ export default function ChurchScreen() {
     addMemberRole,
     removeMemberRole,
     fetchMemberUnavailability,
+    updateNotificationSettings,
   } = useChurch();
 
   const { services, batchUpdateAssignments, createServiceFromTemplate } = useServices(currentChurch?.id || null);
 
-  const [activeTab, setActiveTab] = useState<'members' | 'services' | 'roles'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'services' | 'roles' | 'notifications'>('members');
   const [isCreateChurchModalVisible, setCreateChurchModalVisible] = useState(false);
   const [isEditMemberModalVisible, setEditMemberModalVisible] = useState(false);
   const [isAddServiceModalVisible, setAddServiceModalVisible] = useState(false);
@@ -87,6 +90,14 @@ export default function ChurchScreen() {
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleDescription, setNewRoleDescription] = useState('');
 
+  // Notification settings states
+  const [notificationsEnabled, setNotificationsEnabled] = useState(notificationSettings?.enabled ?? true);
+  const [selectedNotificationHours, setSelectedNotificationHours] = useState<number[]>(
+    notificationSettings?.notification_hours ?? [24, 6]
+  );
+  const [customHourInput, setCustomHourInput] = useState('');
+  const [isSavingNotifications, setIsSavingNotifications] = useState(false);
+
   // Quarterly assignment states
   const [showPrepareQuarterModal, setShowPrepareQuarterModal] = useState(false);
   const [prepareQuarterStep, setPrepareQuarterStep] = useState<'block' | 'special'>('block');
@@ -103,6 +114,14 @@ export default function ChurchScreen() {
   const [showSpecialServiceTimePicker, setShowSpecialServiceTimePicker] = useState(false);
   const [showSpecialServiceDatePicker, setShowSpecialServiceDatePicker] = useState(false);
   const [isAutoAssigning, setIsAutoAssigning] = useState(false);
+
+  // Update notification states when settings change
+  React.useEffect(() => {
+    if (notificationSettings) {
+      setNotificationsEnabled(notificationSettings.enabled);
+      setSelectedNotificationHours(notificationSettings.notification_hours);
+    }
+  }, [notificationSettings]);
 
   const handleCreateChurch = async () => {
     console.log('User tapped Create Church button');
@@ -338,6 +357,71 @@ export default function ChurchScreen() {
       setSelectedServiceRoles(selectedServiceRoles.filter(r => r !== roleName));
     } else {
       setSelectedServiceRoles([...selectedServiceRoles, roleName]);
+    }
+  };
+
+  const toggleNotificationHour = (hour: number) => {
+    console.log('User toggled notification hour:', hour);
+    if (selectedNotificationHours.includes(hour)) {
+      setSelectedNotificationHours(selectedNotificationHours.filter(h => h !== hour));
+    } else {
+      setSelectedNotificationHours([...selectedNotificationHours, hour].sort((a, b) => b - a));
+    }
+  };
+
+  const addCustomNotificationHour = () => {
+    const hour = parseInt(customHourInput);
+    if (isNaN(hour) || hour < 1 || hour > 168) {
+      Alert.alert('Invalid Input', 'Please enter a number between 1 and 168 hours');
+      return;
+    }
+    
+    if (selectedNotificationHours.includes(hour)) {
+      Alert.alert('Already Added', 'This notification time is already in the list');
+      return;
+    }
+
+    console.log('User added custom notification hour:', hour);
+    setSelectedNotificationHours([...selectedNotificationHours, hour].sort((a, b) => b - a));
+    setCustomHourInput('');
+  };
+
+  const removeNotificationHour = (hour: number) => {
+    console.log('User removed notification hour:', hour);
+    setSelectedNotificationHours(selectedNotificationHours.filter(h => h !== hour));
+  };
+
+  const handleSaveNotificationSettings = async () => {
+    if (!currentChurch) {
+      Alert.alert('Error', 'No church selected');
+      return;
+    }
+
+    if (selectedNotificationHours.length === 0) {
+      Alert.alert('Error', 'Please select at least one notification time');
+      return;
+    }
+
+    console.log('User tapped Save Notification Settings button');
+    setIsSavingNotifications(true);
+
+    try {
+      const success = await updateNotificationSettings(
+        currentChurch.id,
+        selectedNotificationHours,
+        notificationsEnabled
+      );
+
+      if (success) {
+        Alert.alert('Success', 'Notification settings saved successfully!');
+      } else {
+        Alert.alert('Error', 'Failed to save notification settings');
+      }
+    } catch (err) {
+      console.error('Error saving notification settings:', err);
+      Alert.alert('Error', 'An error occurred while saving settings');
+    } finally {
+      setIsSavingNotifications(false);
     }
   };
 
@@ -870,6 +954,25 @@ export default function ChurchScreen() {
                   Roles
                 </Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.tab,
+                  activeTab === 'notifications' && [styles.activeTab, { borderBottomColor: colors.primary }],
+                ]}
+                onPress={() => {
+                  console.log('User switched to Notifications tab');
+                  setActiveTab('notifications');
+                }}
+              >
+                <Text
+                  style={[
+                    styles.tabText,
+                    { color: activeTab === 'notifications' ? colors.primary : colors.textSecondary },
+                  ]}
+                >
+                  Notifications
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {/* Members Tab */}
@@ -1146,6 +1249,155 @@ export default function ChurchScreen() {
                 )}
               </View>
             )}
+
+            {/* Notifications Tab */}
+            {activeTab === 'notifications' && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Notification Settings</Text>
+                </View>
+
+                <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 16 }]}>
+                  Configure when members receive reminders about their upcoming service assignments
+                </Text>
+
+                {/* Enable/Disable Notifications */}
+                <View style={[styles.notificationCard, { backgroundColor: colors.cardBackground }]}>
+                  <View style={styles.notificationRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.notificationLabel, { color: colors.text }]}>
+                        Enable Notifications
+                      </Text>
+                      <Text style={[styles.notificationSubtext, { color: colors.textSecondary }]}>
+                        Send reminders to members before their services
+                      </Text>
+                    </View>
+                    <Switch
+                      value={notificationsEnabled}
+                      onValueChange={(value) => {
+                        console.log('User toggled notifications:', value);
+                        setNotificationsEnabled(value);
+                      }}
+                      trackColor={{ false: '#767577', true: colors.primary }}
+                      thumbColor={notificationsEnabled ? '#fff' : '#f4f3f4'}
+                    />
+                  </View>
+                </View>
+
+                {/* Notification Times */}
+                <View style={[styles.notificationCard, { backgroundColor: colors.cardBackground, marginTop: 16 }]}>
+                  <Text style={[styles.notificationLabel, { color: colors.text, marginBottom: 12 }]}>
+                    Reminder Times
+                  </Text>
+                  <Text style={[styles.notificationSubtext, { color: colors.textSecondary, marginBottom: 16 }]}>
+                    Select when to send reminders before each service
+                  </Text>
+
+                  {/* Quick Select Options */}
+                  <View style={styles.quickSelectContainer}>
+                    {[1, 2, 6, 12, 24, 48, 72, 168].map((hour) => {
+                      const isSelected = selectedNotificationHours.includes(hour);
+                      const hourLabel = hour === 1 ? '1 hour' : hour < 24 ? `${hour} hours` : hour === 24 ? '1 day' : hour === 48 ? '2 days' : hour === 72 ? '3 days' : '1 week';
+                      return (
+                        <TouchableOpacity
+                          key={hour}
+                          style={[
+                            styles.quickSelectButton,
+                            { borderColor: colors.border },
+                            isSelected && { backgroundColor: colors.primary, borderColor: colors.primary },
+                          ]}
+                          onPress={() => toggleNotificationHour(hour)}
+                        >
+                          <Text
+                            style={[
+                              styles.quickSelectText,
+                              { color: isSelected ? '#fff' : colors.text },
+                            ]}
+                          >
+                            {hourLabel}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* Custom Hour Input */}
+                  <View style={styles.customHourContainer}>
+                    <TextInput
+                      style={[styles.customHourInput, { color: colors.text, borderColor: colors.border }]}
+                      placeholder="Custom hours (1-168)"
+                      placeholderTextColor={colors.textSecondary}
+                      value={customHourInput}
+                      onChangeText={setCustomHourInput}
+                      keyboardType="number-pad"
+                    />
+                    <TouchableOpacity
+                      style={[styles.addCustomButton, { backgroundColor: colors.primary }]}
+                      onPress={addCustomNotificationHour}
+                    >
+                      <IconSymbol
+                        ios_icon_name="plus"
+                        android_material_icon_name="add"
+                        size={20}
+                        color="#fff"
+                      />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Selected Times List */}
+                  {selectedNotificationHours.length > 0 && (
+                    <View style={styles.selectedTimesContainer}>
+                      <Text style={[styles.selectedTimesLabel, { color: colors.text }]}>
+                        Selected reminder times:
+                      </Text>
+                      {selectedNotificationHours.map((hour) => {
+                        const hourLabel = hour === 1 ? '1 hour before' : hour < 24 ? `${hour} hours before` : hour === 24 ? '1 day before' : hour === 48 ? '2 days before' : hour === 72 ? '3 days before' : hour === 168 ? '1 week before' : `${hour} hours before`;
+                        return (
+                          <View key={hour} style={[styles.selectedTimeChip, { backgroundColor: colors.inputBackground }]}>
+                            <Text style={[styles.selectedTimeText, { color: colors.text }]}>
+                              {hourLabel}
+                            </Text>
+                            <TouchableOpacity onPress={() => removeNotificationHour(hour)}>
+                              <IconSymbol
+                                ios_icon_name="xmark.circle.fill"
+                                android_material_icon_name="cancel"
+                                size={20}
+                                color={colors.textSecondary}
+                              />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+
+                {/* Save Button */}
+                <TouchableOpacity
+                  style={[styles.saveNotificationsButton, { backgroundColor: colors.primary, marginTop: 24 }]}
+                  onPress={handleSaveNotificationSettings}
+                  disabled={isSavingNotifications}
+                >
+                  {isSavingNotifications ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <IconSymbol
+                        ios_icon_name="checkmark.circle"
+                        android_material_icon_name="check-circle"
+                        size={24}
+                        color="#fff"
+                      />
+                      <Text style={styles.saveNotificationsButtonText}>Save Notification Settings</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <Text style={[styles.helperText, { color: colors.textSecondary, marginTop: 16, fontStyle: 'italic' }]}>
+                  Note: Members will receive notifications at the selected times before each service they are assigned to
+                </Text>
+              </View>
+            )}
           </>
         )}
 
@@ -1156,7 +1408,7 @@ export default function ChurchScreen() {
         )}
       </ScrollView>
 
-      {/* All modals remain the same - keeping existing modals */}
+      {/* All existing modals remain the same - keeping them for brevity */}
       {/* Create Church Modal */}
       <Modal
         visible={isCreateChurchModalVisible}
@@ -2184,6 +2436,91 @@ const styles = StyleSheet.create({
   deleteIconButton: {
     padding: 8,
   },
+  notificationCard: {
+    padding: 16,
+    borderRadius: 12,
+  },
+  notificationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  notificationLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  notificationSubtext: {
+    fontSize: 14,
+  },
+  quickSelectContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  quickSelectButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  quickSelectText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  customHourContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  customHourInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+  },
+  addCustomButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectedTimesContainer: {
+    marginTop: 16,
+  },
+  selectedTimesLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  selectedTimeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  selectedTimeText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  saveNotificationsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 12,
+  },
+  saveNotificationsButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   errorContainer: {
     margin: 16,
     padding: 12,
@@ -2247,129 +2584,517 @@ const styles = StyleSheet.create({
   pickerList: {
     borderWidth: 1,
     borderRadius: 8,
-    marginTop: 4,
-    maxHeight: 200,
+    marginTopNow I'll update the types file to include the notification_settings table and then implement the UI:
+
+<write file="lib/supabase/types.ts">
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  __InternalSupabase: {
+    PostgrestVersion: "14.1"
+  }
+  public: {
+    Tables: {
+      assignments: {
+        Row: {
+          created_at: string
+          id: string
+          member_id: string | null
+          person_name: string
+          role: string
+          service_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_id?: string | null
+          person_name: string
+          role: string
+          service_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_id?: string | null
+          person_name?: string
+          role?: string
+          service_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assignments_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "church_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assignments_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      church_members: {
+        Row: {
+          church_id: string
+          created_at: string
+          email: string
+          id: string
+          is_admin: boolean
+          name: string | null
+          role: string | null
+        }
+        Insert: {
+          church_id: string
+          created_at?: string
+          email: string
+          id?: string
+          is_admin?: boolean
+          name?: string | null
+          role?: string | null
+        }
+        Update: {
+          church_id?: string
+          created_at?: string
+          email?: string
+          id?: string
+          is_admin?: boolean
+          name?: string | null
+          role?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "church_members_church_id_fkey"
+            columns: ["church_id"]
+            isOneToOne: false
+            referencedRelation: "churches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      churches: {
+        Row: {
+          admin_id: string
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+          invitation_code: string
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+          invitation_code: string
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
+          invitation_code?: string
+        }
+        Relationships: []
+      }
+      services: {
+        Row: {
+          church_id: string
+          created_at: string
+          date: string
+          id: string
+          notes: string | null
+          service_type: string
+          updated_at: string
+        }
+        Insert: {
+          church_id: string
+          created_at?: string
+          date: string
+          id?: string
+          notes?: string | null
+          service_type: string
+          updated_at?: string
+        }
+        Update: {
+          church_id?: string
+          created_at?: string
+          date?: string
+          id?: string
+          notes?: string | null
+          service_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "services_church_id_fkey"
+            columns: ["church_id"]
+            isOneToOne: false
+            referencedRelation: "churches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recurring_services: {
+        Row: {
+          church_id: string
+          created_at: string
+          day_of_week: number
+          id: string
+          name: string
+          notes: string | null
+          time: string
+          updated_at: string
+        }
+        Insert: {
+          church_id: string
+          created_at?: string
+          day_of_week: number
+          id?: string
+          name: string
+          notes?: string | null
+          time: string
+          updated_at?: string
+        }
+        Update: {
+          church_id?: string
+          created_at?: string
+          day_of_week?: number
+          id?: string
+          name?: string
+          notes?: string | null
+          time?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_services_church_id_fkey"
+            columns: ["church_id"]
+            isOneToOne: false
+            referencedRelation: "churches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      church_roles: {
+        Row: {
+          church_id: string
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+          display_order: number
+        }
+        Insert: {
+          church_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+          display_order?: number
+        }
+        Update: {
+          church_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+          display_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "church_roles_church_id_fkey"
+            columns: ["church_id"]
+            isOneToOne: false
+            referencedRelation: "churches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recurring_service_roles: {
+        Row: {
+          created_at: string
+          id: string
+          recurring_service_id: string
+          role_name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          recurring_service_id: string
+          role_name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          recurring_service_id?: string
+          role_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_service_roles_recurring_service_id_fkey"
+            columns: ["recurring_service_id"]
+            isOneToOne: false
+            referencedRelation: "recurring_services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_unavailability: {
+        Row: {
+          created_at: string
+          id: string
+          member_id: string
+          reason: string | null
+          unavailable_date: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_id: string
+          reason?: string | null
+          unavailable_date: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_id?: string
+          reason?: string | null
+          unavailable_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_unavailability_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "church_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_roles: {
+        Row: {
+          created_at: string
+          id: string
+          member_id: string
+          role_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_id: string
+          role_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_id?: string
+          role_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_roles_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "church_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_roles_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "church_roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_settings: {
+        Row: {
+          id: string
+          church_id: string
+          notification_hours: number[]
+          enabled: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          church_id: string
+          notification_hours?: number[]
+          enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          church_id?: string
+          notification_hours?: number[]
+          enabled?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_settings_church_id_fkey"
+            columns: ["church_id"]
+            isOneToOne: true
+            referencedRelation: "churches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
   },
-  pickerItem: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  pickerItemText: {
-    fontSize: 16,
-  },
-  dayButtons: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  dayButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  dayButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  roleCheckboxContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  roleCheckbox: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  roleCheckboxText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  modalButton: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: '#e0e0e0',
-  },
-  cancelButtonText: {
-    color: '#333',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  button: {
-    padding: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  quarterButton: {
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
-  },
-  quarterButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  blockServiceItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-  },
-  blockServiceText: {
-    fontSize: 14,
-    flex: 1,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 4,
-    borderWidth: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  roleItem: {
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  roleItemText: {
-    fontSize: 14,
-    flex: 1,
-  },
-  dateButton: {
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-  },
-  dateButtonText: {
-    fontSize: 16,
-  },
-});
+} as const
