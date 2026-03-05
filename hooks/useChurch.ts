@@ -24,6 +24,13 @@ export interface ChurchMemberWithRoles extends ChurchMember {
   memberRoles: { role_id: string; role_name: string }[];
 }
 
+export interface FillInRequestWithMemberInfo extends FillInRequest {
+  requesting_member_name: string;
+  requesting_member_email: string;
+  filled_by_member_name?: string;
+  filled_by_member_email?: string;
+}
+
 export function useChurch() {
   const [churches, setChurches] = useState<Church[]>([]);
   const [currentChurch, setCurrentChurch] = useState<Church | null>(null);
@@ -31,7 +38,7 @@ export function useChurch() {
   const [recurringServices, setRecurringServices] = useState<RecurringServiceWithRoles[]>([]);
   const [churchRoles, setChurchRoles] = useState<ChurchRole[]>([]);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings | null>(null);
-  const [fillInRequests, setFillInRequests] = useState<FillInRequest[]>([]);
+  const [fillInRequests, setFillInRequests] = useState<FillInRequestWithMemberInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
@@ -1030,7 +1037,7 @@ export function useChurch() {
     }
   }, []);
 
-  // Fetch fill-in requests for a church
+  // Fetch fill-in requests for a church WITH MEMBER INFO
   const fetchFillInRequests = useCallback(async (churchId: string) => {
     console.log('Fetching fill-in requests for church:', churchId);
     try {
@@ -1049,7 +1056,46 @@ export function useChurch() {
       }
 
       console.log('Fetched fill-in requests:', data);
-      setFillInRequests(data || []);
+
+      // Fetch member info for each request
+      const requestsWithMemberInfo: FillInRequestWithMemberInfo[] = [];
+      
+      for (const request of data || []) {
+        // Fetch requesting member info
+        const { data: requestingMember } = await supabase
+          .from('church_members')
+          .select('name, email')
+          .eq('id', request.requesting_member_id)
+          .single();
+
+        let filledByMemberName: string | undefined;
+        let filledByMemberEmail: string | undefined;
+
+        // Fetch filled by member info if exists
+        if (request.filled_by_member_id) {
+          const { data: filledByMember } = await supabase
+            .from('church_members')
+            .select('name, email')
+            .eq('id', request.filled_by_member_id)
+            .single();
+
+          if (filledByMember) {
+            filledByMemberName = filledByMember.name || undefined;
+            filledByMemberEmail = filledByMember.email;
+          }
+        }
+
+        requestsWithMemberInfo.push({
+          ...request,
+          requesting_member_name: requestingMember?.name || '',
+          requesting_member_email: requestingMember?.email || '',
+          filled_by_member_name: filledByMemberName,
+          filled_by_member_email: filledByMemberEmail,
+        });
+      }
+
+      console.log('Fill-in requests with member info:', requestsWithMemberInfo);
+      setFillInRequests(requestsWithMemberInfo);
     } catch (err) {
       console.error('Error in fetchFillInRequests:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -1132,17 +1178,69 @@ export function useChurch() {
     }
   }, [fetchFillInRequests]);
 
-  // Accept a fill-in request
+  // Accept a fill-in request - COMPLETELY RECODED
   const acceptFillInRequest = useCallback(async (
     requestId: string,
     filledByMemberId: string,
     churchId: string
   ) => {
-    console.log('Accepting fill-in request:', requestId);
+    console.log('Accepting fill-in request:', { requestId, filledByMemberId });
     try {
       setError(null);
 
-      const { error: updateError } = await supabase
+      // 1. Fetch the fill-in request to get assignment_id
+      const { data: fillInRequest, error: fetchRequestError } = await supabase
+        .from('fill_in_requests')
+        .select('assignment_id, requesting_member_id, role_name')
+        .eq('id', requestId)
+        .single();
+
+      if (fetchRequestError || !fillInRequest) {
+        console.error('Error fetching fill-in request:', fetchRequestError);
+        setError('Fill-in request not found');
+        return false;
+      }
+
+      console.log('Fetched fill-in request:', fillInRequest);
+
+      // 2. Fetch the member who is filling in to get their name/email
+      const { data: fillingMember, error: fetchMemberError } = await supabase
+        .from('church_members')
+        .select('id, name, email')
+        .eq('id', filledByMemberId)
+        .single();
+
+      if (fetchMemberError || !fillingMember) {
+        console.error('Error fetching filling member:', fetchMemberError);
+        setError('Member not found');
+        return false;
+      }
+
+      console.log('Fetched filling member:', fillingMember);
+
+      // 3. Determine the person_name to use (prefer name, fallback to email)
+      const personName = fillingMember.name || fillingMember.email;
+      console.log('Using person_name for assignment:', personName);
+
+      // 4. Update the assignment with the new member
+      const { error: updateAssignmentError } = await supabase
+        .from('assignments')
+        .update({
+          member_id: filledByMemberId,
+          person_name: personName,
+        })
+        .eq('id', fillInRequest.assignment_id);
+
+      if (updateAssignmentError) {
+        console.error('Error updating assignment:', updateAssignmentError);
+        setError('Failed to update assignment');
+        return false;
+      }
+
+      console.log('Assignment updated successfully with new member');
+
+      // 5. Update the fill-in request status
+      const { error: updateRequestError } = await supabase
         .from('fill_in_requests')
         .update({
           status: 'filled',
@@ -1151,14 +1249,17 @@ export function useChurch() {
         })
         .eq('id', requestId);
 
-      if (updateError) {
-        console.error('Error accepting fill-in request:', updateError);
-        setError(updateError.message);
+      if (updateRequestError) {
+        console.error('Error updating fill-in request:', updateRequestError);
+        setError('Failed to update fill-in request status');
         return false;
       }
 
-      console.log('Fill-in request accepted successfully');
+      console.log('Fill-in request marked as filled');
+
+      // 6. Refresh fill-in requests to update UI
       await fetchFillInRequests(churchId);
+      
       return true;
     } catch (err) {
       console.error('Error in acceptFillInRequest:', err);
@@ -1334,6 +1435,19 @@ export function useChurch() {
         },
         (payload) => {
           console.log('Fill-in requests realtime update:', payload.eventType, payload.new);
+          fetchFillInRequests(currentChurch.id);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'assignments',
+        },
+        (payload) => {
+          console.log('Assignments realtime update:', payload.eventType);
+          // Refresh fill-in requests when assignments change
           fetchFillInRequests(currentChurch.id);
         }
       )

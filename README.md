@@ -1,4 +1,4 @@
-# i-want-to-build-and-
+# Music Ministry
 
 This app was built using [Natively.dev](https://natively.dev) - a platform for creating mobile apps.
 

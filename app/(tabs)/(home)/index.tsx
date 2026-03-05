@@ -534,7 +534,9 @@ export default function HomeScreen() {
     const success = await acceptFillInRequest(requestId, currentMember.id, currentChurch.id);
     
     if (success) {
-      Alert.alert('Success', 'You have accepted the fill-in request');
+      Alert.alert('Success', 'You have accepted the fill-in request and been assigned to this role');
+      // Refresh services to show updated assignment
+      refreshServices();
     } else {
       Alert.alert('Error', 'Failed to accept fill-in request');
     }
@@ -604,15 +606,17 @@ export default function HomeScreen() {
 
                 {/* Display fill-in requests for this service */}
                 {serviceFillInRequests.map(request => {
-                  const requestingMember = members.find(m => m.id === request.requesting_member_id);
-                  const requestingMemberName = requestingMember?.name || requestingMember?.email || 'Unknown';
+                  const requestingMemberDisplayName = request.requesting_member_name || request.requesting_member_email;
                   const isMyRequest = currentMember?.id === request.requesting_member_id;
                   const canAccept = currentMember?.memberRoles.some(r => r.role_name === request.role_name);
 
                   return (
                     <View key={request.id} style={styles.fillInRequestCard}>
                       <Text style={styles.fillInRequestText}>
-                        {isMyRequest ? 'You requested' : `${requestingMemberName} requested`} a fill-in for {request.role_name}
+                        {isMyRequest ? 'You' : requestingMemberDisplayName}
+                      </Text>
+                      <Text style={styles.fillInRequestText}>
+                        requested a fill-in for {request.role_name}
                       </Text>
                       {request.reason && (
                         <Text style={styles.fillInRequestText}>Reason: {request.reason}</Text>
