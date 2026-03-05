@@ -1142,6 +1142,50 @@ export function useChurch() {
     try {
       setError(null);
 
+      // First, get the fill-in request details to find the assignment
+      const { data: request, error: requestError } = await supabase
+        .from('fill_in_requests')
+        .select('assignment_id')
+        .eq('id', requestId)
+        .single();
+
+      if (requestError || !request) {
+        console.error('Error fetching fill-in request:', requestError);
+        setError(requestError?.message || 'Request not found');
+        return false;
+      }
+
+      // Get the member who is filling in
+      const { data: fillingMember, error: memberError } = await supabase
+        .from('church_members')
+        .select('name, email')
+        .eq('id', filledByMemberId)
+        .single();
+
+      if (memberError || !fillingMember) {
+        console.error('Error fetching filling member:', memberError);
+        setError(memberError?.message || 'Member not found');
+        return false;
+      }
+
+      const memberName = fillingMember.name || fillingMember.email || 'Unknown';
+
+      // Update the assignment with the new member
+      const { error: assignmentError } = await supabase
+        .from('assignments')
+        .update({
+          member_id: filledByMemberId,
+          person_name: memberName,
+        })
+        .eq('id', request.assignment_id);
+
+      if (assignmentError) {
+        console.error('Error updating assignment:', assignmentError);
+        setError(assignmentError.message);
+        return false;
+      }
+
+      // Update the fill-in request status
       const { error: updateError } = await supabase
         .from('fill_in_requests')
         .update({
@@ -1157,7 +1201,7 @@ export function useChurch() {
         return false;
       }
 
-      console.log('Fill-in request accepted successfully');
+      console.log('Fill-in request accepted successfully and assignment updated');
       await fetchFillInRequests(churchId);
       return true;
     } catch (err) {
