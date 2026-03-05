@@ -123,19 +123,31 @@ export default function ChurchScreen() {
     console.log('User tapped edit member:', memberId);
     const member = members.find(m => m.id === memberId);
     if (!member) {
+      console.log('Member not found:', memberId);
       return;
     }
+
+    console.log('Member data:', {
+      id: member.id,
+      email: member.email,
+      name: member.name,
+      memberRoles: member.memberRoles,
+    });
+
+    const memberRoleNames = member.memberRoles?.map(r => r.role_name) || [];
+    console.log('Setting edit member roles to:', memberRoleNames);
 
     setMemberToEdit(memberId);
     setEditMemberEmail(member.email);
     setEditMemberName(member.name || '');
-    setEditMemberRoles(member.memberRoles?.map(r => r.role_name) || []);
+    setEditMemberRoles(memberRoleNames);
     setEditMemberModalVisible(true);
   };
 
   const handleEditMember = async () => {
     console.log('User tapped Save Edit Member button');
     if (!memberToEdit || !currentChurch) {
+      console.log('Missing memberToEdit or currentChurch');
       return;
     }
 
@@ -148,6 +160,7 @@ export default function ChurchScreen() {
       updates.name = editMemberName.trim();
     }
 
+    console.log('Updating member with:', updates);
     const success = await updateMember(memberToEdit, currentChurch.id, updates);
     
     if (success) {
@@ -155,8 +168,8 @@ export default function ChurchScreen() {
       const member = members.find(m => m.id === memberToEdit);
       const currentRoleNames = member?.memberRoles?.map(r => r.role_name) || [];
       
-      console.log('Current roles:', currentRoleNames);
-      console.log('New roles:', editMemberRoles);
+      console.log('Current member roles:', currentRoleNames);
+      console.log('Selected roles for edit:', editMemberRoles);
       
       // Find roles to remove (in current but not in new selection)
       const rolesToRemove = currentRoleNames.filter(roleName => !editMemberRoles.includes(roleName));
@@ -167,11 +180,11 @@ export default function ChurchScreen() {
       console.log('Roles to remove:', rolesToRemove);
       console.log('Roles to add:', rolesToAdd);
       
-      // Remove roles that are no longer selected
+      // Remove roles that are no longer selected (do this first)
       for (const roleNameToRemove of rolesToRemove) {
         const role = churchRoles.find(r => r.name === roleNameToRemove);
         if (role) {
-          console.log('Removing role:', roleNameToRemove);
+          console.log('Removing role:', roleNameToRemove, 'with ID:', role.id);
           await removeMemberRole(memberToEdit, role.id, currentChurch.id);
         }
       }
@@ -180,16 +193,19 @@ export default function ChurchScreen() {
       for (const roleNameToAdd of rolesToAdd) {
         const role = churchRoles.find(r => r.name === roleNameToAdd);
         if (role) {
-          console.log('Adding role:', roleNameToAdd);
+          console.log('Adding role:', roleNameToAdd, 'with ID:', role.id);
           await addMemberRole(memberToEdit, role.id, currentChurch.id);
         }
       }
       
+      console.log('Member edit completed successfully');
       setMemberToEdit(null);
       setEditMemberEmail('');
       setEditMemberName('');
       setEditMemberRoles([]);
       setEditMemberModalVisible(false);
+    } else {
+      console.log('Member update failed');
     }
   };
 
@@ -547,9 +563,13 @@ export default function ChurchScreen() {
                   <View style={styles.membersList}>
                     {members.map((member) => {
                       const displayName = member.name || member.email;
-                      const displayRoles = member.memberRoles && member.memberRoles.length > 0
-                        ? member.memberRoles.map(r => r.role_name).join(', ')
+                      const memberRolesArray = member.memberRoles || [];
+                      const displayRoles = memberRolesArray.length > 0
+                        ? memberRolesArray.map(r => r.role_name).join(', ')
                         : 'No roles assigned';
+                      
+                      console.log('Displaying member:', member.email, 'with roles:', displayRoles);
+                      
                       return (
                         <View
                           key={member.id}
