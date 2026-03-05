@@ -371,9 +371,9 @@ export function useServices(churchId: string | null) {
 
     console.log('Setting up realtime subscriptions for church:', churchId);
 
-    // Subscribe to services table changes
-    const servicesChannel = supabase
-      .channel(`services-${churchId}`)
+    // Create a single channel for both services and assignments
+    const realtimeChannel = supabase
+      .channel(`church-schedule-${churchId}`)
       .on(
         'postgres_changes',
         {
@@ -383,16 +383,11 @@ export function useServices(churchId: string | null) {
           filter: `church_id=eq.${churchId}`,
         },
         (payload) => {
-          console.log('Services realtime update:', payload);
+          console.log('Services realtime update:', payload.eventType, payload.new);
           // Refetch services to get updated data with assignments
           fetchServices();
         }
       )
-      .subscribe();
-
-    // Subscribe to assignments table changes
-    const assignmentsChannel = supabase
-      .channel(`assignments-${churchId}`)
       .on(
         'postgres_changes',
         {
@@ -401,18 +396,19 @@ export function useServices(churchId: string | null) {
           table: 'assignments',
         },
         (payload) => {
-          console.log('Assignments realtime update:', payload);
+          console.log('Assignments realtime update:', payload.eventType);
           // Refetch services to get updated assignments
           fetchServices();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Realtime subscription status:', status);
+      });
 
     // Cleanup subscriptions on unmount
     return () => {
       console.log('Cleaning up realtime subscriptions');
-      supabase.removeChannel(servicesChannel);
-      supabase.removeChannel(assignmentsChannel);
+      supabase.removeChannel(realtimeChannel);
     };
   }, [churchId, fetchServices]);
 

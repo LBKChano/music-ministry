@@ -1095,27 +1095,28 @@ export function useChurch() {
 
       // Call Edge Function to send notifications
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
+        // Get the Supabase URL from the client
+        const supabaseUrl = 'https://cvgdxmmtrukahyvkgazj.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2Z2R4bW10cnVrYWh5dmtnYXpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NTc1MzYsImV4cCI6MjA4ODIzMzUzNn0.ssx8t1fCmlvq-3K1EdpTnNyT14HSy6kAZ_-G7KZkHBs';
 
-        if (token) {
-          const response = await fetch(
-            `${supabase.supabaseUrl}/functions/v1/send-fill-in-notifications`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
-              },
-              body: JSON.stringify({ fillInRequestId: data.id }),
-            }
-          );
-
-          if (!response.ok) {
-            console.error('Error sending notifications:', await response.text());
-          } else {
-            console.log('Notifications sent successfully');
+        const response = await fetch(
+          `${supabaseUrl}/functions/v1/send-fill-in-notifications`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': supabaseKey,
+            },
+            body: JSON.stringify({ fillInRequestId: data.id }),
           }
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Error sending notifications:', errorText);
+        } else {
+          const result = await response.json();
+          console.log('Notifications sent successfully:', result);
         }
       } catch (notifError) {
         console.error('Error calling notification function:', notifError);
