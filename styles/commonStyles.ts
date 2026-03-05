@@ -9,6 +9,7 @@ export const colors = {
   backgroundAlt: '#F0F9FF', // Very light blue background
   text: '#1A202C',       // Dark text
   textSecondary: '#64748B', // Gray text
+  textTertiary: '#94A3B8', // Lighter gray text
   card: '#FFFFFF',       // White cards
   cardBackground: '#FFFFFF', // Card background
   border: '#DBEAFE',     // Light blue border
@@ -17,6 +18,8 @@ export const colors = {
   error: '#DC2626',      // Error red
   navyDark: '#0F172A',   // Dark navy for accents
   navyLight: '#BFDBFE',  // Light navy for subtle backgrounds
+  headerBackground: '#1E3A8A', // Navy blue header
+  headerText: '#FFFFFF', // White header text
 };
 
 export const buttonStyles = StyleSheet.create({
