@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Music Ministry",
@@ -43,7 +44,10 @@
     },
     "extra": {
       "router": {},
-      "backendUrl": "https://nucffxkqp3vv9chpnxeb3a3fcnb99vdb.app.specular.dev"
+      "backendUrl": "https://nucffxkqp3vv9chpnxeb3a3fcnb99vdb.app.specular.dev",
+      "eas": {
+        "projectId": "a500e23e-d75d-44a5-bf0c-6baaf4d67839"
+      }
     }
   }
 }
