@@ -266,20 +266,30 @@ export default function OnboardingScreen() {
     try {
       // Step 1: Validate invitation code and find church
       console.log('Validating invitation code:', memberInvitationCode.trim().toUpperCase());
-      const { data: churchData, error: churchError } = await supabase
+      const churchQuery = supabase
         .from('churches')
         .select('id, name')
         .eq('invitation_code', memberInvitationCode.trim().toUpperCase())
         .single();
 
-      if (churchError || !churchData) {
-        console.error('Invalid invitation code:', churchError);
+      console.log('Executing church query...');
+      const { data: churchData, error: churchError } = await churchQuery;
+
+      if (churchError) {
+        console.error('Church query error:', churchError);
         setError('Invalid invitation code. Please check with your church admin.');
         setLoading(false);
         return;
       }
 
-      console.log('Valid invitation code! Church:', churchData.name);
+      if (!churchData) {
+        console.error('No church found with invitation code');
+        setError('Invalid invitation code. Please check with your church admin.');
+        setLoading(false);
+        return;
+      }
+
+      console.log('Valid invitation code! Church found:', churchData.name, 'ID:', churchData.id);
 
       // Step 2: Sign up the member user
       console.log('Signing up member user:', memberSignupEmail);
@@ -302,16 +312,17 @@ export default function OnboardingScreen() {
 
       const user = signUpResult.data.user;
       if (!user) {
+        console.error('No user returned from signup');
         setError('Failed to create user account');
         setLoading(false);
         return;
       }
 
-      console.log('Member user created:', user.id);
+      console.log('Member user created successfully! User ID:', user.id);
 
       // Step 3: Add member to church
       console.log('Adding member to church:', churchData.id);
-      const memberResult = await supabase
+      const memberInsert = supabase
         .from('church_members')
         .insert({
           church_id: churchData.id,
@@ -322,22 +333,25 @@ export default function OnboardingScreen() {
         .select()
         .single();
 
-      if (memberResult.error) {
-        console.error('Error adding member to church:', memberResult.error);
+      console.log('Executing member insert...');
+      const { data: memberData, error: memberError } = await memberInsert;
+
+      if (memberError) {
+        console.error('Error adding member to church:', memberError);
         setError('Account created but failed to join church. Please contact your admin.');
         setLoading(false);
         return;
       }
 
       console.log('Member successfully joined church:', churchData.name);
+      console.log('Member data:', memberData);
       console.log('Member account created! Auth listener will redirect to app');
       
       // Success! The auth state change listener will handle the redirect
+      // Don't set loading to false - let the redirect happen
     } catch (err) {
-      console.error('Error in member signup:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      setLoading(false);
-    } finally {
+      console.error('Unexpected error in member signup:', err);
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
       setLoading(false);
     }
   };
