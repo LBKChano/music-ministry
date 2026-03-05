@@ -151,27 +151,37 @@ export default function ChurchScreen() {
     const success = await updateMember(memberToEdit, currentChurch.id, updates);
     
     if (success) {
-      // Update member roles
+      // Update member roles - FIXED: Properly handle role updates
       const member = members.find(m => m.id === memberToEdit);
       const currentRoleNames = member?.memberRoles?.map(r => r.role_name) || [];
       
+      console.log('Current roles:', currentRoleNames);
+      console.log('New roles:', editMemberRoles);
+      
+      // Find roles to remove (in current but not in new selection)
+      const rolesToRemove = currentRoleNames.filter(roleName => !editMemberRoles.includes(roleName));
+      
+      // Find roles to add (in new selection but not in current)
+      const rolesToAdd = editMemberRoles.filter(roleName => !currentRoleNames.includes(roleName));
+      
+      console.log('Roles to remove:', rolesToRemove);
+      console.log('Roles to add:', rolesToAdd);
+      
       // Remove roles that are no longer selected
-      for (const currentRoleName of currentRoleNames) {
-        if (!editMemberRoles.includes(currentRoleName)) {
-          const role = churchRoles.find(r => r.name === currentRoleName);
-          if (role) {
-            await removeMemberRole(memberToEdit, role.id, currentChurch.id);
-          }
+      for (const roleNameToRemove of rolesToRemove) {
+        const role = churchRoles.find(r => r.name === roleNameToRemove);
+        if (role) {
+          console.log('Removing role:', roleNameToRemove);
+          await removeMemberRole(memberToEdit, role.id, currentChurch.id);
         }
       }
       
-      // Add new roles
-      for (const newRoleName of editMemberRoles) {
-        if (!currentRoleNames.includes(newRoleName)) {
-          const role = churchRoles.find(r => r.name === newRoleName);
-          if (role) {
-            await addMemberRole(memberToEdit, role.id, currentChurch.id);
-          }
+      // Add new roles (only those not already assigned)
+      for (const roleNameToAdd of rolesToAdd) {
+        const role = churchRoles.find(r => r.name === roleNameToAdd);
+        if (role) {
+          console.log('Adding role:', roleNameToAdd);
+          await addMemberRole(memberToEdit, role.id, currentChurch.id);
         }
       }
       
