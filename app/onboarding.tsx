@@ -347,10 +347,15 @@ export default function OnboardingScreen() {
 
       console.log('Member successfully joined church:', churchData.name);
       console.log('Member data:', memberData);
-      console.log('Member account created! Auth listener will redirect to app');
+      console.log('Member account created! Redirecting to app...');
       
-      // Success! The auth state change listener will handle the redirect
-      // Don't set loading to false - let the redirect happen
+      // Wait a moment for the database to settle, then redirect
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      console.log('Navigating to church homepage');
+      router.replace('/(tabs)');
+      
+      // Keep loading state true during redirect
     } catch (err) {
       console.error('Unexpected error in member signup:', err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
