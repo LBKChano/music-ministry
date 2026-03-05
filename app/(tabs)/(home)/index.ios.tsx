@@ -57,48 +57,62 @@ const styles = StyleSheet.create({
   },
   serviceCard: {
     backgroundColor: colors.cardBackground,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: colors.border + '40',
   },
   serviceHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary + '30',
   },
   serviceTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: colors.text,
     flex: 1,
+    letterSpacing: 0.5,
   },
   serviceDate: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.textSecondary,
-    marginBottom: 8,
+    marginBottom: 12,
+    fontWeight: '500',
   },
   serviceNotes: {
     fontSize: 14,
     color: colors.textSecondary,
     fontStyle: 'italic',
-    marginBottom: 12,
+    marginBottom: 16,
+    paddingLeft: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.accent,
   },
   assignmentRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: colors.border + '50',
+    backgroundColor: colors.background + '30',
+    borderRadius: 8,
+    marginBottom: 8,
   },
   roleText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     color: colors.text,
     flex: 1,
@@ -109,10 +123,12 @@ const styles = StyleSheet.create({
     flex: 2,
     textAlign: 'right',
     marginRight: 8,
+    fontWeight: '500',
   },
   emptySlot: {
     color: colors.textTertiary,
     fontStyle: 'italic',
+    fontWeight: '400',
   },
   deleteButton: {
     padding: 4,
@@ -233,17 +249,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   fillInRequestCard: {
-    backgroundColor: colors.accent + '20',
-    borderRadius: 8,
-    padding: 12,
+    backgroundColor: colors.accent + '15',
+    borderRadius: 12,
+    padding: 16,
     marginTop: 8,
-    borderWidth: 1,
+    marginBottom: 12,
+    borderWidth: 2,
     borderColor: colors.accent,
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   fillInRequestText: {
     fontSize: 14,
     color: colors.text,
-    marginBottom: 4,
+    marginBottom: 6,
+    fontWeight: '500',
   },
   fillInRequestButtons: {
     flexDirection: 'row',
@@ -282,6 +305,7 @@ export default function HomeScreen() {
     acceptFillInRequest,
     cancelFillInRequest,
     registerPushToken,
+    fetchFillInRequests,
   } = useChurch();
 
   // Register for push notifications when component mounts
@@ -402,7 +426,11 @@ export default function HomeScreen() {
   const onRefresh = async () => {
     console.log('[InternalBytecode.js:1] User pulled to refresh schedules');
     setRefreshing(true);
-    await refreshServices();
+    // Refresh both services and fill-in requests to ensure UI is up to date
+    await Promise.all([
+      refreshServices(),
+      currentChurch ? fetchFillInRequests(currentChurch.id) : Promise.resolve()
+    ]);
     setRefreshing(false);
   };
 

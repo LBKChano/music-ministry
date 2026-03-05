@@ -1535,6 +1535,7 @@ export function useChurch() {
     cancelFillInRequest,
     registerPushToken,
     signOut,
+    fetchFillInRequests,
     refreshChurches: fetchChurches,
     refreshMembers: useCallback(() => currentChurch && fetchMembers(currentChurch.id), [currentChurch, fetchMembers]),
     refreshRecurringServices: useCallback(() => currentChurch && fetchRecurringServices(currentChurch.id), [currentChurch, fetchRecurringServices]),
