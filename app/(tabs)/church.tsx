@@ -90,8 +90,9 @@ export default function ChurchScreen() {
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleDescription, setNewRoleDescription] = useState('');
 
-  // Quarterly assignment states
+  // Quarterly assignment states - UPDATED FOR TWO-STEP WORKFLOW
   const [showPrepareQuarterModal, setShowPrepareQuarterModal] = useState(false);
+  const [prepareQuarterStep, setPrepareQuarterStep] = useState<'block' | 'special'>('block');
   const [selectedQuarter, setSelectedQuarter] = useState<number>(1);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [blockedServices, setBlockedServices] = useState<Set<string>>(new Set());
@@ -396,13 +397,18 @@ export default function ChurchScreen() {
     return generatedServices;
   };
 
+  const handleSaveBlockedDates = () => {
+    console.log('User saved blocked dates, moving to special services step');
+    setPrepareQuarterStep('special');
+  };
+
   const handlePrepareQuarter = async () => {
     if (!currentChurch?.id) {
       Alert.alert('Error', 'No church selected. Please ensure your account is linked to a church.');
       return;
     }
 
-    console.log('User tapped Prepare Quarter button for church:', currentChurch.id);
+    console.log('User tapped Generate Services button for church:', currentChurch.id);
     const generatedServices = generateQuarterServices();
 
     for (const { date, template } of generatedServices) {
@@ -422,6 +428,7 @@ export default function ChurchScreen() {
     }
 
     setShowPrepareQuarterModal(false);
+    setPrepareQuarterStep('block');
     setBlockedServices(new Set());
     setSpecialServices([]);
     Alert.alert('Success', 'Quarter services generated successfully!');
@@ -665,7 +672,11 @@ export default function ChurchScreen() {
             </View>
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: colors.accent }]}
-              onPress={() => setShowPrepareQuarterModal(true)}
+              onPress={() => {
+                console.log('User tapped Prepare Next Quarter button');
+                setShowPrepareQuarterModal(true);
+                setPrepareQuarterStep('block');
+              }}
             >
               <IconSymbol
                 ios_icon_name="calendar.badge.plus"
@@ -1583,132 +1594,194 @@ export default function ChurchScreen() {
         </View>
       </Modal>
 
-      {/* Prepare Quarter Modal */}
+      {/* Prepare Quarter Modal - TWO-STEP WORKFLOW */}
       <Modal visible={showPrepareQuarterModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <ScrollView contentContainerStyle={styles.modalScrollContent}>
             <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Prepare Quarter</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                {prepareQuarterStep === 'block' ? 'Step 1: Block Recurring Dates' : 'Step 2: Add Special Services'}
+              </Text>
               
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Select Quarter</Text>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                {[1, 2, 3, 4].map(q => {
-                  const isSelected = selectedQuarter === q;
-                  const quarterText = `Q${q}`;
-                  return (
-                    <TouchableOpacity
-                      key={q}
-                      style={[
-                        styles.quarterButton,
-                        { flex: 1, marginHorizontal: 4, backgroundColor: colors.inputBackground },
-                        isSelected && { backgroundColor: colors.primary }
-                      ]}
-                      onPress={() => setSelectedQuarter(q)}
-                    >
-                      <Text style={[
-                        styles.quarterButtonText,
-                        { color: isSelected ? '#fff' : colors.text }
-                      ]}>
-                        {quarterText}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              {prepareQuarterStep === 'block' && (
+                <>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Select Quarter</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    {[1, 2, 3, 4].map(q => {
+                      const isSelected = selectedQuarter === q;
+                      const quarterText = `Q${q}`;
+                      return (
+                        <TouchableOpacity
+                          key={q}
+                          style={[
+                            styles.quarterButton,
+                            { flex: 1, marginHorizontal: 4, backgroundColor: colors.inputBackground },
+                            isSelected && { backgroundColor: colors.primary }
+                          ]}
+                          onPress={() => setSelectedQuarter(q)}
+                        >
+                          <Text style={[
+                            styles.quarterButtonText,
+                            { color: isSelected ? '#fff' : colors.text }
+                          ]}>
+                            {quarterText}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
 
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Year</Text>
-              <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                placeholder="Year"
-                placeholderTextColor={colors.textSecondary}
-                value={selectedYear.toString()}
-                onChangeText={(text) => setSelectedYear(parseInt(text) || new Date().getFullYear())}
-                keyboardType="number-pad"
-              />
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Year</Text>
+                  <TextInput
+                    style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                    placeholder="Year"
+                    placeholderTextColor={colors.textSecondary}
+                    value={selectedYear.toString()}
+                    onChangeText={(text) => setSelectedYear(parseInt(text) || new Date().getFullYear())}
+                    keyboardType="number-pad"
+                  />
 
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Block Recurring Services</Text>
-              <ScrollView style={{ maxHeight: 150 }}>
-                {recurringServices.map(template => {
-                  const { startDate, endDate } = getQuarterDates(selectedQuarter, selectedYear);
-                  const currentDate = new Date(startDate);
-                  const serviceDates: Date[] = [];
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Block Recurring Services</Text>
+                  <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 8 }]}>
+                    Select dates to skip for recurring services
+                  </Text>
+                  <ScrollView style={{ maxHeight: 200 }}>
+                    {recurringServices.map(template => {
+                      const { startDate, endDate } = getQuarterDates(selectedQuarter, selectedYear);
+                      const currentDate = new Date(startDate);
+                      const serviceDates: Date[] = [];
 
-                  while (currentDate <= endDate) {
-                    if (currentDate.getDay() === template.day_of_week) {
-                      serviceDates.push(new Date(currentDate));
-                    }
-                    currentDate.setDate(currentDate.getDate() + 1);
-                  }
+                      while (currentDate <= endDate) {
+                        if (currentDate.getDay() === template.day_of_week) {
+                          serviceDates.push(new Date(currentDate));
+                        }
+                        currentDate.setDate(currentDate.getDate() + 1);
+                      }
 
-                  return serviceDates.map(date => {
-                    const serviceKey = `${template.id}-${date.toISOString().split('T')[0]}`;
-                    const isBlocked = blockedServices.has(serviceKey);
-                    const dateText = formatDate(date.toISOString());
+                      return serviceDates.map(date => {
+                        const serviceKey = `${template.id}-${date.toISOString().split('T')[0]}`;
+                        const isBlocked = blockedServices.has(serviceKey);
+                        const dateText = formatDate(date.toISOString());
+                        return (
+                          <TouchableOpacity
+                            key={serviceKey}
+                            style={[styles.blockServiceItem, { backgroundColor: colors.inputBackground }]}
+                            onPress={() => toggleBlockService(serviceKey)}
+                          >
+                            <Text style={[styles.blockServiceText, { color: colors.text }]}>
+                              {template.name}
+                            </Text>
+                            <Text style={[styles.blockServiceText, { color: colors.text }]}>
+                              {dateText}
+                            </Text>
+                            <View style={[
+                              styles.checkbox,
+                              { borderColor: colors.primary },
+                              isBlocked && { backgroundColor: colors.primary }
+                            ]}>
+                              {isBlocked && (
+                                <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                              )}
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      });
+                    })}
+                  </ScrollView>
+
+                  <TouchableOpacity 
+                    style={[styles.button, { backgroundColor: colors.primary, marginTop: 16 }]} 
+                    onPress={handleSaveBlockedDates}
+                  >
+                    <Text style={styles.buttonText}>Save & Continue to Special Services</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.cancelButton, { backgroundColor: colors.border }]} 
+                    onPress={() => {
+                      console.log('User cancelled prepare quarter');
+                      setShowPrepareQuarterModal(false);
+                      setPrepareQuarterStep('block');
+                      setBlockedServices(new Set());
+                      setSpecialServices([]);
+                    }}
+                  >
+                    <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {prepareQuarterStep === 'special' && (
+                <>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Special Services</Text>
+                  <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 8 }]}>
+                    Add one-time services like Christmas Eve, Easter, etc.
+                  </Text>
+                  {specialServices.map((special) => {
+                    const dateText = formatDate(special.date.toISOString());
+                    const roleNames = special.selectedRoleIds
+                      .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
+                      .filter(Boolean)
+                      .join(', ');
                     return (
-                      <TouchableOpacity
-                        key={serviceKey}
-                        style={[styles.blockServiceItem, { backgroundColor: colors.inputBackground }]}
-                        onPress={() => toggleBlockService(serviceKey)}
-                      >
-                        <Text style={[styles.blockServiceText, { color: colors.text }]}>
-                          {template.name} - {dateText}
-                        </Text>
-                        <View style={[
-                          styles.checkbox,
-                          { borderColor: colors.primary },
-                          isBlocked && { backgroundColor: colors.primary }
-                        ]}>
-                          {isBlocked && (
-                            <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                      <View key={special.id} style={[styles.blockServiceItem, { backgroundColor: colors.inputBackground }]}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.blockServiceText, { color: colors.text }]}>
+                            {special.name}
+                          </Text>
+                          <Text style={[styles.blockServiceText, { color: colors.text }]}>
+                            {dateText} at {special.time}
+                          </Text>
+                          {roleNames && (
+                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>
+                              Roles: {roleNames}
+                            </Text>
                           )}
                         </View>
-                      </TouchableOpacity>
+                        <TouchableOpacity onPress={() => {
+                          const newSpecial = specialServices.filter(s => s.id !== special.id);
+                          setSpecialServices(newSpecial);
+                        }}>
+                          <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color="#ff3b30" />
+                        </TouchableOpacity>
+                      </View>
                     );
-                  });
-                })}
-              </ScrollView>
+                  })}
+                  <TouchableOpacity
+                    style={{ marginTop: 8, marginBottom: 16 }}
+                    onPress={() => setShowAddSpecialService(true)}
+                  >
+                    <Text style={{ color: colors.primary, fontSize: 14 }}>+ Add Special Service</Text>
+                  </TouchableOpacity>
 
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Special Services</Text>
-              {specialServices.map((special) => {
-                const dateText = formatDate(special.date.toISOString());
-                const roleNames = special.selectedRoleIds
-                  .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
-                  .filter(Boolean)
-                  .join(', ');
-                return (
-                  <View key={special.id} style={[styles.blockServiceItem, { backgroundColor: colors.inputBackground }]}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.blockServiceText, { color: colors.text }]}>
-                        {special.name} - {dateText} at {special.time}
-                      </Text>
-                      {roleNames && (
-                        <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>
-                          Roles: {roleNames}
-                        </Text>
-                      )}
-                    </View>
-                    <TouchableOpacity onPress={() => {
-                      const newSpecial = specialServices.filter(s => s.id !== special.id);
-                      setSpecialServices(newSpecial);
-                    }}>
-                      <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color={colors.error} />
-                    </TouchableOpacity>
-                  </View>
-                );
-              })}
-              <TouchableOpacity
-                style={{ marginTop: 8 }}
-                onPress={() => setShowAddSpecialService(true)}
-              >
-                <Text style={{ color: colors.primary, fontSize: 14 }}>+ Add Special Service</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={[styles.button, { backgroundColor: colors.primary }]} onPress={handlePrepareQuarter}>
-                <Text style={styles.buttonText}>Generate Services</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.cancelButton, { backgroundColor: colors.border }]} onPress={() => setShowPrepareQuarterModal(false)}>
-                <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
-              </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.button, { backgroundColor: colors.primary }]} 
+                    onPress={handlePrepareQuarter}
+                  >
+                    <Text style={styles.buttonText}>Generate All Services</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.button, { backgroundColor: colors.border, marginTop: 8 }]} 
+                    onPress={() => {
+                      console.log('User went back to block dates step');
+                      setPrepareQuarterStep('block');
+                    }}
+                  >
+                    <Text style={[styles.buttonText, { color: colors.text }]}>Back to Block Dates</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.cancelButton, { backgroundColor: colors.border }]} 
+                    onPress={() => {
+                      console.log('User cancelled prepare quarter');
+                      setShowPrepareQuarterModal(false);
+                      setPrepareQuarterStep('block');
+                      setBlockedServices(new Set());
+                      setSpecialServices([]);
+                    }}
+                  >
+                    <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           </ScrollView>
         </View>
