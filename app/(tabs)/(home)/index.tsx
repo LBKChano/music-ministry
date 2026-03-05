@@ -248,7 +248,7 @@ interface SpecialService {
 }
 
 export default function HomeScreen() {
-  const { currentChurch, members, recurringServices, churchRoles } = useChurch();
+  const { currentChurch, members, recurringServices, churchRoles, currentMember } = useChurch();
   const { services, loading, createServiceFromTemplate, deleteService, addAssignment, updateAssignment, deleteAssignment, refreshServices } = useServices(currentChurch?.id || null);
   const { colors: themeColors } = useTheme();
 
@@ -267,6 +267,9 @@ export default function HomeScreen() {
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [assignmentRole, setAssignmentRole] = useState('');
   const [assignmentPersonName, setAssignmentPersonName] = useState('');
+
+  // Check if current user is admin
+  const isAdmin = currentMember?.is_admin || false;
 
   // Refresh services when currentChurch changes
   useEffect(() => {
@@ -382,7 +385,7 @@ export default function HomeScreen() {
     : [];
 
   const noServicesText = 'No services scheduled yet';
-  const addServiceText = 'Add your first service';
+  const addServiceText = isAdmin ? 'Add your first service' : 'Check back later for scheduled services';
 
   return (
     <View style={styles.container}>
@@ -412,9 +415,11 @@ export default function HomeScreen() {
               <View key={service.id} style={styles.serviceCard}>
                 <View style={styles.serviceHeader}>
                   <Text style={styles.serviceType}>{service.service_type}</Text>
-                  <TouchableOpacity onPress={() => openDeleteServiceModal(service.id)}>
-                    <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
-                  </TouchableOpacity>
+                  {isAdmin && (
+                    <TouchableOpacity onPress={() => openDeleteServiceModal(service.id)}>
+                      <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
+                    </TouchableOpacity>
+                  )}
                 </View>
                 <Text style={styles.serviceDate}>{formattedDate}</Text>
 
@@ -425,45 +430,52 @@ export default function HomeScreen() {
                     <TouchableOpacity
                       key={assignment.id}
                       style={styles.assignmentRow}
-                      onPress={() => openAssignMemberModal(assignment.id)}
+                      onPress={() => isAdmin ? openAssignMemberModal(assignment.id) : null}
+                      disabled={!isAdmin}
                     >
                       <Text style={styles.roleText}>{assignment.role}</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <Text style={isOpenSlot ? styles.openSlotText : styles.personText}>
                           {displayName}
                         </Text>
-                        <TouchableOpacity
-                          onPress={() => openDeleteAssignmentModal(service.id, assignment.id)}
-                          style={{ marginLeft: 8 }}
-                        >
-                          <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color={colors.error} />
-                        </TouchableOpacity>
+                        {isAdmin && (
+                          <TouchableOpacity
+                            onPress={() => openDeleteAssignmentModal(service.id, assignment.id)}
+                            style={{ marginLeft: 8 }}
+                          >
+                            <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color={colors.error} />
+                          </TouchableOpacity>
+                        )}
                       </View>
                     </TouchableOpacity>
                   );
                 })}
 
-                <TouchableOpacity
-                  style={{ marginTop: 12 }}
-                  onPress={() => {
-                    setSelectedServiceId(service.id);
-                    setShowAddServiceModal(true);
-                  }}
-                >
-                  <Text style={{ color: colors.primary, fontSize: 14 }}>+ Add Assignment</Text>
-                </TouchableOpacity>
+                {isAdmin && (
+                  <TouchableOpacity
+                    style={{ marginTop: 12 }}
+                    onPress={() => {
+                      setSelectedServiceId(service.id);
+                      setShowAddServiceModal(true);
+                    }}
+                  >
+                    <Text style={{ color: colors.primary, fontSize: 14 }}>+ Add Assignment</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             );
           })
         )}
       </ScrollView>
 
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => setShowRecurringServicePicker(true)}
-      >
-        <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={24} color="#fff" />
-      </TouchableOpacity>
+      {isAdmin && (
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => setShowRecurringServicePicker(true)}
+        >
+          <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={24} color="#fff" />
+        </TouchableOpacity>
+      )}
 
       <Modal visible={showRecurringServicePicker} animationType="slide" transparent>
         <View style={styles.modalContainer}>
