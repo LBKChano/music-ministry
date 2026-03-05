@@ -100,6 +100,7 @@ export type Database = {
           id: string
           name: string
           updated_at: string
+          invitation_code: string
         }
         Insert: {
           admin_id: string
@@ -107,6 +108,7 @@ export type Database = {
           id?: string
           name: string
           updated_at?: string
+          invitation_code: string
         }
         Update: {
           admin_id?: string
@@ -114,6 +116,7 @@ export type Database = {
           id?: string
           name?: string
           updated_at?: string
+          invitation_code?: string
         }
         Relationships: []
       }

@@ -46,6 +46,7 @@ export default function OnboardingScreen() {
   const [memberSignupEmail, setMemberSignupEmail] = useState('');
   const [memberSignupPassword, setMemberSignupPassword] = useState('');
   const [memberSignupName, setMemberSignupName] = useState('');
+  const [memberInvitationCode, setMemberInvitationCode] = useState('');
 
   const handleCreateChurchAndAdmin = async () => {
     console.log('User creating church and admin account');
@@ -97,13 +98,18 @@ export default function OnboardingScreen() {
 
       console.log('Admin user created:', user.id);
 
-      // Step 2: Create the church
+      // Step 2: Generate unique invitation code
+      const invitationCode = generateInvitationCode();
+      console.log('Generated invitation code:', invitationCode);
+
+      // Step 3: Create the church with invitation code
       console.log('Creating church:', churchName);
       const churchResult = await supabase
         .from('churches')
         .insert({
           name: churchName.trim(),
           admin_id: user.id,
+          invitation_code: invitationCode,
         })
         .select()
         .single();
@@ -117,7 +123,7 @@ export default function OnboardingScreen() {
 
       console.log('Church created successfully:', churchResult.data);
 
-      // Step 3: Add admin as a member of the church with is_admin flag
+      // Step 4: Add admin as a member of the church with is_admin flag
       console.log('Adding admin as church member with email:', adminEmail.trim());
       const memberResult = await supabase
         .from('church_members')
@@ -149,6 +155,16 @@ export default function OnboardingScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const generateInvitationCode = (): string => {
+    // Generate an 8-character alphanumeric code
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Exclude similar looking characters
+    let code = '';
+    for (let i = 0; i < 8; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
   };
 
   const handleAdminLogin = async () => {
@@ -222,7 +238,7 @@ export default function OnboardingScreen() {
   };
 
   const handleMemberSignup = async () => {
-    console.log('User creating member account');
+    console.log('User creating member account with invitation code');
 
     if (!memberSignupEmail.trim() || !memberSignupPassword.trim()) {
       setError('Please enter email and password');
@@ -231,6 +247,11 @@ export default function OnboardingScreen() {
 
     if (!memberSignupName.trim()) {
       setError('Please enter your name');
+      return;
+    }
+
+    if (!memberInvitationCode.trim()) {
+      setError('Please enter an invitation code');
       return;
     }
 
@@ -243,7 +264,24 @@ export default function OnboardingScreen() {
     setError(null);
 
     try {
-      // Step 1: Sign up the member user
+      // Step 1: Validate invitation code and find church
+      console.log('Validating invitation code:', memberInvitationCode.trim().toUpperCase());
+      const { data: churchData, error: churchError } = await supabase
+        .from('churches')
+        .select('id, name')
+        .eq('invitation_code', memberInvitationCode.trim().toUpperCase())
+        .single();
+
+      if (churchError || !churchData) {
+        console.error('Invalid invitation code:', churchError);
+        setError('Invalid invitation code. Please check with your church admin.');
+        setLoading(false);
+        return;
+      }
+
+      console.log('Valid invitation code! Church:', churchData.name);
+
+      // Step 2: Sign up the member user
       console.log('Signing up member user:', memberSignupEmail);
       const signUpResult = await supabase.auth.signUp({
         email: memberSignupEmail.trim(),
@@ -270,10 +308,31 @@ export default function OnboardingScreen() {
       }
 
       console.log('Member user created:', user.id);
-      console.log('Member account created! You can now be invited to churches.');
+
+      // Step 3: Add member to church
+      console.log('Adding member to church:', churchData.id);
+      const memberResult = await supabase
+        .from('church_members')
+        .insert({
+          church_id: churchData.id,
+          email: memberSignupEmail.trim(),
+          name: memberSignupName.trim(),
+          is_admin: false,
+        })
+        .select()
+        .single();
+
+      if (memberResult.error) {
+        console.error('Error adding member to church:', memberResult.error);
+        setError('Account created but failed to join church. Please contact your admin.');
+        setLoading(false);
+        return;
+      }
+
+      console.log('Member successfully joined church:', churchData.name);
+      console.log('Member account created! Auth listener will redirect to app');
       
       // Success! The auth state change listener will handle the redirect
-      // Since this member has no church yet, they'll stay on onboarding until invited
     } catch (err) {
       console.error('Error in member signup:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -283,7 +342,7 @@ export default function OnboardingScreen() {
     }
   };
 
-  const welcomeTitle = 'Welcome to Church Scheduler';
+  const welcomeTitle = 'Welcome to Music Ministry';
   const welcomeSubtitle = 'Organize your church services and team assignments';
   const createChurchButton = 'Create Church & Admin Account';
   const loginAsAdminButton = 'Login as Admin';
@@ -298,7 +357,7 @@ export default function OnboardingScreen() {
   const memberStepTitle = 'Member Login';
   const memberStepSubtitle = 'Sign in with your member credentials';
   const memberSignupTitle = 'Create Member Account';
-  const memberSignupSubtitle = 'Register as a church member';
+  const memberSignupSubtitle = 'Register with your church invitation code';
   const backButton = 'Back';
   const continueButton = 'Continue';
   const createButton = 'Create & Start';
@@ -668,7 +727,7 @@ export default function OnboardingScreen() {
             </View>
           )}
 
-          {/* Member Signup Step */}
+          {/* Member Signup Step - UPDATED WITH INVITATION CODE */}
           {step === 'memberSignup' && (
             <View style={styles.stepContainer}>
               <Text style={[styles.title, { color: colors.text }]}>
@@ -709,6 +768,20 @@ export default function OnboardingScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
+
+                <TextInput
+                  style={[styles.input, styles.invitationCodeInput, { color: colors.text, borderColor: colors.primary }]}
+                  placeholder="Church Invitation Code"
+                  placeholderTextColor={colors.textSecondary}
+                  value={memberInvitationCode}
+                  onChangeText={(text) => setMemberInvitationCode(text.toUpperCase())}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  maxLength={8}
+                />
+                <Text style={[styles.helperText, { color: colors.textSecondary }]}>
+                  Enter the 8-character code provided by your church admin
+                </Text>
 
                 {error && (
                   <View style={styles.errorContainer}>
@@ -791,6 +864,20 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     marginBottom: 16,
+  },
+  invitationCodeInput: {
+    borderWidth: 2,
+    fontWeight: '600',
+    letterSpacing: 2,
+    textAlign: 'center',
+    fontSize: 18,
+  },
+  helperText: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: -8,
+    marginBottom: 16,
+    fontStyle: 'italic',
   },
   buttonContainer: {
     width: '100%',

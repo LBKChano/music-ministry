@@ -21,6 +21,7 @@ import { useChurch } from '@/hooks/useChurch';
 import { useServices } from '@/hooks/useServices';
 import { supabase } from '@/lib/supabase/client';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Clipboard from 'expo-clipboard';
 
 interface SpecialService {
   id: string;
@@ -45,7 +46,6 @@ export default function ChurchScreen() {
     error,
     user,
     createChurch,
-    inviteMember,
     deleteMember,
     updateMember,
     addRecurringService,
@@ -61,7 +61,6 @@ export default function ChurchScreen() {
 
   const [activeTab, setActiveTab] = useState<'members' | 'services' | 'roles'>('members');
   const [isCreateChurchModalVisible, setCreateChurchModalVisible] = useState(false);
-  const [isAddMemberModalVisible, setAddMemberModalVisible] = useState(false);
   const [isEditMemberModalVisible, setEditMemberModalVisible] = useState(false);
   const [isAddServiceModalVisible, setAddServiceModalVisible] = useState(false);
   const [isAddRoleModalVisible, setAddRoleModalVisible] = useState(false);
@@ -75,9 +74,6 @@ export default function ChurchScreen() {
   const [roleToDelete, setRoleToDelete] = useState<string | null>(null);
 
   const [newChurchName, setNewChurchName] = useState('');
-  const [newMemberEmail, setNewMemberEmail] = useState('');
-  const [newMemberName, setNewMemberName] = useState('');
-  const [newMemberRoleIds, setNewMemberRoleIds] = useState<string[]>([]);
   const [editMemberEmail, setEditMemberEmail] = useState('');
   const [editMemberName, setEditMemberName] = useState('');
   const [editMemberRoles, setEditMemberRoles] = useState<string[]>([]);
@@ -90,7 +86,7 @@ export default function ChurchScreen() {
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleDescription, setNewRoleDescription] = useState('');
 
-  // Quarterly assignment states - UPDATED FOR TWO-STEP WORKFLOW
+  // Quarterly assignment states
   const [showPrepareQuarterModal, setShowPrepareQuarterModal] = useState(false);
   const [prepareQuarterStep, setPrepareQuarterStep] = useState<'block' | 'special'>('block');
   const [selectedQuarter, setSelectedQuarter] = useState<number>(1);
@@ -119,30 +115,11 @@ export default function ChurchScreen() {
     }
   };
 
-  const handleAddMember = async () => {
-    console.log('User tapped Invite Member button');
-    if (!currentChurch || !newMemberEmail.trim()) {
-      Alert.alert('Error', 'Please enter an email address');
-      return;
-    }
-
-    // Use the new inviteMember function with role IDs
-    const result = await inviteMember(
-      currentChurch.id,
-      newMemberEmail.trim(),
-      newMemberName.trim() || undefined,
-      newMemberRoleIds.length > 0 ? newMemberRoleIds : undefined
-    );
-
-    if (result) {
-      setNewMemberEmail('');
-      setNewMemberName('');
-      setNewMemberRoleIds([]);
-      setAddMemberModalVisible(false);
-      Alert.alert('Success', 'Member invited successfully!');
-    } else {
-      // Error message is already set in the hook
-      Alert.alert('Error', error || 'Failed to invite member. Make sure the user has registered with this email.');
+  const copyInvitationCode = async () => {
+    if (currentChurch?.invitation_code) {
+      console.log('User copied invitation code:', currentChurch.invitation_code);
+      await Clipboard.setStringAsync(currentChurch.invitation_code);
+      Alert.alert('Copied!', 'Invitation code copied to clipboard');
     }
   };
 
@@ -336,15 +313,6 @@ export default function ChurchScreen() {
     }
   };
 
-  const toggleMemberRole = (roleId: string) => {
-    console.log('User toggled member role:', roleId);
-    if (newMemberRoleIds.includes(roleId)) {
-      setNewMemberRoleIds(newMemberRoleIds.filter(r => r !== roleId));
-    } else {
-      setNewMemberRoleIds([...newMemberRoleIds, roleId]);
-    }
-  };
-
   const getDayName = (day: number): string => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     return days[day] || '';
@@ -448,7 +416,6 @@ export default function ChurchScreen() {
 
     console.log('User tapped Auto-Assign button');
 
-    // Build a map of role name to members who have that role
     const membersByRole: { [role: string]: any[] } = {};
     members.forEach(member => {
       if (member.memberRoles && member.memberRoles.length > 0) {
@@ -461,13 +428,11 @@ export default function ChurchScreen() {
       }
     });
 
-    // Track assignment counts for load balancing
     const assignmentCounts: { [memberId: string]: number } = {};
     members.forEach(member => {
       assignmentCounts[member.id] = 0;
     });
 
-    // Fetch unavailability dates for all members
     const memberUnavailability: { [memberId: string]: Set<string> } = {};
     for (const member of members) {
       const unavailableDates = await fetchMemberUnavailability(member.id);
@@ -477,23 +442,19 @@ export default function ChurchScreen() {
       console.log(`Member ${member.name || member.email} unavailable dates:`, Array.from(memberUnavailability[member.id]));
     }
 
-    // Filter services for current church
     const filteredServices = services.filter(s => s.church_id === currentChurch.id);
 
     let assignedCount = 0;
     let skippedCount = 0;
 
-    // Iterate through all services and their assignments
     for (const service of filteredServices) {
       const serviceDate = service.date;
       console.log(`Processing service: ${service.service_type} on ${serviceDate}`);
       
       for (const assignment of service.assignments) {
-        // Only assign if the slot is currently open (no member_id)
         if (!assignment.member_id && assignment.role) {
           console.log(`  Open slot found for role: ${assignment.role}`);
           
-          // Get members who have this role
           const availableMembers = (membersByRole[assignment.role] || []).filter(member => {
             const isUnavailable = memberUnavailability[member.id]?.has(serviceDate);
             if (isUnavailable) {
@@ -503,7 +464,6 @@ export default function ChurchScreen() {
           });
           
           if (availableMembers.length > 0) {
-            // Sort by assignment count (least assigned first)
             availableMembers.sort((a, b) => 
               (assignmentCounts[a.id] || 0) - (assignmentCounts[b.id] || 0)
             );
@@ -597,7 +557,7 @@ export default function ChurchScreen() {
   const noChurchesText = 'No churches yet';
   const createFirstChurchText = 'Create your first church to get started';
   const noMembersText = 'No members yet';
-  const addFirstMemberText = 'Invite members to your church';
+  const inviteMembersText = 'Share your invitation code with members to join';
   const signOutText = 'Sign Out';
 
   return (
@@ -693,6 +653,48 @@ export default function ChurchScreen() {
             </View>
           )}
         </View>
+
+        {/* Invitation Code Display */}
+        {currentChurch && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Invitation Code</Text>
+            </View>
+            <View style={[styles.invitationCodeCard, { backgroundColor: colors.cardBackground }]}>
+              <View style={styles.invitationCodeContent}>
+                <IconSymbol
+                  ios_icon_name="ticket"
+                  android_material_icon_name="confirmation-number"
+                  size={32}
+                  color={colors.primary}
+                />
+                <View style={styles.invitationCodeDetails}>
+                  <Text style={[styles.invitationCodeLabel, { color: colors.textSecondary }]}>
+                    Share this code with members:
+                  </Text>
+                  <Text style={[styles.invitationCode, { color: colors.primary }]}>
+                    {currentChurch.invitation_code}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[styles.copyButton, { backgroundColor: colors.primary }]}
+                onPress={copyInvitationCode}
+              >
+                <IconSymbol
+                  ios_icon_name="doc.on.doc"
+                  android_material_icon_name="content-copy"
+                  size={20}
+                  color="#fff"
+                />
+                <Text style={styles.copyButtonText}>Copy</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.helperText, { color: colors.textSecondary }]}>
+              Members can use this code when creating their account to automatically join your church
+            </Text>
+          </View>
+        )}
 
         {/* Quarterly Assignment Buttons */}
         {currentChurch && (
@@ -800,20 +802,6 @@ export default function ChurchScreen() {
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Text style={[styles.sectionTitle, { color: colors.text }]}>Members</Text>
-                  <TouchableOpacity
-                    style={[styles.addButton, { backgroundColor: colors.primary }]}
-                    onPress={() => {
-                      console.log('User tapped Invite Member');
-                      setAddMemberModalVisible(true);
-                    }}
-                  >
-                    <IconSymbol
-                      ios_icon_name="person.badge.plus"
-                      android_material_icon_name="person-add"
-                      size={20}
-                      color="#fff"
-                    />
-                  </TouchableOpacity>
                 </View>
 
                 {members.length === 0 ? (
@@ -822,7 +810,7 @@ export default function ChurchScreen() {
                       {noMembersText}
                     </Text>
                     <Text style={[styles.emptyStateSubtext, { color: colors.textSecondary }]}>
-                      {addFirstMemberText}
+                      {inviteMembersText}
                     </Text>
                   </View>
                 ) : (
@@ -1101,99 +1089,6 @@ export default function ChurchScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
-      </Modal>
-
-      {/* Invite Member Modal - UPDATED */}
-      <Modal
-        visible={isAddMemberModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setAddMemberModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalScrollContent}>
-            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Invite Member</Text>
-              <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 12 }]}>
-                Enter the email and name of a registered member to invite them to your church.
-              </Text>
-
-              <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                placeholder="Email (required)"
-                placeholderTextColor={colors.textSecondary}
-                value={newMemberEmail}
-                onChangeText={setNewMemberEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-
-              <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                placeholder="Name (optional)"
-                placeholderTextColor={colors.textSecondary}
-                value={newMemberName}
-                onChangeText={setNewMemberName}
-              />
-
-              <View style={styles.pickerContainer}>
-                <Text style={[styles.label, { color: colors.text }]}>Roles (optional - select multiple)</Text>
-                {churchRoles.length > 0 ? (
-                  <View style={styles.roleCheckboxContainer}>
-                    {churchRoles.map((role) => {
-                      const isSelected = newMemberRoleIds.includes(role.id);
-                      return (
-                        <TouchableOpacity
-                          key={role.id}
-                          style={[
-                            styles.roleCheckbox,
-                            { borderColor: colors.border },
-                            isSelected && { backgroundColor: colors.primary },
-                          ]}
-                          onPress={() => toggleMemberRole(role.id)}
-                        >
-                          <Text
-                            style={[
-                              styles.roleCheckboxText,
-                              { color: isSelected ? '#fff' : colors.text },
-                            ]}
-                          >
-                            {role.name}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                ) : (
-                  <Text style={[styles.helperText, { color: colors.textSecondary }]}>
-                    Add roles in the Roles tab first
-                  </Text>
-                )}
-              </View>
-
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.cancelButton]}
-                  onPress={() => {
-                    console.log('User cancelled invite member');
-                    setAddMemberModalVisible(false);
-                    setNewMemberEmail('');
-                    setNewMemberName('');
-                    setNewMemberRoleIds([]);
-                  }}
-                >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, { backgroundColor: colors.primary }]}
-                  onPress={handleAddMember}
-                >
-                  <Text style={styles.saveButtonText}>Invite</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </ScrollView>
         </View>
       </Modal>
 
@@ -1812,7 +1707,7 @@ export default function ChurchScreen() {
         </View>
       </Modal>
 
-      {/* Add Special Service Modal - UPDATED WITH DATE AND TIME PICKERS */}
+      {/* Add Special Service Modal */}
       <Modal visible={showAddSpecialService} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <ScrollView contentContainerStyle={styles.modalScrollContent}>
@@ -1988,6 +1883,47 @@ const styles = StyleSheet.create({
   churchName: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  invitationCodeCard: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  invitationCodeContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  invitationCodeDetails: {
+    flex: 1,
+  },
+  invitationCodeLabel: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  invitationCode: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    letterSpacing: 2,
+  },
+  copyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  copyButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  helperText: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 4,
   },
   actionButton: {
     flexDirection: 'row',
@@ -2188,11 +2124,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 8,
-  },
-  helperText: {
-    fontSize: 12,
-    fontStyle: 'italic',
-    marginTop: 4,
   },
   pickerContainer: {
     marginBottom: 16,
