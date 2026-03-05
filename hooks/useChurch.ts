@@ -93,13 +93,14 @@ export function useChurch() {
     }
   }, [currentChurch]);
 
-  // Fetch members for a specific church with their roles
+  // Fetch members for a specific church with their roles - FIXED VERSION
   const fetchMembers = useCallback(async (churchId: string) => {
     console.log('Fetching members for church:', churchId);
     try {
       setError(null);
 
-      const { data, error: fetchError } = await supabase
+      // First, fetch all members
+      const { data: membersData, error: fetchError } = await supabase
         .from('church_members')
         .select('*')
         .eq('church_id', churchId)
@@ -108,44 +109,47 @@ export function useChurch() {
       if (fetchError) {
         console.error('Error fetching members:', fetchError);
         setError(fetchError.message);
-      } else {
-        console.log('Fetched members:', data);
-        
-        // Fetch roles for each member
-        const membersWithRoles: ChurchMemberWithRoles[] = [];
-        for (const member of data || []) {
-          const { data: rolesData, error: rolesError } = await supabase
-            .from('member_roles')
-            .select('role_id')
-            .eq('member_id', member.id);
-
-          if (rolesError) {
-            console.error('Error fetching member roles:', rolesError);
-          }
-
-          // Get role names
-          const roleNames: { role_id: string; role_name: string }[] = [];
-          for (const roleLink of rolesData || []) {
-            const { data: roleData } = await supabase
-              .from('church_roles')
-              .select('name')
-              .eq('id', roleLink.role_id)
-              .single();
-            
-            if (roleData) {
-              roleNames.push({ role_id: roleLink.role_id, role_name: roleData.name });
-            }
-          }
-
-          membersWithRoles.push({
-            ...member,
-            memberRoles: roleNames,
-          });
-        }
-
-        console.log('Members with roles:', membersWithRoles);
-        setMembers(membersWithRoles);
+        return;
       }
+
+      console.log('Fetched members:', membersData);
+
+      // Fetch all member roles for this church in one query
+      const memberIds = membersData?.map(m => m.id) || [];
+      
+      if (memberIds.length === 0) {
+        setMembers([]);
+        return;
+      }
+
+      const { data: memberRolesData, error: rolesError } = await supabase
+        .from('member_roles')
+        .select('member_id, role_id, church_roles(id, name)')
+        .in('member_id', memberIds);
+
+      if (rolesError) {
+        console.error('Error fetching member roles:', rolesError);
+      }
+
+      console.log('Fetched member roles data:', memberRolesData);
+
+      // Build the members with roles array
+      const membersWithRoles: ChurchMemberWithRoles[] = (membersData || []).map(member => {
+        const roles = (memberRolesData || [])
+          .filter(mr => mr.member_id === member.id)
+          .map(mr => ({
+            role_id: mr.role_id,
+            role_name: (mr.church_roles as any)?.name || 'Unknown Role'
+          }));
+
+        return {
+          ...member,
+          memberRoles: roles,
+        };
+      });
+
+      console.log('Members with roles:', membersWithRoles);
+      setMembers(membersWithRoles);
     } catch (err) {
       console.error('Error in fetchMembers:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -504,7 +508,7 @@ export function useChurch() {
     }
   }, [fetchChurchRoles]);
 
-  // Add role to member
+  // Add role to member - FIXED VERSION
   const addMemberRole = useCallback(async (memberId: string, roleId: string, churchId: string) => {
     console.log('Adding role to member:', { memberId, roleId });
     try {
@@ -520,6 +524,11 @@ export function useChurch() {
         .insert(newMemberRole);
 
       if (insertError) {
+        // Handle duplicate key error gracefully
+        if (insertError.code === '23505') {
+          console.log('Role already assigned to member, skipping');
+          return true;
+        }
         console.error('Error adding member role:', insertError);
         setError(insertError.message);
         return false;
@@ -563,7 +572,7 @@ export function useChurch() {
     }
   }, [fetchMembers]);
 
-  // Fetch current member info (for profile display)
+  // Fetch current member info (for profile display) - FIXED VERSION
   const fetchCurrentMember = useCallback(async (churchId: string) => {
     console.log('Fetching current member info');
     try {
@@ -588,33 +597,24 @@ export function useChurch() {
         return;
       }
 
-      // Fetch roles for this member
-      const { data: rolesData, error: rolesError } = await supabase
+      // Fetch roles for this member using the improved query
+      const { data: memberRolesData, error: rolesError } = await supabase
         .from('member_roles')
-        .select('role_id')
+        .select('role_id, church_roles(id, name)')
         .eq('member_id', data.id);
 
       if (rolesError) {
         console.error('Error fetching member roles:', rolesError);
       }
 
-      // Get role names
-      const roleNames: { role_id: string; role_name: string }[] = [];
-      for (const roleLink of rolesData || []) {
-        const { data: roleData } = await supabase
-          .from('church_roles')
-          .select('name')
-          .eq('id', roleLink.role_id)
-          .single();
-        
-        if (roleData) {
-          roleNames.push({ role_id: roleLink.role_id, role_name: roleData.name });
-        }
-      }
+      const roles = (memberRolesData || []).map(mr => ({
+        role_id: mr.role_id,
+        role_name: (mr.church_roles as any)?.name || 'Unknown Role'
+      }));
 
       setCurrentMember({
         ...data,
-        memberRoles: roleNames,
+        memberRoles: roles,
       });
     } catch (err) {
       console.error('Error in fetchCurrentMember:', err);
