@@ -51,7 +51,7 @@ export function useChurch() {
     };
   }, []);
 
-  // Fetch churches for the current user
+  // Fetch churches for the current user - UPDATED TO INCLUDE MEMBER CHURCHES
   const fetchChurches = useCallback(async () => {
     console.log('Fetching churches for current user');
     try {
@@ -67,23 +67,56 @@ export function useChurch() {
         return;
       }
 
-      const { data, error: fetchError } = await supabase
+      // Fetch churches where user is admin
+      const { data: adminChurches, error: adminError } = await supabase
         .from('churches')
         .select('*')
         .eq('admin_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (fetchError) {
-        console.error('Error fetching churches:', fetchError);
-        setError(fetchError.message);
-      } else {
-        console.log('Fetched churches:', data);
-        setChurches(data || []);
-        
-        // Set first church as current if none selected
-        if (data && data.length > 0 && !currentChurch) {
-          setCurrentChurch(data[0]);
+      if (adminError) {
+        console.error('Error fetching admin churches:', adminError);
+      }
+
+      // Fetch churches where user is a member (by member_id)
+      const { data: memberChurchIds, error: memberError } = await supabase
+        .from('church_members')
+        .select('church_id')
+        .eq('member_id', user.id);
+
+      if (memberError) {
+        console.error('Error fetching member churches:', memberError);
+      }
+
+      // Fetch the actual church data for member churches
+      let memberChurches: Church[] = [];
+      if (memberChurchIds && memberChurchIds.length > 0) {
+        const churchIds = memberChurchIds.map(m => m.church_id);
+        const { data: memberChurchesData, error: memberChurchesError } = await supabase
+          .from('churches')
+          .select('*')
+          .in('id', churchIds)
+          .order('created_at', { ascending: false });
+
+        if (memberChurchesError) {
+          console.error('Error fetching member church details:', memberChurchesError);
+        } else {
+          memberChurches = memberChurchesData || [];
         }
+      }
+
+      // Combine and deduplicate churches
+      const allChurches = [...(adminChurches || []), ...memberChurches];
+      const uniqueChurches = Array.from(
+        new Map(allChurches.map(church => [church.id, church])).values()
+      );
+
+      console.log('Fetched churches:', uniqueChurches);
+      setChurches(uniqueChurches);
+      
+      // Set first church as current if none selected
+      if (uniqueChurches.length > 0 && !currentChurch) {
+        setCurrentChurch(uniqueChurches[0]);
       }
     } catch (err) {
       console.error('Error in fetchChurches:', err);
@@ -93,7 +126,7 @@ export function useChurch() {
     }
   }, [currentChurch]);
 
-  // Fetch members for a specific church with their roles - FIXED VERSION
+  // Fetch members for a specific church with their roles
   const fetchMembers = useCallback(async (churchId: string) => {
     console.log('Fetching members for church:', churchId);
     try {
@@ -655,9 +688,9 @@ export function useChurch() {
     }
   }, [fetchMembers]);
 
-  // Fetch current member info (for profile display) - FIXED VERSION
+  // Fetch current member info (for profile display) - UPDATED TO USE member_id
   const fetchCurrentMember = useCallback(async (churchId: string) => {
-    console.log('Fetching current member info');
+    console.log('Fetching current member info for church:', churchId);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -667,18 +700,27 @@ export function useChurch() {
         return;
       }
 
+      // Query by member_id (which links to auth.users.id)
       const { data, error: fetchError } = await supabase
         .from('church_members')
         .select('*')
         .eq('church_id', churchId)
-        .eq('email', user.email)
-        .single();
+        .eq('member_id', user.id)
+        .maybeSingle();
 
       if (fetchError) {
         console.error('Error fetching current member:', fetchError);
         setCurrentMember(null);
         return;
       }
+
+      if (!data) {
+        console.log('Current user is not a member of this church');
+        setCurrentMember(null);
+        return;
+      }
+
+      console.log('Found current member:', data);
 
       // Fetch roles for this member without joining to avoid permission issues
       const { data: memberRolesData, error: rolesError } = await supabase
@@ -724,6 +766,7 @@ export function useChurch() {
         role_name: roleMap.get(mr.role_id) || 'Unknown Role'
       }));
 
+      console.log('Current member with roles:', { ...data, memberRoles: roles });
       setCurrentMember({
         ...data,
         memberRoles: roles,
