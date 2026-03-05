@@ -1,16 +1,17 @@
+
 {
   "expo": {
-    "name": "i-want-to-build-and-",
-    "slug": "i-want-to-build-and",
+    "name": "Church Scheduler",
+    "slug": "church-scheduler",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon-asi.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/app-icon-asi.png",
+      "image": "./assets/images/splash-screen.png",
       "resizeMode": "contain",
-      "backgroundColor": "#000000"
+      "backgroundColor": "#1E3A8A"
     },
     "ios": {
       "supportsTablet": true,
@@ -22,13 +23,13 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/app-icon-asi.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#1E3A8A"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.placeholder.app"
     },
     "web": {
-      "favicon": "./assets/images/final_quest_240x240.png",
+      "favicon": "./assets/images/app-icon-asi.png",
       "bundler": "metro"
     },
     "plugins": [
@@ -37,7 +38,7 @@
       "expo-secure-store",
       "expo-web-browser"
     ],
-    "scheme": "iwanttobuildand",
+    "scheme": "churchscheduler",
     "experiments": {
       "typedRoutes": true
     },

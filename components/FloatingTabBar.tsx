@@ -21,6 +21,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Href } from 'expo-router';
+import { colors } from '@/styles/commonStyles';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -49,23 +50,19 @@ export default function FloatingTabBar({
   const theme = useTheme();
   const animatedValue = useSharedValue(0);
 
-  // Improved active tab detection with better path matching
   const activeTabIndex = React.useMemo(() => {
     console.log('FloatingTabBar - Current pathname:', pathname);
     console.log('FloatingTabBar - Available tabs:', tabs.map(t => ({ name: t.name, route: t.route })));
 
-    // Safety check: ensure tabs array is valid
     if (!tabs || tabs.length === 0) {
       console.warn('FloatingTabBar - No tabs provided');
       return 0;
     }
 
-    // Find the best matching tab based on the current pathname
     let bestMatch = -1;
     let bestMatchScore = 0;
 
     tabs.forEach((tab, index) => {
-      // Safety check: ensure tab and tab.route exist
       if (!tab || !tab.route) {
         console.warn('FloatingTabBar - Invalid tab at index', index, tab);
         return;
@@ -74,20 +71,13 @@ export default function FloatingTabBar({
       let score = 0;
       const routeStr = String(tab.route);
 
-      // Exact route match gets highest score
       if (pathname === routeStr) {
         score = 100;
-      }
-      // Check if pathname starts with tab route (for nested routes)
-      else if (pathname.startsWith(routeStr)) {
+      } else if (pathname.startsWith(routeStr)) {
         score = 80;
-      }
-      // Check if pathname contains the tab name
-      else if (tab.name && pathname.includes(tab.name)) {
+      } else if (tab.name && pathname.includes(tab.name)) {
         score = 60;
-      }
-      // Check for partial matches in the route
-      else if (routeStr.includes('/(tabs)/') && pathname.includes(routeStr.split('/(tabs)/')[1])) {
+      } else if (routeStr.includes('/(tabs)/') && pathname.includes(routeStr.split('/(tabs)/')[1])) {
         score = 40;
       }
 
@@ -98,8 +88,6 @@ export default function FloatingTabBar({
     });
 
     console.log('FloatingTabBar - Active tab index:', bestMatch >= 0 ? bestMatch : 0);
-
-    // Default to first tab if no match found
     return bestMatch >= 0 ? bestMatch : 0;
   }, [pathname, tabs]);
 
@@ -118,14 +106,11 @@ export default function FloatingTabBar({
     router.push(route);
   }, [router]);
 
-  // Calculate tab width percentage
   const tabWidthPercent = React.useMemo(() => {
     if (!tabs || tabs.length === 0) return 50;
     return ((100 / tabs.length) - 1);
   }, [tabs]);
 
-  // CRITICAL: Call useAnimatedStyle BEFORE any conditional returns
-  // This ensures the hook is always called in the same order
   const indicatorStyle = useAnimatedStyle(() => {
     if (!tabs || tabs.length === 0) {
       return { transform: [{ translateX: 0 }] };
@@ -145,33 +130,30 @@ export default function FloatingTabBar({
     };
   }, [tabs, containerWidth]);
 
-  // Safety check: if tabs is empty or invalid, render nothing
-  // This check comes AFTER all hooks have been called
   if (!tabs || tabs.length === 0) {
     console.error('FloatingTabBar - No valid tabs to render');
     return null;
   }
 
-  // Dynamic styles based on theme
   const dynamicStyles = {
     blurContainer: {
       ...styles.blurContainer,
       borderWidth: 1.2,
-      borderColor: 'rgba(255, 255, 255, 1)',
+      borderColor: colors.primary,
       ...Platform.select({
         ios: {
           backgroundColor: theme.dark
-            ? 'rgba(28, 28, 30, 0.8)'
+            ? 'rgba(15, 23, 42, 0.8)'
             : 'rgba(255, 255, 255, 0.6)',
         },
         android: {
           backgroundColor: theme.dark
-            ? 'rgba(28, 28, 30, 0.95)'
+            ? 'rgba(15, 23, 42, 0.95)'
             : 'rgba(255, 255, 255, 0.6)',
         },
         web: {
           backgroundColor: theme.dark
-            ? 'rgba(28, 28, 30, 0.95)'
+            ? 'rgba(15, 23, 42, 0.95)'
             : 'rgba(255, 255, 255, 0.6)',
           backdropFilter: 'blur(10px)',
         },
@@ -183,8 +165,8 @@ export default function FloatingTabBar({
     indicator: {
       ...styles.indicator,
       backgroundColor: theme.dark
-        ? 'rgba(255, 255, 255, 0.08)'
-        : 'rgba(0, 0, 0, 0.04)',
+        ? 'rgba(96, 165, 250, 0.15)'
+        : 'rgba(30, 58, 138, 0.08)',
       width: `${tabWidthPercent}%` as `${number}%`,
     },
   };
@@ -206,7 +188,6 @@ export default function FloatingTabBar({
           <Animated.View style={[dynamicStyles.indicator, indicatorStyle]} />
           <View style={styles.tabsContainer}>
             {tabs.map((tab, index) => {
-              // Safety check for each tab
               if (!tab) {
                 console.warn('FloatingTabBar - Skipping invalid tab at index', index);
                 return null;
@@ -226,13 +207,13 @@ export default function FloatingTabBar({
                         android_material_icon_name={tab.icon}
                         ios_icon_name={tab.icon}
                         size={24}
-                        color={isActive ? theme.colors.primary : (theme.dark ? '#98989D' : '#000000')}
+                        color={isActive ? colors.primary : (theme.dark ? '#98989D' : '#64748B')}
                       />
                       <Text
                         style={[
                           styles.tabLabel,
-                          { color: theme.dark ? '#98989D' : '#8E8E93' },
-                          isActive && { color: theme.colors.primary, fontWeight: '600' },
+                          { color: theme.dark ? '#98989D' : '#64748B' },
+                          isActive && { color: colors.primary, fontWeight: '600' },
                         ]}
                       >
                         {tab.label}
