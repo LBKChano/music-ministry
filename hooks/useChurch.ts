@@ -11,20 +11,26 @@ type RecurringService = Tables<'recurring_services'>;
 type ChurchRole = Tables<'church_roles'>;
 type RecurringServiceRole = Tables<'recurring_service_roles'>;
 type MemberUnavailability = Tables<'member_unavailability'>;
+type MemberRole = Tables<'member_roles'>;
 
 export interface RecurringServiceWithRoles extends RecurringService {
   roles: string[];
 }
 
+export interface ChurchMemberWithRoles extends ChurchMember {
+  memberRoles: { role_id: string; role_name: string }[];
+}
+
 export function useChurch() {
   const [churches, setChurches] = useState<Church[]>([]);
   const [currentChurch, setCurrentChurch] = useState<Church | null>(null);
-  const [members, setMembers] = useState<ChurchMember[]>([]);
+  const [members, setMembers] = useState<ChurchMemberWithRoles[]>([]);
   const [recurringServices, setRecurringServices] = useState<RecurringServiceWithRoles[]>([]);
   const [churchRoles, setChurchRoles] = useState<ChurchRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
+  const [currentMember, setCurrentMember] = useState<ChurchMemberWithRoles | null>(null);
 
   // Check authentication status
   useEffect(() => {
@@ -87,7 +93,7 @@ export function useChurch() {
     }
   }, [currentChurch]);
 
-  // Fetch members for a specific church
+  // Fetch members for a specific church with their roles
   const fetchMembers = useCallback(async (churchId: string) => {
     console.log('Fetching members for church:', churchId);
     try {
@@ -104,7 +110,41 @@ export function useChurch() {
         setError(fetchError.message);
       } else {
         console.log('Fetched members:', data);
-        setMembers(data || []);
+        
+        // Fetch roles for each member
+        const membersWithRoles: ChurchMemberWithRoles[] = [];
+        for (const member of data || []) {
+          const { data: rolesData, error: rolesError } = await supabase
+            .from('member_roles')
+            .select('role_id')
+            .eq('member_id', member.id);
+
+          if (rolesError) {
+            console.error('Error fetching member roles:', rolesError);
+          }
+
+          // Get role names
+          const roleNames: { role_id: string; role_name: string }[] = [];
+          for (const roleLink of rolesData || []) {
+            const { data: roleData } = await supabase
+              .from('church_roles')
+              .select('name')
+              .eq('id', roleLink.role_id)
+              .single();
+            
+            if (roleData) {
+              roleNames.push({ role_id: roleLink.role_id, role_name: roleData.name });
+            }
+          }
+
+          membersWithRoles.push({
+            ...member,
+            memberRoles: roleNames,
+          });
+        }
+
+        console.log('Members with roles:', membersWithRoles);
+        setMembers(membersWithRoles);
       }
     } catch (err) {
       console.error('Error in fetchMembers:', err);
@@ -464,17 +504,162 @@ export function useChurch() {
     }
   }, [fetchChurchRoles]);
 
+  // Add role to member
+  const addMemberRole = useCallback(async (memberId: string, roleId: string, churchId: string) => {
+    console.log('Adding role to member:', { memberId, roleId });
+    try {
+      setError(null);
+
+      const newMemberRole: TablesInsert<'member_roles'> = {
+        member_id: memberId,
+        role_id: roleId,
+      };
+
+      const { error: insertError } = await supabase
+        .from('member_roles')
+        .insert(newMemberRole);
+
+      if (insertError) {
+        console.error('Error adding member role:', insertError);
+        setError(insertError.message);
+        return false;
+      }
+
+      console.log('Member role added successfully');
+      await fetchMembers(churchId);
+      return true;
+    } catch (err) {
+      console.error('Error in addMemberRole:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, [fetchMembers]);
+
+  // Remove role from member
+  const removeMemberRole = useCallback(async (memberId: string, roleId: string, churchId: string) => {
+    console.log('Removing role from member:', { memberId, roleId });
+    try {
+      setError(null);
+
+      const { error: deleteError } = await supabase
+        .from('member_roles')
+        .delete()
+        .eq('member_id', memberId)
+        .eq('role_id', roleId);
+
+      if (deleteError) {
+        console.error('Error removing member role:', deleteError);
+        setError(deleteError.message);
+        return false;
+      }
+
+      console.log('Member role removed successfully');
+      await fetchMembers(churchId);
+      return true;
+    } catch (err) {
+      console.error('Error in removeMemberRole:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, [fetchMembers]);
+
+  // Fetch current member info (for profile display)
+  const fetchCurrentMember = useCallback(async (churchId: string) => {
+    console.log('Fetching current member info');
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        console.log('No user logged in');
+        setCurrentMember(null);
+        return;
+      }
+
+      const { data, error: fetchError } = await supabase
+        .from('church_members')
+        .select('*')
+        .eq('church_id', churchId)
+        .eq('email', user.email)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching current member:', fetchError);
+        setCurrentMember(null);
+        return;
+      }
+
+      // Fetch roles for this member
+      const { data: rolesData, error: rolesError } = await supabase
+        .from('member_roles')
+        .select('role_id')
+        .eq('member_id', data.id);
+
+      if (rolesError) {
+        console.error('Error fetching member roles:', rolesError);
+      }
+
+      // Get role names
+      const roleNames: { role_id: string; role_name: string }[] = [];
+      for (const roleLink of rolesData || []) {
+        const { data: roleData } = await supabase
+          .from('church_roles')
+          .select('name')
+          .eq('id', roleLink.role_id)
+          .single();
+        
+        if (roleData) {
+          roleNames.push({ role_id: roleLink.role_id, role_name: roleData.name });
+        }
+      }
+
+      setCurrentMember({
+        ...data,
+        memberRoles: roleNames,
+      });
+    } catch (err) {
+      console.error('Error in fetchCurrentMember:', err);
+      setCurrentMember(null);
+    }
+  }, []);
+
+  // Sign out function
+  const signOut = useCallback(async () => {
+    console.log('Signing out user');
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Error signing out:', error);
+        throw error;
+      }
+      console.log('User signed out successfully');
+      
+      // Clear local state
+      setChurches([]);
+      setCurrentChurch(null);
+      setMembers([]);
+      setRecurringServices([]);
+      setChurchRoles([]);
+      setCurrentMember(null);
+      setUser(null);
+    } catch (err) {
+      console.error('Error in signOut:', err);
+      throw err;
+    }
+  }, []);
+
   useEffect(() => {
     if (currentChurch) {
       fetchMembers(currentChurch.id);
       fetchRecurringServices(currentChurch.id);
       fetchChurchRoles(currentChurch.id);
+      fetchCurrentMember(currentChurch.id);
     } else {
       setMembers([]);
       setRecurringServices([]);
       setChurchRoles([]);
+      setCurrentMember(null);
     }
-  }, [currentChurch, fetchMembers, fetchRecurringServices, fetchChurchRoles]);
+  }, [currentChurch, fetchMembers, fetchRecurringServices, fetchChurchRoles, fetchCurrentMember]);
 
   return {
     churches,
@@ -486,6 +671,7 @@ export function useChurch() {
     loading,
     error,
     user,
+    currentMember,
     createChurch,
     addMember,
     deleteMember,
@@ -494,9 +680,13 @@ export function useChurch() {
     deleteRecurringService,
     addChurchRole,
     deleteChurchRole,
+    addMemberRole,
+    removeMemberRole,
+    signOut,
     refreshChurches: fetchChurches,
     refreshMembers: useCallback(() => currentChurch && fetchMembers(currentChurch.id), [currentChurch, fetchMembers]),
     refreshRecurringServices: useCallback(() => currentChurch && fetchRecurringServices(currentChurch.id), [currentChurch, fetchRecurringServices]),
     refreshChurchRoles: useCallback(() => currentChurch && fetchChurchRoles(currentChurch.id), [currentChurch, fetchChurchRoles]),
+    refreshCurrentMember: useCallback(() => currentChurch && fetchCurrentMember(currentChurch.id), [currentChurch, fetchCurrentMember]),
   };
 }

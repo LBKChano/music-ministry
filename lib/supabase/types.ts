@@ -294,6 +294,42 @@ export type Database = {
           },
         ]
       }
+      member_roles: {
+        Row: {
+          created_at: string
+          id: string
+          member_id: string
+          role_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_id: string
+          role_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_id?: string
+          role_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_roles_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "church_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_roles_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "church_roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

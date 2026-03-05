@@ -40,6 +40,8 @@ export default function ChurchScreen() {
     deleteRecurringService,
     addChurchRole,
     deleteChurchRole,
+    addMemberRole,
+    removeMemberRole,
   } = useChurch();
 
   const [activeTab, setActiveTab] = useState<'members' | 'services' | 'roles'>('members');
@@ -60,12 +62,10 @@ export default function ChurchScreen() {
   const [newChurchName, setNewChurchName] = useState('');
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberName, setNewMemberName] = useState('');
-  const [newMemberRole, setNewMemberRole] = useState('');
+  const [newMemberRoles, setNewMemberRoles] = useState<string[]>([]);
   const [editMemberEmail, setEditMemberEmail] = useState('');
   const [editMemberName, setEditMemberName] = useState('');
-  const [editMemberRole, setEditMemberRole] = useState('');
-  const [showRolePicker, setShowRolePicker] = useState(false);
-  const [showEditRolePicker, setShowEditRolePicker] = useState(false);
+  const [editMemberRoles, setEditMemberRoles] = useState<string[]>([]);
   const [newServiceName, setNewServiceName] = useState('');
   const [newServiceDay, setNewServiceDay] = useState(0);
   const [newServiceTime, setNewServiceTime] = useState('09:00');
@@ -98,13 +98,23 @@ export default function ChurchScreen() {
       currentChurch.id,
       newMemberEmail.trim(),
       newMemberName.trim() || undefined,
-      newMemberRole.trim() || undefined
+      undefined // Legacy role field - no longer used
     );
+
+    if (result && newMemberRoles.length > 0) {
+      // Add selected roles to the member
+      for (const roleName of newMemberRoles) {
+        const role = churchRoles.find(r => r.name === roleName);
+        if (role) {
+          await addMemberRole(result.id, role.id, currentChurch.id);
+        }
+      }
+    }
 
     if (result) {
       setNewMemberEmail('');
       setNewMemberName('');
-      setNewMemberRole('');
+      setNewMemberRoles([]);
       setAddMemberModalVisible(false);
     }
   };
@@ -119,7 +129,7 @@ export default function ChurchScreen() {
     setMemberToEdit(memberId);
     setEditMemberEmail(member.email);
     setEditMemberName(member.name || '');
-    setEditMemberRole(member.role || '');
+    setEditMemberRoles(member.memberRoles?.map(r => r.role_name) || []);
     setEditMemberModalVisible(true);
   };
 
@@ -129,7 +139,7 @@ export default function ChurchScreen() {
       return;
     }
 
-    const updates: { name?: string; role?: string; email?: string } = {};
+    const updates: { name?: string; email?: string } = {};
     
     if (editMemberEmail.trim()) {
       updates.email = editMemberEmail.trim();
@@ -137,16 +147,38 @@ export default function ChurchScreen() {
     if (editMemberName.trim()) {
       updates.name = editMemberName.trim();
     }
-    if (editMemberRole.trim()) {
-      updates.role = editMemberRole.trim();
-    }
 
     const success = await updateMember(memberToEdit, currentChurch.id, updates);
+    
     if (success) {
+      // Update member roles
+      const member = members.find(m => m.id === memberToEdit);
+      const currentRoleNames = member?.memberRoles?.map(r => r.role_name) || [];
+      
+      // Remove roles that are no longer selected
+      for (const currentRoleName of currentRoleNames) {
+        if (!editMemberRoles.includes(currentRoleName)) {
+          const role = churchRoles.find(r => r.name === currentRoleName);
+          if (role) {
+            await removeMemberRole(memberToEdit, role.id, currentChurch.id);
+          }
+        }
+      }
+      
+      // Add new roles
+      for (const newRoleName of editMemberRoles) {
+        if (!currentRoleNames.includes(newRoleName)) {
+          const role = churchRoles.find(r => r.name === newRoleName);
+          if (role) {
+            await addMemberRole(memberToEdit, role.id, currentChurch.id);
+          }
+        }
+      }
+      
       setMemberToEdit(null);
       setEditMemberEmail('');
       setEditMemberName('');
-      setEditMemberRole('');
+      setEditMemberRoles([]);
       setEditMemberModalVisible(false);
     }
   };
@@ -505,7 +537,9 @@ export default function ChurchScreen() {
                   <View style={styles.membersList}>
                     {members.map((member) => {
                       const displayName = member.name || member.email;
-                      const displayRole = member.role || '';
+                      const displayRoles = member.memberRoles && member.memberRoles.length > 0
+                        ? member.memberRoles.map(r => r.role_name).join(', ')
+                        : 'No roles assigned';
                       return (
                         <View
                           key={member.id}
@@ -525,11 +559,9 @@ export default function ChurchScreen() {
                               <Text style={[styles.memberEmail, { color: colors.textSecondary }]}>
                                 {member.email}
                               </Text>
-                              {displayRole && (
-                                <Text style={[styles.memberRole, { color: colors.primary }]}>
-                                  {displayRole}
-                                </Text>
-                              )}
+                              <Text style={[styles.memberRole, { color: colors.primary }]}>
+                                {displayRoles}
+                              </Text>
                             </View>
                           </View>
                           <View style={styles.memberActions}>
@@ -811,52 +843,40 @@ export default function ChurchScreen() {
               />
 
               <View style={styles.pickerContainer}>
-                <Text style={[styles.label, { color: colors.text }]}>Role (optional)</Text>
+                <Text style={[styles.label, { color: colors.text }]}>Roles (optional - select multiple)</Text>
                 {churchRoles.length > 0 ? (
-                  <>
-                    <TouchableOpacity
-                      style={[styles.input, { borderColor: colors.border, justifyContent: 'center' }]}
-                      onPress={() => {
-                        console.log('User tapped role picker');
-                        setShowRolePicker(!showRolePicker);
-                      }}
-                    >
-                      <Text style={[{ color: newMemberRole ? colors.text : colors.textSecondary }]}>
-                        {newMemberRole || 'Select a role'}
-                      </Text>
-                    </TouchableOpacity>
-                    {showRolePicker && (
-                      <View style={[styles.pickerList, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+                  <View style={styles.roleCheckboxContainer}>
+                    {churchRoles.map((role) => {
+                      const isSelected = newMemberRoles.includes(role.name);
+                      return (
                         <TouchableOpacity
-                          style={styles.pickerItem}
+                          key={role.id}
+                          style={[
+                            styles.roleCheckbox,
+                            { borderColor: colors.border },
+                            isSelected && { backgroundColor: colors.primary },
+                          ]}
                           onPress={() => {
-                            console.log('User cleared role selection');
-                            setNewMemberRole('');
-                            setShowRolePicker(false);
+                            console.log('User toggled role:', role.name);
+                            if (isSelected) {
+                              setNewMemberRoles(newMemberRoles.filter(r => r !== role.name));
+                            } else {
+                              setNewMemberRoles([...newMemberRoles, role.name]);
+                            }
                           }}
                         >
-                          <Text style={[styles.pickerItemText, { color: colors.textSecondary }]}>
-                            None
+                          <Text
+                            style={[
+                              styles.roleCheckboxText,
+                              { color: isSelected ? '#fff' : colors.text },
+                            ]}
+                          >
+                            {role.name}
                           </Text>
                         </TouchableOpacity>
-                        {churchRoles.map((role) => (
-                          <TouchableOpacity
-                            key={role.id}
-                            style={styles.pickerItem}
-                            onPress={() => {
-                              console.log('User selected role:', role.name);
-                              setNewMemberRole(role.name);
-                              setShowRolePicker(false);
-                            }}
-                          >
-                            <Text style={[styles.pickerItemText, { color: colors.text }]}>
-                              {role.name}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    )}
-                  </>
+                      );
+                    })}
+                  </View>
                 ) : (
                   <Text style={[styles.helperText, { color: colors.textSecondary }]}>
                     Add roles in the Roles tab first
@@ -872,8 +892,7 @@ export default function ChurchScreen() {
                     setAddMemberModalVisible(false);
                     setNewMemberEmail('');
                     setNewMemberName('');
-                    setNewMemberRole('');
-                    setShowRolePicker(false);
+                    setNewMemberRoles([]);
                   }}
                 >
                   <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -921,52 +940,40 @@ export default function ChurchScreen() {
               />
 
               <View style={styles.pickerContainer}>
-                <Text style={[styles.label, { color: colors.text }]}>Role (optional)</Text>
+                <Text style={[styles.label, { color: colors.text }]}>Roles (select multiple)</Text>
                 {churchRoles.length > 0 ? (
-                  <>
-                    <TouchableOpacity
-                      style={[styles.input, { borderColor: colors.border, justifyContent: 'center' }]}
-                      onPress={() => {
-                        console.log('User tapped edit role picker');
-                        setShowEditRolePicker(!showEditRolePicker);
-                      }}
-                    >
-                      <Text style={[{ color: editMemberRole ? colors.text : colors.textSecondary }]}>
-                        {editMemberRole || 'Select a role'}
-                      </Text>
-                    </TouchableOpacity>
-                    {showEditRolePicker && (
-                      <View style={[styles.pickerList, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+                  <View style={styles.roleCheckboxContainer}>
+                    {churchRoles.map((role) => {
+                      const isSelected = editMemberRoles.includes(role.name);
+                      return (
                         <TouchableOpacity
-                          style={styles.pickerItem}
+                          key={role.id}
+                          style={[
+                            styles.roleCheckbox,
+                            { borderColor: colors.border },
+                            isSelected && { backgroundColor: colors.primary },
+                          ]}
                           onPress={() => {
-                            console.log('User cleared role selection');
-                            setEditMemberRole('');
-                            setShowEditRolePicker(false);
+                            console.log('User toggled role:', role.name);
+                            if (isSelected) {
+                              setEditMemberRoles(editMemberRoles.filter(r => r !== role.name));
+                            } else {
+                              setEditMemberRoles([...editMemberRoles, role.name]);
+                            }
                           }}
                         >
-                          <Text style={[styles.pickerItemText, { color: colors.textSecondary }]}>
-                            None
+                          <Text
+                            style={[
+                              styles.roleCheckboxText,
+                              { color: isSelected ? '#fff' : colors.text },
+                            ]}
+                          >
+                            {role.name}
                           </Text>
                         </TouchableOpacity>
-                        {churchRoles.map((role) => (
-                          <TouchableOpacity
-                            key={role.id}
-                            style={styles.pickerItem}
-                            onPress={() => {
-                              console.log('User selected role:', role.name);
-                              setEditMemberRole(role.name);
-                              setShowEditRolePicker(false);
-                            }}
-                          >
-                            <Text style={[styles.pickerItemText, { color: colors.text }]}>
-                              {role.name}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    )}
-                  </>
+                      );
+                    })}
+                  </View>
                 ) : (
                   <Text style={[styles.helperText, { color: colors.textSecondary }]}>
                     Add roles in the Roles tab first
@@ -983,8 +990,7 @@ export default function ChurchScreen() {
                     setMemberToEdit(null);
                     setEditMemberEmail('');
                     setEditMemberName('');
-                    setEditMemberRole('');
-                    setShowEditRolePicker(false);
+                    setEditMemberRoles([]);
                   }}
                 >
                   <Text style={styles.cancelButtonText}>Cancel</Text>
