@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "i-want-to-build-and-",
-    "slug": "i-want-to-build-and",
+    "name": "Music Ministry",
+    "slug": "music-ministry",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/app-icon-asi.png",
+    "icon": "./assets/images/app-icon-btg.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/splash-screen.png",
+      "image": "./assets/images/app-icon-btg.png",
       "resizeMode": "contain",
       "backgroundColor": "#1E3A8A"
     },
@@ -21,7 +21,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/app-icon-asi.png",
+        "foregroundImage": "./assets/images/app-icon-btg.png",
         "backgroundColor": "#1E3A8A"
       },
       "edgeToEdgeEnabled": true,
@@ -37,7 +37,7 @@
       "expo-secure-store",
       "expo-web-browser"
     ],
-    "scheme": "iwanttobuildand",
+    "scheme": "musicministry",
     "experiments": {
       "typedRoutes": true
     },
