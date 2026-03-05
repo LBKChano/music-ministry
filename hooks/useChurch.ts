@@ -1273,6 +1273,107 @@ export function useChurch() {
     }
   }, [currentChurch, fetchMembers, fetchRecurringServices, fetchChurchRoles, fetchCurrentMember, fetchNotificationSettings, fetchFillInRequests]);
 
+  // Set up realtime subscriptions for live updates
+  useEffect(() => {
+    if (!currentChurch) {
+      console.log('No current church, skipping realtime subscription');
+      return;
+    }
+
+    console.log('Setting up realtime subscriptions for church data:', currentChurch.id);
+
+    // Create a channel for church-related updates
+    const churchChannel = supabase
+      .channel(`church-data-${currentChurch.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'church_members',
+          filter: `church_id=eq.${currentChurch.id}`,
+        },
+        (payload) => {
+          console.log('Church members realtime update:', payload.eventType);
+          fetchMembers(currentChurch.id);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'member_roles',
+        },
+        (payload) => {
+          console.log('Member roles realtime update:', payload.eventType);
+          fetchMembers(currentChurch.id);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'church_roles',
+          filter: `church_id=eq.${currentChurch.id}`,
+        },
+        (payload) => {
+          console.log('Church roles realtime update:', payload.eventType);
+          fetchChurchRoles(currentChurch.id);
+          fetchRecurringServices(currentChurch.id);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'fill_in_requests',
+          filter: `church_id=eq.${currentChurch.id}`,
+        },
+        (payload) => {
+          console.log('Fill-in requests realtime update:', payload.eventType, payload.new);
+          fetchFillInRequests(currentChurch.id);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'recurring_services',
+          filter: `church_id=eq.${currentChurch.id}`,
+        },
+        (payload) => {
+          console.log('Recurring services realtime update:', payload.eventType);
+          fetchRecurringServices(currentChurch.id);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notification_settings',
+          filter: `church_id=eq.${currentChurch.id}`,
+        },
+        (payload) => {
+          console.log('Notification settings realtime update:', payload.eventType);
+          fetchNotificationSettings(currentChurch.id);
+        }
+      )
+      .subscribe((status) => {
+        console.log('Church data realtime subscription status:', status);
+      });
+
+    // Cleanup subscriptions on unmount
+    return () => {
+      console.log('Cleaning up church data realtime subscriptions');
+      supabase.removeChannel(churchChannel);
+    };
+  }, [currentChurch, fetchMembers, fetchChurchRoles, fetchRecurringServices, fetchFillInRequests, fetchNotificationSettings]);
+
   return {
     churches,
     currentChurch,

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Church Scheduler",
-    "slug": "church-scheduler",
+    "name": "i-want-to-build-and-",
+    "slug": "i-want-to-build-and",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon-asi.png",
@@ -37,7 +37,7 @@
       "expo-secure-store",
       "expo-web-browser"
     ],
-    "scheme": "churchscheduler",
+    "scheme": "iwanttobuildand",
     "experiments": {
       "typedRoutes": true
     },
