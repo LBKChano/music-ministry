@@ -40,6 +40,14 @@ interface SpecialService {
   selectedRoleIds: string[];
 }
 
+// Helper to create a Date object representing the local date from a "YYYY-MM-DD" string
+// This avoids timezone shifts when displaying dates
+const createLocalDate = (dateString: string): Date => {
+  const [year, month, day] = dateString.split('-').map(Number);
+  // Month is 0-indexed in Date constructor
+  return new Date(year, month - 1, day);
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -111,7 +119,7 @@ const styles = StyleSheet.create({
     flex: 1,
     letterSpacing: 0.5,
   },
-  serviceDate: {
+  serviceDateTime: {
     fontSize: 15,
     color: colors.textSecondary,
     marginBottom: 12,
@@ -138,7 +146,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 8,
   },
-  roleText: {
+  roleNameText: {
     fontSize: 15,
     fontWeight: '600',
     color: colors.text,
@@ -465,7 +473,7 @@ export default function HomeScreen() {
 
   // Filter services to only show future/current services (NOT past events)
   const filteredServices = services.filter(service => {
-    const serviceDate = new Date(service.date);
+    const serviceDate = createLocalDate(service.date);
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Normalize to start of day
     
@@ -596,7 +604,7 @@ export default function HomeScreen() {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    const date = createLocalDate(dateString);
     const formattedDate = date.toLocaleDateString('en-US', { 
       weekday: 'short', 
       month: 'short', 
@@ -785,7 +793,7 @@ export default function HomeScreen() {
                     </TouchableOpacity>
                   )}
                 </View>
-                <Text style={styles.serviceDate}>{dateTimeDisplay}</Text>
+                <Text style={styles.serviceDateTime}>{dateTimeDisplay}</Text>
                 {service.notes && <Text style={styles.serviceNotes}>{service.notes}</Text>}
 
                 {/* Display fill-in requests for this service */}
@@ -839,7 +847,9 @@ export default function HomeScreen() {
 
                   return (
                     <View key={assignment.id} style={styles.assignmentRow}>
-                      <Text style={styles.roleText}>{assignment.role}</Text>
+                      <Text style={styles.roleNameText} numberOfLines={1} ellipsizeMode="tail">
+                        {assignment.role}
+                      </Text>
                       <Text style={[styles.personText, !assignment.person_name && styles.emptySlot]}>
                         {assignment.person_name || 'Unassigned'}
                       </Text>
