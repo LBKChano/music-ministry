@@ -42,7 +42,8 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "backendUrl": "https://nucffxkqp3vv9chpnxeb3a3fcnb99vdb.app.specular.dev"
     }
   }
 }
