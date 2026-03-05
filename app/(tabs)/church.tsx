@@ -41,6 +41,13 @@ function formatDateForDatabase(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+// Helper function to format time from Date object as HH:MM
+function formatTimeForDatabase(date: Date): string {
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
 export default function ChurchScreen() {
   const { colors: themeColors } = useTheme();
   const router = useRouter();
@@ -116,7 +123,7 @@ export default function ChurchScreen() {
   const [showAddSpecialService, setShowAddSpecialService] = useState(false);
   const [specialServiceDate, setSpecialServiceDate] = useState(new Date());
   const [specialServiceName, setSpecialServiceName] = useState('');
-  const [specialServiceTime, setSpecialServiceTime] = useState('10:00');
+  const [specialServiceTime, setSpecialServiceTime] = useState(new Date());
   const [specialServiceNotes, setSpecialServiceNotes] = useState('');
   const [specialServiceRoles, setSpecialServiceRoles] = useState<string[]>([]);
   const [showSpecialServiceTimePicker, setShowSpecialServiceTimePicker] = useState(false);
@@ -127,7 +134,7 @@ export default function ChurchScreen() {
   const [showAdHocServiceModal, setShowAdHocServiceModal] = useState(false);
   const [adHocServiceName, setAdHocServiceName] = useState('');
   const [adHocServiceDate, setAdHocServiceDate] = useState(new Date());
-  const [adHocServiceTime, setAdHocServiceTime] = useState('10:00');
+  const [adHocServiceTime, setAdHocServiceTime] = useState(new Date());
   const [adHocServiceNotes, setAdHocServiceNotes] = useState('');
   const [adHocServiceRoles, setAdHocServiceRoles] = useState<string[]>([]);
   const [showAdHocDatePicker, setShowAdHocDatePicker] = useState(false);
@@ -689,12 +696,13 @@ export default function ChurchScreen() {
       return;
     }
 
-    console.log('User added special service with roles:', specialServiceRoles, 'time:', specialServiceTime);
+    const timeString = formatTimeForDatabase(specialServiceTime);
+    console.log('User added special service with roles:', specialServiceRoles, 'time:', timeString);
     const newSpecialService: SpecialService = {
       id: `special-${Date.now()}`,
       name: specialServiceName,
       date: specialServiceDate,
-      time: specialServiceTime,
+      time: timeString,
       notes: specialServiceNotes,
       selectedRoleIds: specialServiceRoles,
     };
@@ -702,7 +710,7 @@ export default function ChurchScreen() {
     setSpecialServices([...specialServices, newSpecialService]);
     setShowAddSpecialService(false);
     setSpecialServiceName('');
-    setSpecialServiceTime('10:00');
+    setSpecialServiceTime(new Date());
     setSpecialServiceNotes('');
     setSpecialServiceRoles([]);
     setSpecialServiceDate(new Date());
@@ -737,13 +745,16 @@ export default function ChurchScreen() {
 
     console.log('User tapped Create Ad-Hoc Service button');
     console.log('Selected date:', adHocServiceDate);
-    console.log('Selected date ISO:', adHocServiceDate.toISOString());
+    console.log('Selected time:', adHocServiceTime);
     setIsCreatingAdHocService(true);
 
     try {
       // Use the helper function to format date correctly in local timezone
       const dateString = formatDateForDatabase(adHocServiceDate);
+      const timeString = formatTimeForDatabase(adHocServiceTime);
+      
       console.log('Formatted date string for database:', dateString);
+      console.log('Formatted time string for database:', timeString);
       
       const roleNames = adHocServiceRoles
         .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
@@ -752,7 +763,7 @@ export default function ChurchScreen() {
       console.log('Creating ad-hoc service:', { 
         name: adHocServiceName, 
         date: dateString, 
-        time: adHocServiceTime, 
+        time: timeString, 
         roleNames 
       });
 
@@ -762,7 +773,7 @@ export default function ChurchScreen() {
         adHocServiceName,
         adHocServiceNotes.trim() || undefined,
         roleNames,
-        adHocServiceTime
+        timeString
       );
 
       if (result) {
@@ -772,7 +783,7 @@ export default function ChurchScreen() {
         // Reset form and close modal
         setAdHocServiceName('');
         setAdHocServiceDate(new Date());
-        setAdHocServiceTime('10:00');
+        setAdHocServiceTime(new Date());
         setAdHocServiceNotes('');
         setAdHocServiceRoles([]);
         setShowAdHocServiceModal(false);
@@ -2224,22 +2235,18 @@ export default function ChurchScreen() {
                 }}
               >
                 <Text style={[styles.dateButtonText, { color: colors.text }]}>
-                  Time: {specialServiceTime}
+                  Time: {formatTimeForDatabase(specialServiceTime)}
                 </Text>
               </TouchableOpacity>
               {showSpecialServiceTimePicker && (
                 <DateTimePicker
-                  value={new Date(`2000-01-01T${specialServiceTime}:00`)}
+                  value={specialServiceTime}
                   mode="time"
                   display="default"
                   onChange={(event, date) => {
                     console.log('User selected time:', date);
                     setShowSpecialServiceTimePicker(false);
-                    if (date) {
-                      const hours = date.getHours().toString().padStart(2, '0');
-                      const minutes = date.getMinutes().toString().padStart(2, '0');
-                      setSpecialServiceTime(`${hours}:${minutes}`);
-                    }
+                    if (date) setSpecialServiceTime(date);
                   }}
                 />
               )}
@@ -2339,22 +2346,18 @@ export default function ChurchScreen() {
                 }}
               >
                 <Text style={[styles.dateButtonText, { color: colors.text }]}>
-                  Time: {adHocServiceTime}
+                  Time: {formatTimeForDatabase(adHocServiceTime)}
                 </Text>
               </TouchableOpacity>
               {showAdHocTimePicker && (
                 <DateTimePicker
-                  value={new Date(`2000-01-01T${adHocServiceTime}:00`)}
+                  value={adHocServiceTime}
                   mode="time"
                   display="default"
                   onChange={(event, date) => {
                     console.log('User selected ad-hoc time:', date);
                     setShowAdHocTimePicker(false);
-                    if (date) {
-                      const hours = date.getHours().toString().padStart(2, '0');
-                      const minutes = date.getMinutes().toString().padStart(2, '0');
-                      setAdHocServiceTime(`${hours}:${minutes}`);
-                    }
+                    if (date) setAdHocServiceTime(date);
                   }}
                 />
               )}
@@ -2411,7 +2414,7 @@ export default function ChurchScreen() {
                   setShowAdHocServiceModal(false);
                   setAdHocServiceName('');
                   setAdHocServiceDate(new Date());
-                  setAdHocServiceTime('10:00');
+                  setAdHocServiceTime(new Date());
                   setAdHocServiceNotes('');
                   setAdHocServiceRoles([]);
                 }}
