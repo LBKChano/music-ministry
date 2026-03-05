@@ -123,12 +123,13 @@ export default function OnboardingScreen() {
 
       console.log('Church created successfully:', churchResult.data);
 
-      // Step 4: Add admin as a member of the church with is_admin flag
-      console.log('Adding admin as church member with email:', adminEmail.trim());
+      // Step 4: Add admin as a member of the church with is_admin flag and member_id
+      console.log('Adding admin as church member with email:', adminEmail.trim(), 'and member_id:', user.id);
       const memberResult = await supabase
         .from('church_members')
         .insert({
           church_id: churchResult.data.id,
+          member_id: user.id,
           email: adminEmail.trim(),
           name: adminName.trim() || adminEmail.trim(),
           role: 'Admin',
@@ -264,7 +265,7 @@ export default function OnboardingScreen() {
     setError(null);
 
     try {
-      // Step 1: Validate invitation code and find church
+      // Step 1: Validate invitation code and find church (this now works for unauthenticated users)
       console.log('Validating invitation code:', memberInvitationCode.trim().toUpperCase());
       const churchQuery = supabase
         .from('churches')
@@ -320,12 +321,13 @@ export default function OnboardingScreen() {
 
       console.log('Member user created successfully! User ID:', user.id);
 
-      // Step 3: Add member to church
-      console.log('Adding member to church:', churchData.id);
+      // Step 3: Add member to church with member_id linking to auth.users
+      console.log('Adding member to church:', churchData.id, 'with member_id:', user.id);
       const memberInsert = supabase
         .from('church_members')
         .insert({
           church_id: churchData.id,
+          member_id: user.id,
           email: memberSignupEmail.trim(),
           name: memberSignupName.trim(),
           is_admin: false,
