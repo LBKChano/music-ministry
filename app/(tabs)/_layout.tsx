@@ -1,12 +1,22 @@
 
 import { Tabs } from 'expo-router';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
+import { useChurch } from '@/hooks/useChurch';
 
 export default function TabLayout() {
+  const { currentMember, loading } = useChurch();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    console.log('Current member admin status:', currentMember?.is_admin);
+    setIsAdmin(currentMember?.is_admin || false);
+  }, [currentMember]);
+
+  // Build tabs array based on admin status
   const tabs: TabBarItem[] = [
     {
       name: '(home)',
@@ -14,12 +24,12 @@ export default function TabLayout() {
       icon: 'calendar-today',
       label: 'Schedule',
     },
-    {
+    ...(isAdmin ? [{
       name: 'church',
       route: '/(tabs)/church' as any,
       icon: 'home',
       label: 'Church',
-    },
+    }] : []),
     {
       name: 'profile',
       route: '/(tabs)/profile' as any,
@@ -46,6 +56,7 @@ export default function TabLayout() {
         name="church"
         options={{
           title: 'Church',
+          href: isAdmin ? undefined : null,
         }}
       />
       <Tabs.Screen

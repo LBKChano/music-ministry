@@ -10,6 +10,7 @@ import {
   Modal,
   ActivityIndicator,
   Platform,
+  Alert,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,7 +18,18 @@ import { useTheme } from '@react-navigation/native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useChurch } from '@/hooks/useChurch';
+import { useServices } from '@/hooks/useServices';
 import { supabase } from '@/lib/supabase/client';
+import DateTimePicker from '@react-native-community/datetimepicker';
+
+interface SpecialService {
+  id: string;
+  name: string;
+  date: Date;
+  time: string;
+  notes: string;
+  selectedRoleIds: string[];
+}
 
 export default function ChurchScreen() {
   const { colors: themeColors } = useTheme();
@@ -42,7 +54,10 @@ export default function ChurchScreen() {
     deleteChurchRole,
     addMemberRole,
     removeMemberRole,
+    fetchMemberUnavailability,
   } = useChurch();
+
+  const { services, createServiceFromTemplate, updateAssignment } = useServices(currentChurch?.id || null);
 
   const [activeTab, setActiveTab] = useState<'members' | 'services' | 'roles'>('members');
   const [isCreateChurchModalVisible, setCreateChurchModalVisible] = useState(false);
@@ -75,6 +90,21 @@ export default function ChurchScreen() {
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleDescription, setNewRoleDescription] = useState('');
 
+  // Quarterly assignment states
+  const [showPrepareQuarterModal, setShowPrepareQuarterModal] = useState(false);
+  const [selectedQuarter, setSelectedQuarter] = useState<number>(1);
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [blockedServices, setBlockedServices] = useState<Set<string>>(new Set());
+  const [specialServices, setSpecialServices] = useState<SpecialService[]>([]);
+  const [showAddSpecialService, setShowAddSpecialService] = useState(false);
+  const [specialServiceDate, setSpecialServiceDate] = useState(new Date());
+  const [specialServiceName, setSpecialServiceName] = useState('');
+  const [specialServiceTime, setSpecialServiceTime] = useState('10:00');
+  const [specialServiceNotes, setSpecialServiceNotes] = useState('');
+  const [specialServiceRoles, setSpecialServiceRoles] = useState<string[]>([]);
+  const [showSpecialServiceTimePicker, setShowSpecialServiceTimePicker] = useState(false);
+  const [showSpecialServiceDatePicker, setShowSpecialServiceDatePicker] = useState(false);
+
   const handleCreateChurch = async () => {
     console.log('User tapped Create Church button');
     if (!newChurchName.trim()) {
@@ -98,11 +128,10 @@ export default function ChurchScreen() {
       currentChurch.id,
       newMemberEmail.trim(),
       newMemberName.trim() || undefined,
-      undefined // Legacy role field - no longer used
+      undefined
     );
 
     if (result && newMemberRoles.length > 0) {
-      // Add selected roles to the member
       for (const roleName of newMemberRoles) {
         const role = churchRoles.find(r => r.name === roleName);
         if (role) {
@@ -151,23 +180,18 @@ export default function ChurchScreen() {
     const success = await updateMember(memberToEdit, currentChurch.id, updates);
     
     if (success) {
-      // Update member roles - FIXED: Properly handle role updates
       const member = members.find(m => m.id === memberToEdit);
       const currentRoleNames = member?.memberRoles?.map(r => r.role_name) || [];
       
       console.log('Current roles:', currentRoleNames);
       console.log('New roles:', editMemberRoles);
       
-      // Find roles to remove (in current but not in new selection)
       const rolesToRemove = currentRoleNames.filter(roleName => !editMemberRoles.includes(roleName));
-      
-      // Find roles to add (in new selection but not in current)
       const rolesToAdd = editMemberRoles.filter(roleName => !currentRoleNames.includes(roleName));
       
       console.log('Roles to remove:', rolesToRemove);
       console.log('Roles to add:', rolesToAdd);
       
-      // Remove roles that are no longer selected
       for (const roleNameToRemove of rolesToRemove) {
         const role = churchRoles.find(r => r.name === roleNameToRemove);
         if (role) {
@@ -176,7 +200,6 @@ export default function ChurchScreen() {
         }
       }
       
-      // Add new roles (only those not already assigned)
       for (const roleNameToAdd of rolesToAdd) {
         const role = churchRoles.find(r => r.name === roleNameToAdd);
         if (role) {
@@ -332,6 +355,191 @@ export default function ChurchScreen() {
     }
   };
 
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const month = date.toLocaleDateString('en-US', { month: 'short' });
+    const day = date.getDate();
+    const year = date.getFullYear();
+    return `${month} ${day}, ${year}`;
+  };
+
+  const getQuarterDates = (quarter: number, year: number) => {
+    const startMonth = (quarter - 1) * 3;
+    const startDate = new Date(year, startMonth, 1);
+    const endDate = new Date(year, startMonth + 3, 0);
+    return { startDate, endDate };
+  };
+
+  const generateQuarterServices = () => {
+    const { startDate, endDate } = getQuarterDates(selectedQuarter, selectedYear);
+    const generatedServices: Array<{ date: Date; template: any }> = [];
+
+    const currentDate = new Date(startDate);
+    while (currentDate <= endDate) {
+      const dayOfWeek = currentDate.getDay();
+
+      recurringServices.forEach(template => {
+        if (template.day_of_week === dayOfWeek) {
+          const serviceKey = `${template.id}-${currentDate.toISOString().split('T')[0]}`;
+          if (!blockedServices.has(serviceKey)) {
+            generatedServices.push({
+              date: new Date(currentDate),
+              template,
+            });
+          }
+        }
+      });
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return generatedServices;
+  };
+
+  const handlePrepareQuarter = async () => {
+    if (!currentChurch?.id) {
+      Alert.alert('Error', 'No church selected. Please ensure your account is linked to a church.');
+      return;
+    }
+
+    console.log('User tapped Prepare Quarter button for church:', currentChurch.id);
+    const generatedServices = generateQuarterServices();
+
+    for (const { date, template } of generatedServices) {
+      const dateString = date.toISOString().split('T')[0];
+      await createServiceFromTemplate(currentChurch.id, dateString, template.name, template.notes, template.roles, template.time);
+    }
+
+    for (const special of specialServices) {
+      const dateString = special.date.toISOString().split('T')[0];
+      
+      const roleNames = special.selectedRoleIds
+        .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
+        .filter((name): name is string => name !== undefined);
+      
+      console.log('Creating special service with roles:', { name: special.name, roleNames });
+      await createServiceFromTemplate(currentChurch.id, dateString, special.name, special.notes, roleNames, special.time);
+    }
+
+    setShowPrepareQuarterModal(false);
+    setBlockedServices(new Set());
+    setSpecialServices([]);
+    Alert.alert('Success', 'Quarter services generated successfully!');
+  };
+
+  const handleAutoAssign = async () => {
+    if (!currentChurch) {
+      Alert.alert('Error', 'No church selected');
+      return;
+    }
+
+    console.log('User tapped Auto-Assign button');
+
+    const membersByRole: { [role: string]: any[] } = {};
+    members.forEach(member => {
+      if (member.memberRoles && member.memberRoles.length > 0) {
+        member.memberRoles.forEach(memberRole => {
+          if (!membersByRole[memberRole.role_name]) {
+            membersByRole[memberRole.role_name] = [];
+          }
+          membersByRole[memberRole.role_name].push(member);
+        });
+      }
+    });
+
+    const assignmentCounts: { [memberId: string]: number } = {};
+    members.forEach(member => {
+      assignmentCounts[member.id] = 0;
+    });
+
+    const memberUnavailability: { [memberId: string]: Set<string> } = {};
+    for (const member of members) {
+      const unavailableDates = await fetchMemberUnavailability(member.id);
+      memberUnavailability[member.id] = new Set(
+        unavailableDates.map(u => u.unavailable_date)
+      );
+    }
+
+    const filteredServices = services.filter(s => s.church_id === currentChurch.id);
+
+    for (const service of filteredServices) {
+      const serviceDate = service.date;
+      
+      for (const assignment of service.assignments) {
+        if (!assignment.member_id && assignment.role) {
+          const availableMembers = (membersByRole[assignment.role] || []).filter(member => {
+            const isUnavailable = memberUnavailability[member.id]?.has(serviceDate);
+            return !isUnavailable;
+          });
+          
+          if (availableMembers.length > 0) {
+            availableMembers.sort((a, b) => 
+              (assignmentCounts[a.id] || 0) - (assignmentCounts[b.id] || 0)
+            );
+
+            const selectedMember = availableMembers[0];
+            await updateAssignment(assignment.id, selectedMember.id, selectedMember.name || selectedMember.email);
+            assignmentCounts[selectedMember.id] = (assignmentCounts[selectedMember.id] || 0) + 1;
+          }
+        }
+      }
+    }
+
+    console.log('Auto-assignment completed');
+    Alert.alert('Success', 'Auto-assignment completed!');
+  };
+
+  const toggleBlockService = (serviceKey: string) => {
+    const newBlocked = new Set(blockedServices);
+    if (newBlocked.has(serviceKey)) {
+      newBlocked.delete(serviceKey);
+    } else {
+      newBlocked.add(serviceKey);
+    }
+    setBlockedServices(newBlocked);
+  };
+
+  const toggleSpecialServiceRole = (roleId: string) => {
+    const newRoles = [...specialServiceRoles];
+    const index = newRoles.indexOf(roleId);
+    if (index > -1) {
+      newRoles.splice(index, 1);
+    } else {
+      newRoles.push(roleId);
+    }
+    setSpecialServiceRoles(newRoles);
+  };
+
+  const handleAddSpecialService = () => {
+    if (!specialServiceName.trim()) {
+      Alert.alert('Error', 'Please enter a service name');
+      return;
+    }
+
+    if (specialServiceRoles.length === 0) {
+      Alert.alert('Error', 'Please select at least one role for this service');
+      return;
+    }
+
+    console.log('User added special service with roles:', specialServiceRoles);
+    const newSpecialService: SpecialService = {
+      id: `special-${Date.now()}`,
+      name: specialServiceName,
+      date: specialServiceDate,
+      time: specialServiceTime,
+      notes: specialServiceNotes,
+      selectedRoleIds: specialServiceRoles,
+    };
+
+    setSpecialServices([...specialServices, newSpecialService]);
+    setShowAddSpecialService(false);
+    setSpecialServiceName('');
+    setSpecialServiceTime('10:00');
+    setSpecialServiceNotes('');
+    setSpecialServiceRoles([]);
+    setSpecialServiceDate(new Date());
+  };
+
   if (loading && churches.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -448,6 +656,39 @@ export default function ChurchScreen() {
             </View>
           )}
         </View>
+
+        {/* Quarterly Assignment Buttons */}
+        {currentChurch && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Service Management</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: colors.accent }]}
+              onPress={() => setShowPrepareQuarterModal(true)}
+            >
+              <IconSymbol
+                ios_icon_name="calendar.badge.plus"
+                android_material_icon_name="event"
+                size={24}
+                color="#fff"
+              />
+              <Text style={styles.actionButtonText}>Prepare Next Quarter</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: colors.primary, marginTop: 12 }]}
+              onPress={handleAutoAssign}
+            >
+              <IconSymbol
+                ios_icon_name="person.2.fill"
+                android_material_icon_name="group"
+                size={24}
+                color="#fff"
+              />
+              <Text style={styles.actionButtonText}>Auto-Assign Members</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Tabs and Content */}
         {currentChurch && (
@@ -680,7 +921,7 @@ export default function ChurchScreen() {
                           </View>
                           <TouchableOpacity
                             onPress={() => openDeleteServiceModal(service.id)}
-                            style={styles.deleteButton}
+                            style={styles.deleteIconButton}
                           >
                             <IconSymbol
                               ios_icon_name="trash"
@@ -755,7 +996,7 @@ export default function ChurchScreen() {
                           </View>
                           <TouchableOpacity
                             onPress={() => openDeleteRoleModal(role.id)}
-                            style={styles.deleteButton}
+                            style={styles.deleteIconButton}
                           >
                             <IconSymbol
                               ios_icon_name="trash"
@@ -781,6 +1022,7 @@ export default function ChurchScreen() {
         )}
       </ScrollView>
 
+      {/* All modals remain the same as before... */}
       {/* Create Church Modal */}
       <Modal
         visible={isCreateChurchModalVisible}
@@ -1340,6 +1582,241 @@ export default function ChurchScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Prepare Quarter Modal */}
+      <Modal visible={showPrepareQuarterModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <ScrollView contentContainerStyle={styles.modalScrollContent}>
+            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Prepare Quarter</Text>
+              
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Select Quarter</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                {[1, 2, 3, 4].map(q => {
+                  const isSelected = selectedQuarter === q;
+                  const quarterText = `Q${q}`;
+                  return (
+                    <TouchableOpacity
+                      key={q}
+                      style={[
+                        styles.quarterButton,
+                        { flex: 1, marginHorizontal: 4, backgroundColor: colors.inputBackground },
+                        isSelected && { backgroundColor: colors.primary }
+                      ]}
+                      onPress={() => setSelectedQuarter(q)}
+                    >
+                      <Text style={[
+                        styles.quarterButtonText,
+                        { color: isSelected ? '#fff' : colors.text }
+                      ]}>
+                        {quarterText}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Year</Text>
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                placeholder="Year"
+                placeholderTextColor={colors.textSecondary}
+                value={selectedYear.toString()}
+                onChangeText={(text) => setSelectedYear(parseInt(text) || new Date().getFullYear())}
+                keyboardType="number-pad"
+              />
+
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Block Recurring Services</Text>
+              <ScrollView style={{ maxHeight: 150 }}>
+                {recurringServices.map(template => {
+                  const { startDate, endDate } = getQuarterDates(selectedQuarter, selectedYear);
+                  const currentDate = new Date(startDate);
+                  const serviceDates: Date[] = [];
+
+                  while (currentDate <= endDate) {
+                    if (currentDate.getDay() === template.day_of_week) {
+                      serviceDates.push(new Date(currentDate));
+                    }
+                    currentDate.setDate(currentDate.getDate() + 1);
+                  }
+
+                  return serviceDates.map(date => {
+                    const serviceKey = `${template.id}-${date.toISOString().split('T')[0]}`;
+                    const isBlocked = blockedServices.has(serviceKey);
+                    const dateText = formatDate(date.toISOString());
+                    return (
+                      <TouchableOpacity
+                        key={serviceKey}
+                        style={[styles.blockServiceItem, { backgroundColor: colors.inputBackground }]}
+                        onPress={() => toggleBlockService(serviceKey)}
+                      >
+                        <Text style={[styles.blockServiceText, { color: colors.text }]}>
+                          {template.name} - {dateText}
+                        </Text>
+                        <View style={[
+                          styles.checkbox,
+                          { borderColor: colors.primary },
+                          isBlocked && { backgroundColor: colors.primary }
+                        ]}>
+                          {isBlocked && (
+                            <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  });
+                })}
+              </ScrollView>
+
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Special Services</Text>
+              {specialServices.map((special) => {
+                const dateText = formatDate(special.date.toISOString());
+                const roleNames = special.selectedRoleIds
+                  .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
+                  .filter(Boolean)
+                  .join(', ');
+                return (
+                  <View key={special.id} style={[styles.blockServiceItem, { backgroundColor: colors.inputBackground }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.blockServiceText, { color: colors.text }]}>
+                        {special.name} - {dateText} at {special.time}
+                      </Text>
+                      {roleNames && (
+                        <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>
+                          Roles: {roleNames}
+                        </Text>
+                      )}
+                    </View>
+                    <TouchableOpacity onPress={() => {
+                      const newSpecial = specialServices.filter(s => s.id !== special.id);
+                      setSpecialServices(newSpecial);
+                    }}>
+                      <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color={colors.error} />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+              <TouchableOpacity
+                style={{ marginTop: 8 }}
+                onPress={() => setShowAddSpecialService(true)}
+              >
+                <Text style={{ color: colors.primary, fontSize: 14 }}>+ Add Special Service</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[styles.button, { backgroundColor: colors.primary }]} onPress={handlePrepareQuarter}>
+                <Text style={styles.buttonText}>Generate Services</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.cancelButton, { backgroundColor: colors.border }]} onPress={() => setShowPrepareQuarterModal(false)}>
+                <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Add Special Service Modal */}
+      <Modal visible={showAddSpecialService} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <ScrollView contentContainerStyle={styles.modalScrollContent}>
+            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Add Special Service</Text>
+              
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                placeholder="Service Name (e.g., Christmas Eve)"
+                placeholderTextColor={colors.textSecondary}
+                value={specialServiceName}
+                onChangeText={setSpecialServiceName}
+              />
+
+              <TouchableOpacity
+                style={[styles.dateButton, { backgroundColor: colors.inputBackground }]}
+                onPress={() => setShowSpecialServiceDatePicker(true)}
+              >
+                <Text style={[styles.dateButtonText, { color: colors.text }]}>
+                  Date: {formatDate(specialServiceDate.toISOString())}
+                </Text>
+              </TouchableOpacity>
+              {showSpecialServiceDatePicker && (
+                <DateTimePicker
+                  value={specialServiceDate}
+                  mode="date"
+                  display="default"
+                  onChange={(event, date) => {
+                    setShowSpecialServiceDatePicker(false);
+                    if (date) setSpecialServiceDate(date);
+                  }}
+                />
+              )}
+
+              <TouchableOpacity
+                style={[styles.dateButton, { backgroundColor: colors.inputBackground }]}
+                onPress={() => setShowSpecialServiceTimePicker(true)}
+              >
+                <Text style={[styles.dateButtonText, { color: colors.text }]}>
+                  Time: {specialServiceTime}
+                </Text>
+              </TouchableOpacity>
+              {showSpecialServiceTimePicker && (
+                <DateTimePicker
+                  value={new Date(`2000-01-01T${specialServiceTime}:00`)}
+                  mode="time"
+                  display="default"
+                  onChange={(event, date) => {
+                    setShowSpecialServiceTimePicker(false);
+                    if (date) {
+                      const hours = date.getHours().toString().padStart(2, '0');
+                      const minutes = date.getMinutes().toString().padStart(2, '0');
+                      setSpecialServiceTime(`${hours}:${minutes}`);
+                    }
+                  }}
+                />
+              )}
+
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Select Roles</Text>
+              <ScrollView style={{ maxHeight: 200 }}>
+                {churchRoles.map(role => {
+                  const isSelected = specialServiceRoles.includes(role.id);
+                  return (
+                    <TouchableOpacity
+                      key={role.id}
+                      style={[styles.roleItem, { backgroundColor: colors.inputBackground }]}
+                      onPress={() => toggleSpecialServiceRole(role.id)}
+                    >
+                      <Text style={[styles.roleItemText, { color: colors.text }]}>{role.name}</Text>
+                      <View style={[
+                        styles.checkbox,
+                        { borderColor: colors.primary },
+                        isSelected && { backgroundColor: colors.primary }
+                      ]}>
+                        {isSelected && (
+                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                placeholder="Notes (optional)"
+                placeholderTextColor={colors.textSecondary}
+                value={specialServiceNotes}
+                onChangeText={setSpecialServiceNotes}
+                multiline
+              />
+
+              <TouchableOpacity style={[styles.button, { backgroundColor: colors.primary }]} onPress={handleAddSpecialService}>
+                <Text style={styles.buttonText}>Add Service</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.cancelButton, { backgroundColor: colors.border }]} onPress={() => setShowAddSpecialService(false)}>
+                <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1403,6 +1880,19 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   churchName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 12,
+  },
+  actionButtonText: {
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -1531,6 +2021,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   deleteButton: {
+    padding: 8,
+  },
+  deleteIconButton: {
     padding: 8,
   },
   errorContainer: {
@@ -1665,5 +2158,65 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  button: {
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  quarterButton: {
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+  },
+  quarterButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  blockServiceItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+  },
+  blockServiceText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  roleItem: {
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  roleItemText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  dateButton: {
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  dateButtonText: {
+    fontSize: 16,
   },
 });
