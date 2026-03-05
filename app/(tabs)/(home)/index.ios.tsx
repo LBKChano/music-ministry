@@ -271,10 +271,18 @@ export default function HomeScreen() {
   // Check if current user is admin
   const isAdmin = currentMember?.is_admin || false;
 
+  // Log member status for debugging (iOS)
+  useEffect(() => {
+    console.log('Current member admin status (iOS):', isAdmin);
+    console.log('Current member details (iOS):', currentMember);
+    console.log('Current church (iOS):', currentChurch?.name);
+    console.log('Services count (iOS):', services.length);
+  }, [isAdmin, currentMember, currentChurch, services]);
+
   // Refresh services when currentChurch changes
   useEffect(() => {
     if (currentChurch?.id) {
-      console.log('Church changed, refreshing services for:', currentChurch.id);
+      console.log('Church changed, refreshing services for (iOS):', currentChurch.id);
       refreshServices();
     }
   }, [currentChurch?.id, refreshServices]);
