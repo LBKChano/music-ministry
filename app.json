@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "i-want-to-build-and-",
@@ -42,8 +43,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {},
-      "backendUrl": "https://nucffxkqp3vv9chpnxeb3a3fcnb99vdb.app.specular.dev"
+      "router": {}
     }
   }
 }
