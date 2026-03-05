@@ -412,11 +412,14 @@ export default function HomeScreen() {
 
   const { colors: themeColors } = useTheme();
 
-  // Filter services to only show future/current services
+  // Filter services to only show future/current services (NOT past events)
   const filteredServices = services.filter(service => {
     const serviceDate = new Date(service.date);
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0); // Normalize to start of day
+    
+    // CRITICAL: Only show services that are today or in the future
+    const isFutureOrToday = serviceDate >= today;
     
     // Log for debugging
     console.log('Filtering service:', {
@@ -424,10 +427,10 @@ export default function HomeScreen() {
       date: service.date,
       serviceDate: serviceDate.toISOString(),
       today: today.toISOString(),
-      willShow: serviceDate >= today
+      willShow: isFutureOrToday
     });
     
-    return serviceDate >= today;
+    return isFutureOrToday;
   });
 
   // Sort roles by display_order
@@ -447,6 +450,7 @@ export default function HomeScreen() {
         refreshServices(),
         refreshFillInRequests ? refreshFillInRequests() : Promise.resolve()
       ]);
+      console.log('Refresh completed successfully');
     } catch (error) {
       console.error('Error refreshing data:', error);
     } finally {
