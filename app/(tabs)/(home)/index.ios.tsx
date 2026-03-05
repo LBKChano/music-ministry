@@ -14,7 +14,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { colors } from '@/styles/commonStyles';
 import { Stack } from 'expo-router';
 import { useServices } from '@/hooks/useServices';
@@ -343,7 +343,7 @@ export default function HomeScreen() {
     acceptFillInRequest,
     cancelFillInRequest,
     registerPushToken,
-    fetchFillInRequests,
+    refreshFillInRequests,
   } = useChurch();
 
   // Register for push notifications when component mounts
@@ -461,16 +461,21 @@ export default function HomeScreen() {
   // Sort roles by display_order
   const sortedRoles = [...churchRoles].sort((a, b) => a.display_order - b.display_order);
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     console.log('[InternalBytecode.js:1] User pulled to refresh schedules');
     setRefreshing(true);
-    // Refresh both services and fill-in requests to ensure UI is up to date
-    await Promise.all([
-      refreshServices(),
-      currentChurch ? fetchFillInRequests(currentChurch.id) : Promise.resolve()
-    ]);
-    setRefreshing(false);
-  };
+    try {
+      // Refresh both services and fill-in requests to ensure UI is up to date
+      await Promise.all([
+        refreshServices(),
+        refreshFillInRequests ? refreshFillInRequests() : Promise.resolve()
+      ]);
+    } catch (error) {
+      console.error('[InternalBytecode.js:1] Error refreshing data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshServices, refreshFillInRequests]);
 
   const handleSaveService = async () => {
     console.log('[InternalBytecode.js:1] User tapped save service button');
