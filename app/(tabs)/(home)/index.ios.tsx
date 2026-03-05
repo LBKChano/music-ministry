@@ -328,6 +328,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  memberItem: {
+    backgroundColor: colors.inputBackground,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  memberItemText: {
+    fontSize: 16,
+    color: colors.text,
+  },
 });
 
 export default function HomeScreen() {
@@ -414,7 +426,7 @@ export default function HomeScreen() {
     };
   }, []);
 
-  const { services, loading: servicesLoading, refreshServices } = useServices(currentChurch?.id || null);
+  const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment } = useServices(currentChurch?.id || null);
 
   // Refresh services when church changes
   useEffect(() => {
@@ -434,6 +446,7 @@ export default function HomeScreen() {
 
   const [selectedService, setSelectedService] = useState<any>(null);
   const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
+  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
   const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
   const [assignmentToDelete, setAssignmentToDelete] = useState<{ serviceId: string; assignmentId: string } | null>(null);
 
@@ -514,7 +527,13 @@ export default function HomeScreen() {
     console.log('[InternalBytecode.js:1] User confirmed delete service');
     if (!serviceToDelete) return;
 
-    // Implementation handled by useServices hook
+    const success = await deleteService(serviceToDelete);
+    if (success) {
+      Alert.alert('Success', 'Service deleted successfully');
+    } else {
+      Alert.alert('Error', 'Failed to delete service');
+    }
+    
     setDeleteServiceModalVisible(false);
     setServiceToDelete(null);
   };
@@ -534,16 +553,44 @@ export default function HomeScreen() {
 
   const handleAssignMember = async () => {
     console.log('[InternalBytecode.js:1] User tapped assign member button');
-    // Implementation handled by useServices hook
-    setAssignMemberModalVisible(false);
-    setSelectedAssignment(null);
+    if (!selectedAssignment || !selectedMemberId) {
+      Alert.alert('Error', 'Please select a member');
+      return;
+    }
+
+    // Find the selected member
+    const member = members.find(m => m.id === selectedMemberId);
+    if (!member) {
+      Alert.alert('Error', 'Member not found');
+      return;
+    }
+
+    const personName = member.name || member.email;
+    const success = await updateAssignment(selectedAssignment, selectedMemberId, personName);
+    
+    if (success) {
+      Alert.alert('Success', 'Member assigned successfully');
+      setAssignMemberModalVisible(false);
+      setSelectedAssignment(null);
+      setSelectedMemberId('');
+    } else {
+      Alert.alert('Error', 'Failed to assign member');
+    }
   };
 
   const handleDeleteAssignment = async () => {
     console.log('[InternalBytecode.js:1] User confirmed delete assignment');
     if (!assignmentToDelete) return;
 
-    // Implementation handled by useServices hook
+    // Clear the assignment by setting member_id to null and person_name to empty
+    const success = await updateAssignment(assignmentToDelete.assignmentId, '', '');
+    
+    if (success) {
+      Alert.alert('Success', 'Assignment cleared successfully');
+    } else {
+      Alert.alert('Error', 'Failed to clear assignment');
+    }
+    
     setDeleteAssignmentModalVisible(false);
     setAssignmentToDelete(null);
   };
@@ -557,6 +604,21 @@ export default function HomeScreen() {
       year: 'numeric' 
     });
     return formattedDate;
+  };
+
+  const formatTime = (timeString: string | null) => {
+    if (!timeString) return '';
+    
+    try {
+      // timeString is in format "HH:MM:SS" or "HH:MM"
+      const [hours, minutes] = timeString.split(':');
+      const hour = parseInt(hours, 10);
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const displayHour = hour % 12 || 12;
+      return `${displayHour}:${minutes} ${ampm}`;
+    } catch {
+      return timeString;
+    }
   };
 
   const onDateChange = (event: any, selectedDate?: Date) => {
@@ -581,6 +643,7 @@ export default function HomeScreen() {
   const openAssignMemberModal = (assignmentId: string) => {
     console.log('[InternalBytecode.js:1] User tapped assign member button');
     setSelectedAssignment(assignmentId);
+    setSelectedMemberId('');
     setAssignMemberModalVisible(true);
   };
 
@@ -700,6 +763,10 @@ export default function HomeScreen() {
               req => req.service_id === service.id && req.status === 'pending'
             );
 
+            const dateDisplay = formatDate(service.date);
+            const timeDisplay = formatTime(service.time);
+            const dateTimeDisplay = timeDisplay ? `${dateDisplay} at ${timeDisplay}` : dateDisplay;
+
             return (
               <View key={service.id} style={styles.serviceCard}>
                 <View style={styles.serviceHeader}>
@@ -718,7 +785,7 @@ export default function HomeScreen() {
                     </TouchableOpacity>
                   )}
                 </View>
-                <Text style={styles.serviceDate}>{formatDate(service.date)}</Text>
+                <Text style={styles.serviceDate}>{dateTimeDisplay}</Text>
                 {service.notes && <Text style={styles.serviceNotes}>{service.notes}</Text>}
 
                 {/* Display fill-in requests for this service */}
@@ -797,17 +864,19 @@ export default function HomeScreen() {
                               color={colors.primary}
                             />
                           </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => openDeleteAssignmentModal(service.id, assignment.id)}
-                            style={styles.deleteButton}
-                          >
-                            <IconSymbol
-                              ios_icon_name="trash"
-                              android_material_icon_name="delete"
-                              size={20}
-                              color={colors.error}
-                            />
-                          </TouchableOpacity>
+                          {assignment.member_id && (
+                            <TouchableOpacity
+                              onPress={() => openDeleteAssignmentModal(service.id, assignment.id)}
+                              style={styles.deleteButton}
+                            >
+                              <IconSymbol
+                                ios_icon_name="trash"
+                                android_material_icon_name="delete"
+                                size={20}
+                                color={colors.error}
+                              />
+                            </TouchableOpacity>
+                          )}
                         </>
                       )}
                     </View>
@@ -867,7 +936,128 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      {/* Other modals remain the same... */}
+      {/* Assign Member Modal */}
+      <Modal
+        visible={assignMemberModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAssignMemberModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Assign Member</Text>
+            <Text style={{ color: colors.text, marginBottom: 12 }}>
+              Select a member to assign:
+            </Text>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {members.map(member => {
+                const displayName = member.name || member.email;
+                const isSelected = selectedMemberId === member.id;
+                return (
+                  <TouchableOpacity
+                    key={member.id}
+                    style={[
+                      styles.memberItem,
+                      isSelected && { backgroundColor: colors.primary + '30', borderColor: colors.primary }
+                    ]}
+                    onPress={() => setSelectedMemberId(member.id)}
+                  >
+                    <Text style={[styles.memberItemText, isSelected && { fontWeight: 'bold' }]}>
+                      {displayName}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  setAssignMemberModalVisible(false);
+                  setSelectedAssignment(null);
+                  setSelectedMemberId('');
+                }}
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={handleAssignMember}
+              >
+                <Text style={styles.buttonText}>Assign</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Service Modal */}
+      <Modal
+        visible={deleteServiceModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteServiceModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Delete Service</Text>
+            <Text style={{ color: colors.text, marginBottom: 16 }}>
+              Are you sure you want to delete this service?
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  setDeleteServiceModalVisible(false);
+                  setServiceToDelete(null);
+                }}
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.error }]}
+                onPress={handleDeleteService}
+              >
+                <Text style={styles.buttonText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Assignment Modal */}
+      <Modal
+        visible={deleteAssignmentModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteAssignmentModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Clear Assignment</Text>
+            <Text style={{ color: colors.text, marginBottom: 16 }}>
+              Are you sure you want to clear this assignment?
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  setDeleteAssignmentModalVisible(false);
+                  setAssignmentToDelete(null);
+                }}
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.error }]}
+                onPress={handleDeleteAssignment}
+              >
+                <Text style={styles.buttonText}>Clear</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
