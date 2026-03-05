@@ -40,10 +40,32 @@ interface SpecialService {
   selectedRoleIds: string[];
 }
 
-// Helper to create a Date object representing the local date from a "YYYY-MM-DD" string
+// Helper to create a Date object representing the local date from a "YYYY-MM-DD" or full ISO string
 // This avoids timezone shifts when displaying dates
 const createLocalDate = (dateString: string): Date => {
-  const [year, month, day] = dateString.split('-').map(Number);
+  if (!dateString || typeof dateString !== 'string') {
+    console.error('[InternalBytecode.js:1] createLocalDate received invalid dateString:', dateString);
+    return new Date(NaN);
+  }
+
+  // Extract "YYYY-MM-DD" part, handling potential full ISO strings from timestamp with time zone
+  const datePart = dateString.split('T')[0];
+  const parts = datePart.split('-');
+  
+  if (parts.length !== 3) {
+    console.error('[InternalBytecode.js:1] createLocalDate: Invalid date format:', dateString);
+    return new Date(NaN);
+  }
+
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const day = parseInt(parts[2], 10);
+
+  if (isNaN(year) || isNaN(month) || isNaN(day)) {
+    console.error('[InternalBytecode.js:1] createLocalDate: Failed to parse date parts:', { dateString, datePart, year, month, day });
+    return new Date(NaN);
+  }
+
   // Month is 0-indexed in Date constructor
   return new Date(year, month - 1, day);
 };
@@ -474,6 +496,13 @@ export default function HomeScreen() {
   // Filter services to only show future/current services (NOT past events)
   const filteredServices = services.filter(service => {
     const serviceDate = createLocalDate(service.date);
+    
+    // Check if date is valid
+    if (isNaN(serviceDate.getTime())) {
+      console.warn('[InternalBytecode.js:1] Skipping service with invalid date:', service.date);
+      return false;
+    }
+    
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Normalize to start of day
     
@@ -481,7 +510,7 @@ export default function HomeScreen() {
     const isFutureOrToday = serviceDate >= today;
     
     // Log for debugging
-    console.log('Filtering service:', {
+    console.log('[InternalBytecode.js:1] Filtering service:', {
       name: service.service_type,
       date: service.date,
       serviceDate: serviceDate.toISOString(),
@@ -496,9 +525,9 @@ export default function HomeScreen() {
   const sortedRoles = [...churchRoles].sort((a, b) => a.display_order - b.display_order);
 
   // Log service counts for debugging
-  console.log('Total services fetched:', services.length);
-  console.log('Filtered services (future/current):', filteredServices.length);
-  console.log('Current church ID:', currentChurch?.id);
+  console.log('[InternalBytecode.js:1] Total services fetched:', services.length);
+  console.log('[InternalBytecode.js:1] Filtered services (future/current):', filteredServices.length);
+  console.log('[InternalBytecode.js:1] Current church ID:', currentChurch?.id);
 
   const onRefresh = useCallback(async () => {
     console.log('[InternalBytecode.js:1] User pulled to refresh schedules');
@@ -605,6 +634,12 @@ export default function HomeScreen() {
 
   const formatDate = (dateString: string) => {
     const date = createLocalDate(dateString);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return 'Invalid Date';
+    }
+    
     const formattedDate = date.toLocaleDateString('en-US', { 
       weekday: 'short', 
       month: 'short', 

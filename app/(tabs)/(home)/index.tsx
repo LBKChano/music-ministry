@@ -40,10 +40,32 @@ interface SpecialService {
   selectedRoleIds: string[];
 }
 
-// Helper to create a Date object representing the local date from a "YYYY-MM-DD" string
+// Helper to create a Date object representing the local date from a "YYYY-MM-DD" or full ISO string
 // This avoids timezone shifts when displaying dates
 const createLocalDate = (dateString: string): Date => {
-  const [year, month, day] = dateString.split('-').map(Number);
+  if (!dateString || typeof dateString !== 'string') {
+    console.error('createLocalDate received invalid dateString:', dateString);
+    return new Date(NaN);
+  }
+
+  // Extract "YYYY-MM-DD" part, handling potential full ISO strings from timestamp with time zone
+  const datePart = dateString.split('T')[0];
+  const parts = datePart.split('-');
+  
+  if (parts.length !== 3) {
+    console.error('createLocalDate: Invalid date format:', dateString);
+    return new Date(NaN);
+  }
+
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const day = parseInt(parts[2], 10);
+
+  if (isNaN(year) || isNaN(month) || isNaN(day)) {
+    console.error('createLocalDate: Failed to parse date parts:', { dateString, datePart, year, month, day });
+    return new Date(NaN);
+  }
+
   // Month is 0-indexed in Date constructor
   return new Date(year, month - 1, day);
 };
@@ -436,6 +458,13 @@ export default function HomeScreen() {
   // Filter services to only show future/current services (NOT past events)
   const filteredServices = services.filter(service => {
     const serviceDate = createLocalDate(service.date);
+    
+    // Check if date is valid
+    if (isNaN(serviceDate.getTime())) {
+      console.warn('Skipping service with invalid date:', service.date);
+      return false;
+    }
+    
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Normalize to start of day
     
@@ -567,6 +596,12 @@ export default function HomeScreen() {
 
   const formatDate = (dateString: string) => {
     const date = createLocalDate(dateString);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return 'Invalid Date';
+    }
+    
     const formattedDate = date.toLocaleDateString('en-US', { 
       weekday: 'short', 
       month: 'short', 
