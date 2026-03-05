@@ -3,7 +3,7 @@ import * as Notifications from 'expo-notifications';
 import { useChurch } from '@/hooks/useChurch';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors } from '@/styles/commonStyles';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Stack } from 'expo-router';
 import { useServices } from '@/hooks/useServices';
 import { useTheme } from '@react-navigation/native';
@@ -466,41 +466,29 @@ export default function HomeScreen() {
 
   const { colors: themeColors } = useTheme();
 
-  // Filter services to only show future/current services (NOT past events)
-  const filteredServices = services.filter(service => {
-    const serviceDate = createLocalDate(service.date);
-    
-    // Check if date is valid
-    if (isNaN(serviceDate.getTime())) {
-      console.warn('Skipping service with invalid date:', service.date);
-      return false;
-    }
-    
+  // OPTIMIZATION: Memoize filtered services to avoid recalculating on every render
+  const filteredServices = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Normalize to start of day
     
-    // CRITICAL: Only show services that are today or in the future
-    const isFutureOrToday = serviceDate >= today;
-    
-    // Log for debugging
-    console.log('Filtering service:', {
-      name: service.service_type,
-      date: service.date,
-      serviceDate: serviceDate.toISOString(),
-      today: today.toISOString(),
-      willShow: isFutureOrToday
+    return services.filter(service => {
+      const serviceDate = createLocalDate(service.date);
+      
+      // Check if date is valid
+      if (isNaN(serviceDate.getTime())) {
+        console.warn('Skipping service with invalid date:', service.date);
+        return false;
+      }
+      
+      // CRITICAL: Only show services that are today or in the future
+      return serviceDate >= today;
     });
-    
-    return isFutureOrToday;
-  });
+  }, [services]);
 
-  // Sort roles by display_order
-  const sortedRoles = [...churchRoles].sort((a, b) => a.display_order - b.display_order);
-
-  // Log service counts for debugging
-  console.log('Total services fetched:', services.length);
-  console.log('Filtered services (future/current):', filteredServices.length);
-  console.log('Current church ID:', currentChurch?.id);
+  // OPTIMIZATION: Memoize sorted roles to avoid recalculating on every render
+  const sortedRoles = useMemo(() => {
+    return [...churchRoles].sort((a, b) => a.display_order - b.display_order);
+  }, [churchRoles]);
 
   const onRefresh = useCallback(async () => {
     console.log('User pulled to refresh schedules');
@@ -605,7 +593,7 @@ export default function HomeScreen() {
     setAssignmentToDelete(null);
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = useCallback((dateString: string) => {
     const date = createLocalDate(dateString);
     
     // Check if date is valid
@@ -620,9 +608,9 @@ export default function HomeScreen() {
       year: 'numeric' 
     });
     return formattedDate;
-  };
+  }, []);
 
-  const formatTime = (timeString: string | null) => {
+  const formatTime = useCallback((timeString: string | null) => {
     if (!timeString) return '';
     
     try {
@@ -635,7 +623,7 @@ export default function HomeScreen() {
     } catch {
       return timeString;
     }
-  };
+  }, []);
 
   const onDateChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(Platform.OS === 'ios');
