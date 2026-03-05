@@ -114,7 +114,7 @@ export function useChurch() {
 
       console.log('Fetched members:', membersData);
 
-      // Fetch all member roles for this church in one query
+      // Fetch all member roles for this church in separate queries to avoid permission issues
       const memberIds = membersData?.map(m => m.id) || [];
       
       if (memberIds.length === 0) {
@@ -122,16 +122,43 @@ export function useChurch() {
         return;
       }
 
+      // Fetch member_roles without joining to avoid permission issues
       const { data: memberRolesData, error: rolesError } = await supabase
         .from('member_roles')
-        .select('member_id, role_id, church_roles(id, name)')
+        .select('member_id, role_id')
         .in('member_id', memberIds);
 
       if (rolesError) {
         console.error('Error fetching member roles:', rolesError);
+        // Continue even if roles fetch fails
+        const membersWithoutRoles: ChurchMemberWithRoles[] = (membersData || []).map(member => ({
+          ...member,
+          memberRoles: [],
+        }));
+        setMembers(membersWithoutRoles);
+        return;
       }
 
       console.log('Fetched member roles data:', memberRolesData);
+
+      // Fetch all church roles separately
+      const roleIds = [...new Set((memberRolesData || []).map(mr => mr.role_id))];
+      const { data: rolesData, error: rolesDataError } = await supabase
+        .from('church_roles')
+        .select('id, name')
+        .in('id', roleIds);
+
+      if (rolesDataError) {
+        console.error('Error fetching church roles:', rolesDataError);
+      }
+
+      console.log('Fetched church roles:', rolesData);
+
+      // Create a map of role_id to role_name
+      const roleMap = new Map<string, string>();
+      (rolesData || []).forEach(role => {
+        roleMap.set(role.id, role.name);
+      });
 
       // Build the members with roles array
       const membersWithRoles: ChurchMemberWithRoles[] = (membersData || []).map(member => {
@@ -139,7 +166,7 @@ export function useChurch() {
           .filter(mr => mr.member_id === member.id)
           .map(mr => ({
             role_id: mr.role_id,
-            role_name: (mr.church_roles as any)?.name || 'Unknown Role'
+            role_name: roleMap.get(mr.role_id) || 'Unknown Role'
           }));
 
         return {
@@ -597,19 +624,48 @@ export function useChurch() {
         return;
       }
 
-      // Fetch roles for this member using the improved query
+      // Fetch roles for this member without joining to avoid permission issues
       const { data: memberRolesData, error: rolesError } = await supabase
         .from('member_roles')
-        .select('role_id, church_roles(id, name)')
+        .select('role_id')
         .eq('member_id', data.id);
 
       if (rolesError) {
         console.error('Error fetching member roles:', rolesError);
+        setCurrentMember({
+          ...data,
+          memberRoles: [],
+        });
+        return;
       }
+
+      // Fetch church roles separately
+      const roleIds = (memberRolesData || []).map(mr => mr.role_id);
+      if (roleIds.length === 0) {
+        setCurrentMember({
+          ...data,
+          memberRoles: [],
+        });
+        return;
+      }
+
+      const { data: rolesData, error: rolesDataError } = await supabase
+        .from('church_roles')
+        .select('id, name')
+        .in('id', roleIds);
+
+      if (rolesDataError) {
+        console.error('Error fetching church roles:', rolesDataError);
+      }
+
+      const roleMap = new Map<string, string>();
+      (rolesData || []).forEach(role => {
+        roleMap.set(role.id, role.name);
+      });
 
       const roles = (memberRolesData || []).map(mr => ({
         role_id: mr.role_id,
-        role_name: (mr.church_roles as any)?.name || 'Unknown Role'
+        role_name: roleMap.get(mr.role_id) || 'Unknown Role'
       }));
 
       setCurrentMember({
