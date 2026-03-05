@@ -33,6 +33,14 @@ interface SpecialService {
   selectedRoleIds: string[];
 }
 
+// Helper function to format date as YYYY-MM-DD in local timezone
+function formatDateForDatabase(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function ChurchScreen() {
   const { colors: themeColors } = useTheme();
   const router = useRouter();
@@ -509,12 +517,12 @@ export default function ChurchScreen() {
     const generatedServices = generateQuarterServices();
 
     for (const { date, template } of generatedServices) {
-      const dateString = date.toISOString().split('T')[0];
+      const dateString = formatDateForDatabase(date);
       await createServiceFromTemplate(currentChurch.id, dateString, template.name, template.notes, template.roles, template.time);
     }
 
     for (const special of specialServices) {
-      const dateString = special.date.toISOString().split('T')[0];
+      const dateString = formatDateForDatabase(special.date);
       
       const roleNames = special.selectedRoleIds
         .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
@@ -728,10 +736,14 @@ export default function ChurchScreen() {
     }
 
     console.log('User tapped Create Ad-Hoc Service button');
+    console.log('Selected date:', adHocServiceDate);
+    console.log('Selected date ISO:', adHocServiceDate.toISOString());
     setIsCreatingAdHocService(true);
 
     try {
-      const dateString = adHocServiceDate.toISOString().split('T')[0];
+      // Use the helper function to format date correctly in local timezone
+      const dateString = formatDateForDatabase(adHocServiceDate);
+      console.log('Formatted date string for database:', dateString);
       
       const roleNames = adHocServiceRoles
         .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
@@ -754,7 +766,7 @@ export default function ChurchScreen() {
       );
 
       if (result) {
-        console.log('Ad-hoc service created successfully');
+        console.log('Ad-hoc service created successfully:', result);
         Alert.alert('Success', 'Service created successfully! It will now appear in the Schedules tab.');
         
         // Reset form and close modal
