@@ -2,18 +2,51 @@
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@react-navigation/native";
 import { colors } from "@/styles/commonStyles";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity, Modal, ActivityIndicator } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { Stack, useRouter } from "expo-router";
 import { useChurch } from "@/hooks/useChurch";
+import { Calendar, DateData } from "react-native-calendars";
+import type { Tables } from "@/lib/supabase/types";
+
+type MemberUnavailability = Tables<'member_unavailability'>;
 
 export default function ProfileScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { user, currentMember, currentChurch, signOut } = useChurch();
+  const { user, currentMember, currentChurch, signOut, fetchMemberUnavailability, addMemberUnavailability, removeMemberUnavailability } = useChurch();
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [unavailabilityDates, setUnavailabilityDates] = useState<MemberUnavailability[]>([]);
+  const [loadingDates, setLoadingDates] = useState(false);
+  const [markedDates, setMarkedDates] = useState<{ [key: string]: any }>({});
+
+  // Fetch unavailability dates when member loads
+  useEffect(() => {
+    const loadUnavailability = async () => {
+      if (currentMember?.id) {
+        console.log('Loading unavailability dates for member:', currentMember.id);
+        setLoadingDates(true);
+        const dates = await fetchMemberUnavailability(currentMember.id);
+        setUnavailabilityDates(dates);
+        
+        // Build marked dates object for calendar
+        const marked: { [key: string]: any } = {};
+        dates.forEach(d => {
+          marked[d.unavailable_date] = {
+            selected: true,
+            selectedColor: '#FF3B30',
+            marked: true,
+          };
+        });
+        setMarkedDates(marked);
+        setLoadingDates(false);
+      }
+    };
+
+    loadUnavailability();
+  }, [currentMember?.id, fetchMemberUnavailability]);
 
   const handleSignOut = async () => {
     console.log('User tapped Sign Out button');
@@ -29,14 +62,66 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleDayPress = async (day: DateData) => {
+    if (!currentMember?.id) {
+      console.log('No current member');
+      return;
+    }
+
+    console.log('User tapped date:', day.dateString);
+    const dateString = day.dateString;
+    
+    // Check if date is already marked as unavailable
+    const existingUnavailability = unavailabilityDates.find(d => d.unavailable_date === dateString);
+    
+    if (existingUnavailability) {
+      // Remove unavailability
+      console.log('Removing unavailability for date:', dateString);
+      const success = await removeMemberUnavailability(existingUnavailability.id);
+      if (success) {
+        const updatedDates = unavailabilityDates.filter(d => d.id !== existingUnavailability.id);
+        setUnavailabilityDates(updatedDates);
+        
+        const newMarked = { ...markedDates };
+        delete newMarked[dateString];
+        setMarkedDates(newMarked);
+      }
+    } else {
+      // Add unavailability
+      console.log('Adding unavailability for date:', dateString);
+      const success = await addMemberUnavailability(currentMember.id, [dateString]);
+      if (success) {
+        // Refresh the dates
+        const dates = await fetchMemberUnavailability(currentMember.id);
+        setUnavailabilityDates(dates);
+        
+        const marked: { [key: string]: any } = {};
+        dates.forEach(d => {
+          marked[d.unavailable_date] = {
+            selected: true,
+            selectedColor: '#FF3B30',
+            marked: true,
+          };
+        });
+        setMarkedDates(marked);
+      }
+    }
+  };
+
   const displayName = currentMember?.name || user?.email?.split('@')[0] || 'User';
   const displayEmail = currentMember?.email || user?.email || '';
   const isAdmin = currentChurch?.admin_id === user?.id;
   const userRole = isAdmin ? 'Admin' : 'Member';
   
-  const memberRolesText = currentMember?.memberRoles && currentMember.memberRoles.length > 0
-    ? currentMember.memberRoles.map(r => r.role_name).join(', ')
-    : 'No roles assigned';
+  // Calculate next quarter dates
+  const today = new Date();
+  const currentMonth = today.getMonth();
+  const currentYear = today.getFullYear();
+  const nextQuarterStart = new Date(currentYear, currentMonth + 1, 1);
+  const nextQuarterEnd = new Date(currentYear, currentMonth + 4, 0);
+  
+  const minDateString = nextQuarterStart.toISOString().split('T')[0];
+  const maxDateString = nextQuarterEnd.toISOString().split('T')[0];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -67,27 +152,66 @@ export default function ProfileScreen() {
 
         {currentMember && (
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.infoRow}>
+            <View style={styles.cardHeader}>
               <IconSymbol 
-                android_material_icon_name="work" 
+                android_material_icon_name="event-busy" 
                 size={24} 
                 color={colors.primary} 
               />
-              <View style={styles.infoText}>
-                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Assigned Roles</Text>
-                <Text style={[styles.infoValue, { color: colors.text }]}>{memberRolesText}</Text>
-              </View>
+              <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0, marginLeft: 12 }]}>
+                My Unavailability
+              </Text>
             </View>
+            <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
+              Select dates in the next quarter when you won&apos;t be available to assist. Tap a date to mark/unmark it.
+            </Text>
+            
+            {loadingDates ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+              </View>
+            ) : (
+              <Calendar
+                minDate={minDateString}
+                maxDate={maxDateString}
+                onDayPress={handleDayPress}
+                markedDates={markedDates}
+                theme={{
+                  backgroundColor: colors.card,
+                  calendarBackground: colors.card,
+                  textSectionTitleColor: colors.text,
+                  selectedDayBackgroundColor: '#FF3B30',
+                  selectedDayTextColor: '#FFFFFF',
+                  todayTextColor: colors.primary,
+                  dayTextColor: colors.text,
+                  textDisabledColor: colors.textSecondary,
+                  monthTextColor: colors.text,
+                  arrowColor: colors.primary,
+                  textDayFontWeight: '400',
+                  textMonthFontWeight: 'bold',
+                  textDayHeaderFontWeight: '600',
+                }}
+              />
+            )}
+            
+            {unavailabilityDates.length > 0 && (
+              <View style={styles.unavailabilityList}>
+                <Text style={[styles.unavailabilityListTitle, { color: colors.text }]}>
+                  Unavailable Dates
+                </Text>
+                <Text style={[styles.unavailabilityCount, { color: colors.textSecondary }]}>
+                  {unavailabilityDates.length}
+                </Text>
+                <Text style={[styles.unavailabilityCount, { color: colors.textSecondary }]}>
+                  {unavailabilityDates.length === 1 ? 'date' : 'dates'}
+                </Text>
+                <Text style={[styles.unavailabilityCount, { color: colors.textSecondary }]}>
+                  selected
+                </Text>
+              </View>
+            )}
           </View>
         )}
-
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>About</Text>
-          <Text style={[styles.aboutText, { color: colors.textSecondary }]}>
-            This app helps you schedule worship leaders and musicians for your church services. 
-            Add services, assign team members to roles, and keep track of who&apos;s serving when.
-          </Text>
-        </View>
 
         <TouchableOpacity
           style={[styles.signOutButton, { backgroundColor: '#FF3B30' }]}
@@ -201,30 +325,41 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  infoRow: {
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  infoText: {
-    marginLeft: 16,
-    flex: 1,
-  },
-  infoLabel: {
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  infoValue: {
-    fontSize: 16,
-    fontWeight: '600',
+    marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 12,
   },
-  aboutText: {
-    fontSize: 15,
-    lineHeight: 22,
+  sectionDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unavailabilityList: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.1)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  unavailabilityListTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  unavailabilityCount: {
+    fontSize: 14,
   },
   signOutButton: {
     flexDirection: 'row',

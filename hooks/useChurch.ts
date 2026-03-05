@@ -678,6 +678,86 @@ export function useChurch() {
     }
   }, []);
 
+  // Fetch member unavailability dates
+  const fetchMemberUnavailability = useCallback(async (memberId: string): Promise<MemberUnavailability[]> => {
+    console.log('Fetching unavailability for member:', memberId);
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('member_unavailability')
+        .select('*')
+        .eq('member_id', memberId)
+        .order('unavailable_date', { ascending: true });
+
+      if (fetchError) {
+        console.error('Error fetching member unavailability:', fetchError);
+        return [];
+      }
+
+      console.log('Fetched unavailability dates:', data);
+      return data || [];
+    } catch (err) {
+      console.error('Error in fetchMemberUnavailability:', err);
+      return [];
+    }
+  }, []);
+
+  // Add unavailability dates for a member
+  const addMemberUnavailability = useCallback(async (memberId: string, dates: string[], reason?: string) => {
+    console.log('Adding unavailability dates for member:', { memberId, dates, reason });
+    try {
+      setError(null);
+
+      const inserts: TablesInsert<'member_unavailability'>[] = dates.map(date => ({
+        member_id: memberId,
+        unavailable_date: date,
+        reason: reason || null,
+      }));
+
+      const { error: insertError } = await supabase
+        .from('member_unavailability')
+        .insert(inserts);
+
+      if (insertError) {
+        console.error('Error adding unavailability:', insertError);
+        setError(insertError.message);
+        return false;
+      }
+
+      console.log('Unavailability dates added successfully');
+      return true;
+    } catch (err) {
+      console.error('Error in addMemberUnavailability:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, []);
+
+  // Remove unavailability date
+  const removeMemberUnavailability = useCallback(async (unavailabilityId: string) => {
+    console.log('Removing unavailability:', unavailabilityId);
+    try {
+      setError(null);
+
+      const { error: deleteError } = await supabase
+        .from('member_unavailability')
+        .delete()
+        .eq('id', unavailabilityId);
+
+      if (deleteError) {
+        console.error('Error removing unavailability:', deleteError);
+        setError(deleteError.message);
+        return false;
+      }
+
+      console.log('Unavailability removed successfully');
+      return true;
+    } catch (err) {
+      console.error('Error in removeMemberUnavailability:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, []);
+
   // Sign out function
   const signOut = useCallback(async () => {
     console.log('Signing out user');
@@ -738,6 +818,9 @@ export function useChurch() {
     deleteChurchRole,
     addMemberRole,
     removeMemberRole,
+    fetchMemberUnavailability,
+    addMemberUnavailability,
+    removeMemberUnavailability,
     signOut,
     refreshChurches: fetchChurches,
     refreshMembers: useCallback(() => currentChurch && fetchMembers(currentChurch.id), [currentChurch, fetchMembers]),
