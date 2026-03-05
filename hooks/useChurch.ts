@@ -1157,10 +1157,10 @@ export function useChurch() {
 
       console.log('Found fill-in request with assignment_id:', request.assignment_id);
 
-      // Get the member who is filling in
+      // Get the member who is filling in - use the member's ID directly from church_members
       const { data: fillingMember, error: memberError } = await supabase
         .from('church_members')
-        .select('name, email')
+        .select('id, name, email')
         .eq('id', filledByMemberId)
         .single();
 
@@ -1170,10 +1170,11 @@ export function useChurch() {
         return false;
       }
 
-      const memberName = fillingMember.name || fillingMember.email || 'Unknown';
-      console.log('Filling member name:', memberName);
+      // Use name if available, otherwise use email as fallback
+      const memberName = fillingMember.name || fillingMember.email;
+      console.log('Filling member details:', { id: fillingMember.id, name: memberName });
 
-      // Update the assignment with the new member
+      // Update the assignment with the new member's ID and name
       const { error: assignmentError } = await supabase
         .from('assignments')
         .update({
@@ -1188,7 +1189,7 @@ export function useChurch() {
         return false;
       }
 
-      console.log('Assignment updated successfully with new member');
+      console.log('Assignment updated successfully with member:', memberName);
 
       // Update the fill-in request status
       const { error: updateError } = await supabase
