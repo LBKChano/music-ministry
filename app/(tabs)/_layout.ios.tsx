@@ -16,16 +16,13 @@ export default function TabLayout() {
   return (
     <NativeTabs
       tabBarActiveTintColor={colors.primary}
-      tabBarInactiveTintColor="#8E8E93"
-      tabBarStyle={{
-        backgroundColor: colors.cardBackground,
-      }}
+      tabBarInactiveTintColor={colors.textSecondary}
     >
       <NativeTabs.Trigger name="(home)">
         <Label>Schedule</Label>
         <Icon 
           sf={{ default: 'calendar', selected: 'calendar.badge.checkmark' }} 
-          drawable="event"
+          drawable="calendar-today"
         />
       </NativeTabs.Trigger>
       {isAdmin && (
