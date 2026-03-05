@@ -6,6 +6,7 @@ import {
   View,
   Text,
   ScrollView,
+  RefreshControl,
   TouchableOpacity,
   TextInput,
   Modal,
@@ -367,6 +368,7 @@ export default function HomeScreen() {
   const [deleteServiceModalVisible, setDeleteServiceModalVisible] = useState(false);
   const [deleteAssignmentModalVisible, setDeleteAssignmentModalVisible] = useState(false);
   const [fillInRequestModalVisible, setFillInRequestModalVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [selectedService, setSelectedService] = useState<any>(null);
   const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
@@ -396,6 +398,13 @@ export default function HomeScreen() {
 
   // Sort roles by display_order
   const sortedRoles = [...churchRoles].sort((a, b) => a.display_order - b.display_order);
+
+  const onRefresh = async () => {
+    console.log('[InternalBytecode.js:1] User pulled to refresh schedules');
+    setRefreshing(true);
+    await refreshServices();
+    setRefreshing(false);
+  };
 
   const handleSaveService = async () => {
     console.log('[InternalBytecode.js:1] User tapped save service button');
@@ -574,7 +583,18 @@ export default function HomeScreen() {
         }}
       />
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        style={styles.container} 
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         {filteredServices.length === 0 ? (
           <Text style={styles.emptyText}>No upcoming services scheduled</Text>
         ) : (
