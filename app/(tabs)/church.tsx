@@ -59,6 +59,7 @@ export default function ChurchScreen() {
     removeMemberRole,
     fetchMemberUnavailability,
     updateNotificationSettings,
+    createAdHocService,
   } = useChurch();
 
   const { services, batchUpdateAssignments, createServiceFromTemplate } = useServices(currentChurch?.id || null);
@@ -114,6 +115,15 @@ export default function ChurchScreen() {
   const [showSpecialServiceTimePicker, setShowSpecialServiceTimePicker] = useState(false);
   const [showSpecialServiceDatePicker, setShowSpecialServiceDatePicker] = useState(false);
   const [isAutoAssigning, setIsAutoAssigning] = useState(false);
+
+  // Ad-hoc service modal states
+  const [isAddAdHocServiceModalVisible, setAddAdHocServiceModalVisible] = useState(false);
+  const [adHocServiceName, setAdHocServiceName] = useState('');
+  const [adHocServiceDate, setAdHocServiceDate] = useState(new Date());
+  const [adHocServiceTime, setAdHocServiceTime] = useState('10:00');
+  const [adHocServiceRoles, setAdHocServiceRoles] = useState<string[]>([]);
+  const [showAdHocDatePicker, setShowAdHocDatePicker] = useState(false);
+  const [showAdHocTimePicker, setShowAdHocTimePicker] = useState(false);
 
   // Update notification states when settings change
   React.useEffect(() => {
@@ -689,6 +699,56 @@ export default function ChurchScreen() {
     setSpecialServiceDate(new Date());
   };
 
+  const toggleAdHocServiceRole = (roleId: string) => {
+    const newRoles = [...adHocServiceRoles];
+    const index = newRoles.indexOf(roleId);
+    if (index > -1) {
+      newRoles.splice(index, 1);
+    } else {
+      newRoles.push(roleId);
+    }
+    setAdHocServiceRoles(newRoles);
+  };
+
+  const handleAddAdHocService = async () => {
+    if (!currentChurch) {
+      Alert.alert('Error', 'No church selected');
+      return;
+    }
+
+    if (!adHocServiceName.trim()) {
+      Alert.alert('Error', 'Please enter a service name');
+      return;
+    }
+
+    if (adHocServiceRoles.length === 0) {
+      Alert.alert('Error', 'Please select at least one role for this service');
+      return;
+    }
+
+    console.log('User tapped Add Ad-hoc Service button');
+    const dateString = adHocServiceDate.toISOString().split('T')[0];
+    
+    const result = await createAdHocService(
+      currentChurch.id,
+      adHocServiceName,
+      dateString,
+      adHocServiceTime,
+      adHocServiceRoles
+    );
+
+    if (result) {
+      Alert.alert('Success', 'Ad-hoc service created successfully! You can now assign members to it in the Schedules tab.');
+      setAddAdHocServiceModalVisible(false);
+      setAdHocServiceName('');
+      setAdHocServiceDate(new Date());
+      setAdHocServiceTime('10:00');
+      setAdHocServiceRoles([]);
+    } else {
+      Alert.alert('Error', 'Failed to create ad-hoc service');
+    }
+  };
+
   if (loading && churches.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -888,6 +948,21 @@ export default function ChurchScreen() {
                   <Text style={styles.actionButtonText}>Auto-Assign Members</Text>
                 </>
               )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: '#FF9500', marginTop: 12 }]}
+              onPress={() => {
+                console.log('User tapped Add Single Service button');
+                setAddAdHocServiceModalVisible(true);
+              }}
+            >
+              <IconSymbol
+                ios_icon_name="plus.circle.fill"
+                android_material_icon_name="add-circle"
+                size={24}
+                color="#fff"
+              />
+              <Text style={styles.actionButtonText}>Add Single Service</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -2169,6 +2244,128 @@ export default function ChurchScreen() {
                 <Text style={styles.buttonText}>Add Service</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.cancelButton, { backgroundColor: colors.border }]} onPress={() => setShowAddSpecialService(false)}>
+                <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Add Ad-hoc Service Modal */}
+      <Modal visible={isAddAdHocServiceModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <ScrollView contentContainerStyle={styles.modalScrollContent}>
+            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Add Single Service</Text>
+              <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 16 }]}>
+                Create a one-time service that will appear in the Schedules tab
+              </Text>
+              
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                placeholder="Service Name (e.g., Special Prayer Meeting)"
+                placeholderTextColor={colors.textSecondary}
+                value={adHocServiceName}
+                onChangeText={setAdHocServiceName}
+              />
+
+              <TouchableOpacity
+                style={[styles.dateButton, { backgroundColor: colors.inputBackground }]}
+                onPress={() => {
+                  console.log('User tapped ad-hoc date picker button');
+                  setShowAdHocDatePicker(true);
+                }}
+              >
+                <Text style={[styles.dateButtonText, { color: colors.text }]}>
+                  Date: {formatDate(adHocServiceDate.toISOString())}
+                </Text>
+              </TouchableOpacity>
+              {showAdHocDatePicker && (
+                <DateTimePicker
+                  value={adHocServiceDate}
+                  mode="date"
+                  display="default"
+                  onChange={(event, date) => {
+                    console.log('User selected ad-hoc date:', date);
+                    setShowAdHocDatePicker(false);
+                    if (date) setAdHocServiceDate(date);
+                  }}
+                />
+              )}
+
+              <TouchableOpacity
+                style={[styles.dateButton, { backgroundColor: colors.inputBackground }]}
+                onPress={() => {
+                  console.log('User tapped ad-hoc time picker button');
+                  setShowAdHocTimePicker(true);
+                }}
+              >
+                <Text style={[styles.dateButtonText, { color: colors.text }]}>
+                  Time: {adHocServiceTime}
+                </Text>
+              </TouchableOpacity>
+              {showAdHocTimePicker && (
+                <DateTimePicker
+                  value={new Date(`2000-01-01T${adHocServiceTime}:00`)}
+                  mode="time"
+                  display="default"
+                  onChange={(event, date) => {
+                    console.log('User selected ad-hoc time:', date);
+                    setShowAdHocTimePicker(false);
+                    if (date) {
+                      const hours = date.getHours().toString().padStart(2, '0');
+                      const minutes = date.getMinutes().toString().padStart(2, '0');
+                      setAdHocServiceTime(`${hours}:${minutes}`);
+                    }
+                  }}
+                />
+              )}
+
+              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>Select Roles</Text>
+              <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 8 }]}>
+                Choose which roles are needed for this service
+              </Text>
+              <ScrollView style={{ maxHeight: 200 }}>
+                {churchRoles.map(role => {
+                  const isSelected = adHocServiceRoles.includes(role.id);
+                  return (
+                    <TouchableOpacity
+                      key={role.id}
+                      style={[styles.roleItem, { backgroundColor: colors.inputBackground }]}
+                      onPress={() => toggleAdHocServiceRole(role.id)}
+                    >
+                      <Text style={[styles.roleItemText, { color: colors.text }]}>{role.name}</Text>
+                      <View style={[
+                        styles.checkbox,
+                        { borderColor: colors.primary },
+                        isSelected && { backgroundColor: colors.primary },
+                      ]}>
+                        {isSelected && (
+                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <TouchableOpacity 
+                style={[styles.button, { backgroundColor: colors.primary, marginTop: 16 }]} 
+                onPress={handleAddAdHocService}
+              >
+                <Text style={styles.buttonText}>Create Service</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.cancelButton, { backgroundColor: colors.border }]} 
+                onPress={() => {
+                  console.log('User cancelled add ad-hoc service');
+                  setAddAdHocServiceModalVisible(false);
+                  setAdHocServiceName('');
+                  setAdHocServiceDate(new Date());
+                  setAdHocServiceTime('10:00');
+                  setAdHocServiceRoles([]);
+                }}
+              >
                 <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
