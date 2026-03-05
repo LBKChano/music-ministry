@@ -89,13 +89,17 @@ export function useServices(churchId: string | null) {
     try {
       setError(null);
 
-      const newService: TablesInsert<'services'> = {
+      const newService: any = {
         church_id: serviceChurchId,
         date,
         service_type: serviceType,
         notes: notes || null,
-        time: time || null,
       };
+
+      // Only add time if it's provided
+      if (time) {
+        newService.time = time;
+      }
 
       const { data: serviceData, error: insertError } = await supabase
         .from('services')

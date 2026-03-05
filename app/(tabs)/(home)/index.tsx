@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '@react-navigation/native';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { IconSymbol } from '@/components/IconSymbol';
 
 const styles = StyleSheet.create({
@@ -86,22 +86,6 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  prepareQuarterFab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 160,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -219,78 +203,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
   },
-  quarterButton: {
-    backgroundColor: colors.inputBackground,
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 12,
-    alignItems: 'center',
-  },
-  quarterButtonSelected: {
-    backgroundColor: colors.primary,
-  },
-  quarterButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  quarterButtonTextSelected: {
-    color: '#fff',
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  autoAssignButton: {
-    backgroundColor: colors.accent,
-    borderRadius: 8,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  blockServiceItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.inputBackground,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-  },
-  blockServiceText: {
-    fontSize: 14,
-    color: colors.text,
-    flex: 1,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkboxChecked: {
-    backgroundColor: colors.primary,
-  },
-  roleItem: {
-    backgroundColor: colors.inputBackground,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  roleItemText: {
-    fontSize: 14,
-    color: colors.text,
-    flex: 1,
-  },
 });
 
 interface SpecialService {
@@ -303,16 +215,15 @@ interface SpecialService {
 }
 
 export default function HomeScreen() {
-  const { services, loading, createServiceFromTemplate, deleteService, addAssignment, updateAssignment, deleteAssignment } = useServices(null);
-  const { colors: themeColors } = useTheme();
   const { currentChurch, members, recurringServices, churchRoles } = useChurch();
+  const { services, loading, createServiceFromTemplate, deleteService, addAssignment, updateAssignment, deleteAssignment, refreshServices } = useServices(currentChurch?.id || null);
+  const { colors: themeColors } = useTheme();
 
   const [showAddServiceModal, setShowAddServiceModal] = useState(false);
   const [showRecurringServicePicker, setShowRecurringServicePicker] = useState(false);
   const [showAssignMemberModal, setShowAssignMemberModal] = useState(false);
   const [showDeleteServiceModal, setShowDeleteServiceModal] = useState(false);
   const [showDeleteAssignmentModal, setShowDeleteAssignmentModal] = useState(false);
-  const [showPrepareQuarterModal, setShowPrepareQuarterModal] = useState(false);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -324,18 +235,13 @@ export default function HomeScreen() {
   const [assignmentRole, setAssignmentRole] = useState('');
   const [assignmentPersonName, setAssignmentPersonName] = useState('');
 
-  const [selectedQuarter, setSelectedQuarter] = useState<number>(1);
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  const [blockedServices, setBlockedServices] = useState<Set<string>>(new Set());
-  const [specialServices, setSpecialServices] = useState<SpecialService[]>([]);
-  const [showAddSpecialService, setShowAddSpecialService] = useState(false);
-  const [specialServiceDate, setSpecialServiceDate] = useState(new Date());
-  const [specialServiceName, setSpecialServiceName] = useState('');
-  const [specialServiceTime, setSpecialServiceTime] = useState('10:00');
-  const [specialServiceNotes, setSpecialServiceNotes] = useState('');
-  const [specialServiceRoles, setSpecialServiceRoles] = useState<string[]>([]);
-  const [showSpecialServiceTimePicker, setShowSpecialServiceTimePicker] = useState(false);
-  const [showSpecialServiceDatePicker, setShowSpecialServiceDatePicker] = useState(false);
+  // Refresh services when currentChurch changes
+  useEffect(() => {
+    if (currentChurch?.id) {
+      console.log('Church changed, refreshing services for:', currentChurch.id);
+      refreshServices();
+    }
+  }, [currentChurch?.id, refreshServices]);
 
   const handleSaveService = async () => {
     if (!currentChurch || !serviceType.trim()) {
@@ -379,7 +285,7 @@ export default function HomeScreen() {
 
     console.log('User selected recurring service template:', recurringService.name);
     const dateString = selectedDate.toISOString().split('T')[0];
-    await createServiceFromTemplate(currentChurch.id, dateString, recurringService.name, recurringService.notes, recurringService.roles);
+    await createServiceFromTemplate(currentChurch.id, dateString, recurringService.name, recurringService.notes, recurringService.roles, recurringService.time);
     setShowRecurringServicePicker(false);
     setShowAddServiceModal(false);
   };
@@ -438,169 +344,12 @@ export default function HomeScreen() {
     setShowAssignMemberModal(true);
   };
 
-  const getQuarterDates = (quarter: number, year: number) => {
-    const startMonth = (quarter - 1) * 3;
-    const startDate = new Date(year, startMonth, 1);
-    const endDate = new Date(year, startMonth + 3, 0);
-    return { startDate, endDate };
-  };
-
-  const generateQuarterServices = () => {
-    const { startDate, endDate } = getQuarterDates(selectedQuarter, selectedYear);
-    const generatedServices: Array<{ date: Date; template: any }> = [];
-
-    const currentDate = new Date(startDate);
-    while (currentDate <= endDate) {
-      const dayOfWeek = currentDate.getDay();
-
-      recurringServices.forEach(template => {
-        if (template.day_of_week === dayOfWeek) {
-          const serviceKey = `${template.id}-${currentDate.toISOString().split('T')[0]}`;
-          if (!blockedServices.has(serviceKey)) {
-            generatedServices.push({
-              date: new Date(currentDate),
-              template,
-            });
-          }
-        }
-      });
-
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-
-    return generatedServices;
-  };
-
-  const handlePrepareQuarter = async () => {
-    if (!currentChurch?.id) {
-      Alert.alert('Error', 'No church selected. Please ensure your account is linked to a church.');
-      return;
-    }
-
-    console.log('User tapped Prepare Quarter button for church:', currentChurch.id);
-    const generatedServices = generateQuarterServices();
-
-    // Generate recurring services
-    for (const { date, template } of generatedServices) {
-      const dateString = date.toISOString().split('T')[0];
-      await createServiceFromTemplate(currentChurch.id, dateString, template.name, template.notes, template.roles, template.time);
-    }
-
-    // Generate special services - convert role IDs to role names
-    for (const special of specialServices) {
-      const dateString = special.date.toISOString().split('T')[0];
-      
-      // Convert role IDs to role names
-      const roleNames = special.selectedRoleIds
-        .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
-        .filter((name): name is string => name !== undefined);
-      
-      console.log('Creating special service with roles:', { name: special.name, roleNames });
-      await createServiceFromTemplate(currentChurch.id, dateString, special.name, special.notes, roleNames, special.time);
-    }
-
-    setShowPrepareQuarterModal(false);
-    setBlockedServices(new Set());
-    setSpecialServices([]);
-    Alert.alert('Success', 'Quarter services generated successfully!');
-  };
-
-  const handleAutoAssign = async () => {
-    if (!currentChurch) return;
-
-    console.log('User tapped Auto-Assign button');
-
-    const membersByRole: { [role: string]: any[] } = {};
-    members.forEach(member => {
-      if (member.role) {
-        if (!membersByRole[member.role]) {
-          membersByRole[member.role] = [];
-        }
-        membersByRole[member.role].push(member);
-      }
-    });
-
-    const assignmentCounts: { [memberId: string]: number } = {};
-    members.forEach(member => {
-      assignmentCounts[member.id] = 0;
-    });
-
-    for (const service of services) {
-      for (const assignment of service.assignments) {
-        if (!assignment.member_id && assignment.role) {
-          const availableMembers = membersByRole[assignment.role] || [];
-          
-          if (availableMembers.length > 0) {
-            availableMembers.sort((a, b) => 
-              (assignmentCounts[a.id] || 0) - (assignmentCounts[b.id] || 0)
-            );
-
-            const selectedMember = availableMembers[0];
-            await updateAssignment(assignment.id, selectedMember.id, selectedMember.name || selectedMember.email);
-            assignmentCounts[selectedMember.id] = (assignmentCounts[selectedMember.id] || 0) + 1;
-          }
-        }
-      }
-    }
-
-    console.log('Auto-assignment completed');
-    Alert.alert('Success', 'Auto-assignment completed!');
-  };
-
-  const toggleBlockService = (serviceKey: string) => {
-    const newBlocked = new Set(blockedServices);
-    if (newBlocked.has(serviceKey)) {
-      newBlocked.delete(serviceKey);
-    } else {
-      newBlocked.add(serviceKey);
-    }
-    setBlockedServices(newBlocked);
-  };
-
-  const toggleSpecialServiceRole = (roleId: string) => {
-    const newRoles = [...specialServiceRoles];
-    const index = newRoles.indexOf(roleId);
-    if (index > -1) {
-      newRoles.splice(index, 1);
-    } else {
-      newRoles.push(roleId);
-    }
-    setSpecialServiceRoles(newRoles);
-  };
-
-  const handleAddSpecialService = () => {
-    if (!specialServiceName.trim()) {
-      Alert.alert('Error', 'Please enter a service name');
-      return;
-    }
-
-    if (specialServiceRoles.length === 0) {
-      Alert.alert('Error', 'Please select at least one role for this service');
-      return;
-    }
-
-    console.log('User added special service with roles:', specialServiceRoles);
-    const newSpecialService: SpecialService = {
-      id: `special-${Date.now()}`,
-      name: specialServiceName,
-      date: specialServiceDate,
-      time: specialServiceTime,
-      notes: specialServiceNotes,
-      selectedRoleIds: specialServiceRoles,
-    };
-
-    setSpecialServices([...specialServices, newSpecialService]);
-    setShowAddSpecialService(false);
-    setSpecialServiceName('');
-    setSpecialServiceTime('10:00');
-    setSpecialServiceNotes('');
-    setSpecialServiceRoles([]);
-    setSpecialServiceDate(new Date());
-  };
-
   const filteredServices = currentChurch 
     ? services.filter(s => s.church_id === currentChurch.id)
     : [];
+
+  const noServicesText = 'No services scheduled yet';
+  const addServiceText = 'Add your first service';
 
   return (
     <View style={styles.container}>
@@ -620,7 +369,8 @@ export default function HomeScreen() {
         ) : filteredServices.length === 0 ? (
           <View style={styles.emptyState}>
             <IconSymbol ios_icon_name="calendar" android_material_icon_name="calendar-today" size={48} color={colors.textSecondary} />
-            <Text style={styles.emptyStateText}>No services scheduled yet</Text>
+            <Text style={styles.emptyStateText}>{noServicesText}</Text>
+            <Text style={[styles.emptyStateText, { fontSize: 14, marginTop: 4 }]}>{addServiceText}</Text>
           </View>
         ) : (
           filteredServices.map((service) => {
@@ -676,13 +426,6 @@ export default function HomeScreen() {
       </ScrollView>
 
       <TouchableOpacity
-        style={styles.prepareQuarterFab}
-        onPress={() => setShowPrepareQuarterModal(true)}
-      >
-        <IconSymbol ios_icon_name="calendar.badge.plus" android_material_icon_name="event" size={24} color="#fff" />
-      </TouchableOpacity>
-
-      <TouchableOpacity
         style={styles.fab}
         onPress={() => setShowRecurringServicePicker(true)}
       >
@@ -696,6 +439,7 @@ export default function HomeScreen() {
             <ScrollView style={{ maxHeight: 400 }}>
               {recurringServices.map((template) => {
                 const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][template.day_of_week];
+                const rolesCount = template.roles?.length || 0;
                 return (
                   <TouchableOpacity
                     key={template.id}
@@ -704,7 +448,7 @@ export default function HomeScreen() {
                   >
                     <Text style={styles.templateName}>{template.name}</Text>
                     <Text style={styles.templateDetails}>
-                      {dayName} at {template.time} • {template.roles.length} roles
+                      {dayName} at {template.time} • {rolesCount} roles
                     </Text>
                   </TouchableOpacity>
                 );
@@ -752,7 +496,9 @@ export default function HomeScreen() {
             <ScrollView style={{ maxHeight: 400 }}>
               {members.map((member) => {
                 const displayName = member.name || member.email;
-                const roleText = member.role || 'No role';
+                const roleText = member.memberRoles && member.memberRoles.length > 0
+                  ? member.memberRoles.map(r => r.role_name).join(', ')
+                  : 'No roles assigned';
                 return (
                   <TouchableOpacity
                     key={member.id}
@@ -803,223 +549,6 @@ export default function HomeScreen() {
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
-
-      <Modal visible={showPrepareQuarterModal} animationType="slide" transparent>
-        <View style={styles.modalContainer}>
-          <ScrollView style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Prepare Quarter</Text>
-            
-            <Text style={styles.sectionTitle}>Select Quarter</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              {[1, 2, 3, 4].map(q => {
-                const isSelected = selectedQuarter === q;
-                const quarterText = `Q${q}`;
-                return (
-                  <TouchableOpacity
-                    key={q}
-                    style={[styles.quarterButton, { flex: 1, marginHorizontal: 4 }, isSelected && styles.quarterButtonSelected]}
-                    onPress={() => setSelectedQuarter(q)}
-                  >
-                    <Text style={[styles.quarterButtonText, isSelected && styles.quarterButtonTextSelected]}>
-                      {quarterText}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text style={styles.sectionTitle}>Year</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Year"
-              placeholderTextColor={colors.textSecondary}
-              value={selectedYear.toString()}
-              onChangeText={(text) => setSelectedYear(parseInt(text) || new Date().getFullYear())}
-              keyboardType="number-pad"
-            />
-
-            <Text style={styles.sectionTitle}>Block Recurring Services</Text>
-            <ScrollView style={{ maxHeight: 150 }}>
-              {recurringServices.map(template => {
-                const { startDate, endDate } = getQuarterDates(selectedQuarter, selectedYear);
-                const currentDate = new Date(startDate);
-                const serviceDates: Date[] = [];
-
-                while (currentDate <= endDate) {
-                  if (currentDate.getDay() === template.day_of_week) {
-                    serviceDates.push(new Date(currentDate));
-                  }
-                  currentDate.setDate(currentDate.getDate() + 1);
-                }
-
-                return serviceDates.map(date => {
-                  const serviceKey = `${template.id}-${date.toISOString().split('T')[0]}`;
-                  const isBlocked = blockedServices.has(serviceKey);
-                  const dateText = formatDate(date.toISOString());
-                  return (
-                    <TouchableOpacity
-                      key={serviceKey}
-                      style={styles.blockServiceItem}
-                      onPress={() => toggleBlockService(serviceKey)}
-                    >
-                      <Text style={styles.blockServiceText}>
-                        {template.name} - {dateText}
-                      </Text>
-                      <View style={[styles.checkbox, isBlocked && styles.checkboxChecked]}>
-                        {isBlocked && (
-                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                });
-              })}
-            </ScrollView>
-
-            <Text style={styles.sectionTitle}>Special Services</Text>
-            {specialServices.map((special) => {
-              const dateText = formatDate(special.date.toISOString());
-              const roleNames = special.selectedRoleIds
-                .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
-                .filter(Boolean)
-                .join(', ');
-              return (
-                <View key={special.id} style={styles.blockServiceItem}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.blockServiceText}>
-                      {special.name} - {dateText} at {special.time}
-                    </Text>
-                    {roleNames && (
-                      <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>
-                        Roles: {roleNames}
-                      </Text>
-                    )}
-                  </View>
-                  <TouchableOpacity onPress={() => {
-                    const newSpecial = specialServices.filter(s => s.id !== special.id);
-                    setSpecialServices(newSpecial);
-                  }}>
-                    <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color={colors.error} />
-                  </TouchableOpacity>
-                </View>
-              );
-            })}
-            <TouchableOpacity
-              style={{ marginTop: 8 }}
-              onPress={() => setShowAddSpecialService(true)}
-            >
-              <Text style={{ color: colors.primary, fontSize: 14 }}>+ Add Special Service</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.button} onPress={handlePrepareQuarter}>
-              <Text style={styles.buttonText}>Generate Services</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.autoAssignButton} onPress={handleAutoAssign}>
-              <Text style={styles.buttonText}>Auto-Assign Members</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowPrepareQuarterModal(false)}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-      </Modal>
-
-      <Modal visible={showAddSpecialService} animationType="slide" transparent>
-        <View style={styles.modalContainer}>
-          <ScrollView style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add Special Service</Text>
-            
-            <TextInput
-              style={styles.input}
-              placeholder="Service Name (e.g., Christmas Eve)"
-              placeholderTextColor={colors.textSecondary}
-              value={specialServiceName}
-              onChangeText={setSpecialServiceName}
-            />
-
-            <TouchableOpacity
-              style={styles.dateButton}
-              onPress={() => setShowSpecialServiceDatePicker(true)}
-            >
-              <Text style={styles.dateButtonText}>
-                Date: {formatDate(specialServiceDate.toISOString())}
-              </Text>
-            </TouchableOpacity>
-            {showSpecialServiceDatePicker && (
-              <DateTimePicker
-                value={specialServiceDate}
-                mode="date"
-                display="default"
-                onChange={(event, date) => {
-                  setShowSpecialServiceDatePicker(false);
-                  if (date) setSpecialServiceDate(date);
-                }}
-              />
-            )}
-
-            <TouchableOpacity
-              style={styles.dateButton}
-              onPress={() => setShowSpecialServiceTimePicker(true)}
-            >
-              <Text style={styles.dateButtonText}>
-                Time: {specialServiceTime}
-              </Text>
-            </TouchableOpacity>
-            {showSpecialServiceTimePicker && (
-              <DateTimePicker
-                value={new Date(`2000-01-01T${specialServiceTime}:00`)}
-                mode="time"
-                display="default"
-                onChange={(event, date) => {
-                  setShowSpecialServiceTimePicker(false);
-                  if (date) {
-                    const hours = date.getHours().toString().padStart(2, '0');
-                    const minutes = date.getMinutes().toString().padStart(2, '0');
-                    setSpecialServiceTime(`${hours}:${minutes}`);
-                  }
-                }}
-              />
-            )}
-
-            <Text style={styles.sectionTitle}>Select Roles</Text>
-            <ScrollView style={{ maxHeight: 200 }}>
-              {churchRoles.map(role => {
-                const isSelected = specialServiceRoles.includes(role.id);
-                return (
-                  <TouchableOpacity
-                    key={role.id}
-                    style={styles.roleItem}
-                    onPress={() => toggleSpecialServiceRole(role.id)}
-                  >
-                    <Text style={styles.roleItemText}>{role.name}</Text>
-                    <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
-                      {isSelected && (
-                        <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Notes (optional)"
-              placeholderTextColor={colors.textSecondary}
-              value={specialServiceNotes}
-              onChangeText={setSpecialServiceNotes}
-              multiline
-            />
-
-            <TouchableOpacity style={styles.button} onPress={handleAddSpecialService}>
-              <Text style={styles.buttonText}>Add Service</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowAddSpecialService(false)}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </ScrollView>
         </View>
       </Modal>
     </View>
