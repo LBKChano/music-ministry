@@ -372,6 +372,119 @@ export type Database = {
           },
         ]
       }
+      fill_in_requests: {
+        Row: {
+          id: string
+          assignment_id: string
+          service_id: string
+          church_id: string
+          requesting_member_id: string
+          role_name: string
+          reason: string | null
+          status: 'pending' | 'filled' | 'cancelled'
+          filled_by_member_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          assignment_id: string
+          service_id: string
+          church_id: string
+          requesting_member_id: string
+          role_name: string
+          reason?: string | null
+          status?: 'pending' | 'filled' | 'cancelled'
+          filled_by_member_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          assignment_id?: string
+          service_id?: string
+          church_id?: string
+          requesting_member_id?: string
+          role_name?: string
+          reason?: string | null
+          status?: 'pending' | 'filled' | 'cancelled'
+          filled_by_member_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fill_in_requests_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fill_in_requests_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fill_in_requests_church_id_fkey"
+            columns: ["church_id"]
+            isOneToOne: false
+            referencedRelation: "churches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fill_in_requests_requesting_member_id_fkey"
+            columns: ["requesting_member_id"]
+            isOneToOne: false
+            referencedRelation: "church_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fill_in_requests_filled_by_member_id_fkey"
+            columns: ["filled_by_member_id"]
+            isOneToOne: false
+            referencedRelation: "church_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_tokens: {
+        Row: {
+          id: string
+          member_id: string
+          token: string
+          device_type: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          member_id: string
+          token: string
+          device_type?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          member_id?: string
+          token?: string
+          device_type?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_tokens_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "church_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

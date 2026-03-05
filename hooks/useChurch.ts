@@ -13,6 +13,8 @@ type RecurringServiceRole = Tables<'recurring_service_roles'>;
 type MemberUnavailability = Tables<'member_unavailability'>;
 type MemberRole = Tables<'member_roles'>;
 type NotificationSettings = Tables<'notification_settings'>;
+type FillInRequest = Tables<'fill_in_requests'>;
+type PushToken = Tables<'push_tokens'>;
 
 export interface RecurringServiceWithRoles extends RecurringService {
   roles: string[];
@@ -29,6 +31,7 @@ export function useChurch() {
   const [recurringServices, setRecurringServices] = useState<RecurringServiceWithRoles[]>([]);
   const [churchRoles, setChurchRoles] = useState<ChurchRole[]>([]);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings | null>(null);
+  const [fillInRequests, setFillInRequests] = useState<FillInRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
@@ -1027,6 +1030,203 @@ export function useChurch() {
     }
   }, []);
 
+  // Fetch fill-in requests for a church
+  const fetchFillInRequests = useCallback(async (churchId: string) => {
+    console.log('Fetching fill-in requests for church:', churchId);
+    try {
+      setError(null);
+
+      const { data, error: fetchError } = await supabase
+        .from('fill_in_requests')
+        .select('*')
+        .eq('church_id', churchId)
+        .order('created_at', { ascending: false });
+
+      if (fetchError) {
+        console.error('Error fetching fill-in requests:', fetchError);
+        setError(fetchError.message);
+        return;
+      }
+
+      console.log('Fetched fill-in requests:', data);
+      setFillInRequests(data || []);
+    } catch (err) {
+      console.error('Error in fetchFillInRequests:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    }
+  }, []);
+
+  // Create a fill-in request
+  const createFillInRequest = useCallback(async (
+    assignmentId: string,
+    serviceId: string,
+    churchId: string,
+    requestingMemberId: string,
+    roleName: string,
+    reason?: string
+  ) => {
+    console.log('Creating fill-in request:', { assignmentId, serviceId, roleName });
+    try {
+      setError(null);
+
+      const newRequest: TablesInsert<'fill_in_requests'> = {
+        assignment_id: assignmentId,
+        service_id: serviceId,
+        church_id: churchId,
+        requesting_member_id: requestingMemberId,
+        role_name: roleName,
+        reason: reason || null,
+        status: 'pending',
+      };
+
+      const { data, error: insertError } = await supabase
+        .from('fill_in_requests')
+        .insert(newRequest)
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Error creating fill-in request:', insertError);
+        setError(insertError.message);
+        return null;
+      }
+
+      console.log('Fill-in request created successfully:', data);
+
+      // Call Edge Function to send notifications
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
+        if (token) {
+          const response = await fetch(
+            `${supabase.supabaseUrl}/functions/v1/send-fill-in-notifications`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+              },
+              body: JSON.stringify({ fillInRequestId: data.id }),
+            }
+          );
+
+          if (!response.ok) {
+            console.error('Error sending notifications:', await response.text());
+          } else {
+            console.log('Notifications sent successfully');
+          }
+        }
+      } catch (notifError) {
+        console.error('Error calling notification function:', notifError);
+        // Don't fail the whole operation if notifications fail
+      }
+
+      await fetchFillInRequests(churchId);
+      return data;
+    } catch (err) {
+      console.error('Error in createFillInRequest:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return null;
+    }
+  }, [fetchFillInRequests]);
+
+  // Accept a fill-in request
+  const acceptFillInRequest = useCallback(async (
+    requestId: string,
+    filledByMemberId: string,
+    churchId: string
+  ) => {
+    console.log('Accepting fill-in request:', requestId);
+    try {
+      setError(null);
+
+      const { error: updateError } = await supabase
+        .from('fill_in_requests')
+        .update({
+          status: 'filled',
+          filled_by_member_id: filledByMemberId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', requestId);
+
+      if (updateError) {
+        console.error('Error accepting fill-in request:', updateError);
+        setError(updateError.message);
+        return false;
+      }
+
+      console.log('Fill-in request accepted successfully');
+      await fetchFillInRequests(churchId);
+      return true;
+    } catch (err) {
+      console.error('Error in acceptFillInRequest:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, [fetchFillInRequests]);
+
+  // Cancel a fill-in request
+  const cancelFillInRequest = useCallback(async (requestId: string, churchId: string) => {
+    console.log('Cancelling fill-in request:', requestId);
+    try {
+      setError(null);
+
+      const { error: updateError } = await supabase
+        .from('fill_in_requests')
+        .update({
+          status: 'cancelled',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', requestId);
+
+      if (updateError) {
+        console.error('Error cancelling fill-in request:', updateError);
+        setError(updateError.message);
+        return false;
+      }
+
+      console.log('Fill-in request cancelled successfully');
+      await fetchFillInRequests(churchId);
+      return true;
+    } catch (err) {
+      console.error('Error in cancelFillInRequest:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, [fetchFillInRequests]);
+
+  // Register push token
+  const registerPushToken = useCallback(async (memberId: string, token: string, deviceType?: string) => {
+    console.log('Registering push token for member:', memberId);
+    try {
+      setError(null);
+
+      const tokenData: TablesInsert<'push_tokens'> = {
+        member_id: memberId,
+        token,
+        device_type: deviceType || null,
+      };
+
+      const { error: insertError } = await supabase
+        .from('push_tokens')
+        .upsert(tokenData, { onConflict: 'member_id,token' });
+
+      if (insertError) {
+        console.error('Error registering push token:', insertError);
+        setError(insertError.message);
+        return false;
+      }
+
+      console.log('Push token registered successfully');
+      return true;
+    } catch (err) {
+      console.error('Error in registerPushToken:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, []);
+
   // Sign out function
   const signOut = useCallback(async () => {
     console.log('Signing out user');
@@ -1046,6 +1246,7 @@ export function useChurch() {
       setChurchRoles([]);
       setCurrentMember(null);
       setNotificationSettings(null);
+      setFillInRequests([]);
       setUser(null);
     } catch (err) {
       console.error('Error in signOut:', err);
@@ -1060,14 +1261,16 @@ export function useChurch() {
       fetchChurchRoles(currentChurch.id);
       fetchCurrentMember(currentChurch.id);
       fetchNotificationSettings(currentChurch.id);
+      fetchFillInRequests(currentChurch.id);
     } else {
       setMembers([]);
       setRecurringServices([]);
       setChurchRoles([]);
       setCurrentMember(null);
       setNotificationSettings(null);
+      setFillInRequests([]);
     }
-  }, [currentChurch, fetchMembers, fetchRecurringServices, fetchChurchRoles, fetchCurrentMember, fetchNotificationSettings]);
+  }, [currentChurch, fetchMembers, fetchRecurringServices, fetchChurchRoles, fetchCurrentMember, fetchNotificationSettings, fetchFillInRequests]);
 
   return {
     churches,
@@ -1077,6 +1280,7 @@ export function useChurch() {
     recurringServices,
     churchRoles,
     notificationSettings,
+    fillInRequests,
     loading,
     error,
     user,
@@ -1098,6 +1302,10 @@ export function useChurch() {
     removeMemberUnavailability,
     fetchNotificationSettings,
     updateNotificationSettings,
+    createFillInRequest,
+    acceptFillInRequest,
+    cancelFillInRequest,
+    registerPushToken,
     signOut,
     refreshChurches: fetchChurches,
     refreshMembers: useCallback(() => currentChurch && fetchMembers(currentChurch.id), [currentChurch, fetchMembers]),
@@ -1105,5 +1313,6 @@ export function useChurch() {
     refreshChurchRoles: useCallback(() => currentChurch && fetchChurchRoles(currentChurch.id), [currentChurch, fetchChurchRoles]),
     refreshCurrentMember: useCallback(() => currentChurch && fetchCurrentMember(currentChurch.id), [currentChurch, fetchCurrentMember]),
     refreshNotificationSettings: useCallback(() => currentChurch && fetchNotificationSettings(currentChurch.id), [currentChurch, fetchNotificationSettings]),
+    refreshFillInRequests: useCallback(() => currentChurch && fetchFillInRequests(currentChurch.id), [currentChurch, fetchFillInRequests]),
   };
 }
