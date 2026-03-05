@@ -126,14 +126,14 @@ export function useServices(churchId: string | null) {
         }
       }
 
-      await fetchServices();
+      // No need to manually refresh - realtime subscription will handle it
       return serviceData;
     } catch (err) {
       console.error('Error in createServiceFromTemplate:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  }, [fetchServices]);
+  }, []);
 
   // Create a new service (custom, without template)
   const createService = useCallback(async (serviceChurchId: string, date: string, serviceType: string, notes?: string) => {
@@ -166,14 +166,14 @@ export function useServices(churchId: string | null) {
       }
 
       console.log('Service created successfully:', data);
-      await fetchServices();
+      // No need to manually refresh - realtime subscription will handle it
       return data;
     } catch (err) {
       console.error('Error in createService:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  }, [fetchServices]);
+  }, []);
 
   // Delete a service - OPTIMIZED: No need to refetch all services
   const deleteService = useCallback(async (serviceId: string) => {
@@ -231,14 +231,14 @@ export function useServices(churchId: string | null) {
       }
 
       console.log('Assignment added successfully:', data);
-      await fetchServices();
+      // No need to manually refresh - realtime subscription will handle it
       return data;
     } catch (err) {
       console.error('Error in addAssignment:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  }, [fetchServices]);
+  }, []);
 
   // Update an assignment (assign a member to a slot) - OPTIMIZED
   const updateAssignment = useCallback(async (assignmentId: string, memberId: string, personName: string) => {
@@ -348,18 +348,73 @@ export function useServices(churchId: string | null) {
       }
 
       console.log('Assignment deleted successfully');
-      await fetchServices();
+      // No need to manually refresh - realtime subscription will handle it
       return true;
     } catch (err) {
       console.error('Error in deleteAssignment:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       return false;
     }
-  }, [fetchServices]);
+  }, []);
 
+  // Initial fetch
   useEffect(() => {
     fetchServices();
   }, [fetchServices]);
+
+  // Set up realtime subscriptions for live updates
+  useEffect(() => {
+    if (!churchId) {
+      console.log('No church ID, skipping realtime subscription');
+      return;
+    }
+
+    console.log('Setting up realtime subscriptions for church:', churchId);
+
+    // Subscribe to services table changes
+    const servicesChannel = supabase
+      .channel(`services-${churchId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'services',
+          filter: `church_id=eq.${churchId}`,
+        },
+        (payload) => {
+          console.log('Services realtime update:', payload);
+          // Refetch services to get updated data with assignments
+          fetchServices();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to assignments table changes
+    const assignmentsChannel = supabase
+      .channel(`assignments-${churchId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'assignments',
+        },
+        (payload) => {
+          console.log('Assignments realtime update:', payload);
+          // Refetch services to get updated assignments
+          fetchServices();
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscriptions on unmount
+    return () => {
+      console.log('Cleaning up realtime subscriptions');
+      supabase.removeChannel(servicesChannel);
+      supabase.removeChannel(assignmentsChannel);
+    };
+  }, [churchId, fetchServices]);
 
   return {
     services,
