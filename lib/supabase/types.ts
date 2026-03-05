@@ -259,6 +259,41 @@ export type Database = {
           },
         ]
       }
+      member_unavailability: {
+        Row: {
+          created_at: string
+          id: string
+          member_id: string
+          reason: string | null
+          unavailable_date: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          member_id: string
+          reason?: string | null
+          unavailable_date: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          member_id?: string
+          reason?: string | null
+          unavailable_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_unavailability_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "church_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

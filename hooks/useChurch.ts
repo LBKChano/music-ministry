@@ -10,6 +10,7 @@ type Assignment = Tables<'assignments'>;
 type RecurringService = Tables<'recurring_services'>;
 type ChurchRole = Tables<'church_roles'>;
 type RecurringServiceRole = Tables<'recurring_service_roles'>;
+type MemberUnavailability = Tables<'member_unavailability'>;
 
 export interface RecurringServiceWithRoles extends RecurringService {
   roles: string[];
