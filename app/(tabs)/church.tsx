@@ -45,6 +45,7 @@ export default function ChurchScreen() {
   const [activeTab, setActiveTab] = useState<'members' | 'services' | 'roles'>('members');
   const [isCreateChurchModalVisible, setCreateChurchModalVisible] = useState(false);
   const [isAddMemberModalVisible, setAddMemberModalVisible] = useState(false);
+  const [isEditMemberModalVisible, setEditMemberModalVisible] = useState(false);
   const [isAddServiceModalVisible, setAddServiceModalVisible] = useState(false);
   const [isAddRoleModalVisible, setAddRoleModalVisible] = useState(false);
   const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -52,6 +53,7 @@ export default function ChurchScreen() {
   const [isDeleteRoleModalVisible, setDeleteRoleModalVisible] = useState(false);
   const [isSignOutModalVisible, setSignOutModalVisible] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<string | null>(null);
+  const [memberToEdit, setMemberToEdit] = useState<string | null>(null);
   const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
   const [roleToDelete, setRoleToDelete] = useState<string | null>(null);
 
@@ -59,7 +61,11 @@ export default function ChurchScreen() {
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberRole, setNewMemberRole] = useState('');
+  const [editMemberEmail, setEditMemberEmail] = useState('');
+  const [editMemberName, setEditMemberName] = useState('');
+  const [editMemberRole, setEditMemberRole] = useState('');
   const [showRolePicker, setShowRolePicker] = useState(false);
+  const [showEditRolePicker, setShowEditRolePicker] = useState(false);
   const [newServiceName, setNewServiceName] = useState('');
   const [newServiceDay, setNewServiceDay] = useState(0);
   const [newServiceTime, setNewServiceTime] = useState('09:00');
@@ -100,6 +106,48 @@ export default function ChurchScreen() {
       setNewMemberName('');
       setNewMemberRole('');
       setAddMemberModalVisible(false);
+    }
+  };
+
+  const openEditMemberModal = (memberId: string) => {
+    console.log('User tapped edit member:', memberId);
+    const member = members.find(m => m.id === memberId);
+    if (!member) {
+      return;
+    }
+
+    setMemberToEdit(memberId);
+    setEditMemberEmail(member.email);
+    setEditMemberName(member.name || '');
+    setEditMemberRole(member.role || '');
+    setEditMemberModalVisible(true);
+  };
+
+  const handleEditMember = async () => {
+    console.log('User tapped Save Edit Member button');
+    if (!memberToEdit || !currentChurch) {
+      return;
+    }
+
+    const updates: { name?: string; role?: string; email?: string } = {};
+    
+    if (editMemberEmail.trim()) {
+      updates.email = editMemberEmail.trim();
+    }
+    if (editMemberName.trim()) {
+      updates.name = editMemberName.trim();
+    }
+    if (editMemberRole.trim()) {
+      updates.role = editMemberRole.trim();
+    }
+
+    const success = await updateMember(memberToEdit, currentChurch.id, updates);
+    if (success) {
+      setMemberToEdit(null);
+      setEditMemberEmail('');
+      setEditMemberName('');
+      setEditMemberRole('');
+      setEditMemberModalVisible(false);
     }
   };
 
@@ -484,17 +532,30 @@ export default function ChurchScreen() {
                               )}
                             </View>
                           </View>
-                          <TouchableOpacity
-                            onPress={() => openDeleteModal(member.id)}
-                            style={styles.deleteButton}
-                          >
-                            <IconSymbol
-                              ios_icon_name="trash"
-                              android_material_icon_name="delete"
-                              size={20}
-                              color="#ff3b30"
-                            />
-                          </TouchableOpacity>
+                          <View style={styles.memberActions}>
+                            <TouchableOpacity
+                              onPress={() => openEditMemberModal(member.id)}
+                              style={styles.editIconButton}
+                            >
+                              <IconSymbol
+                                ios_icon_name="pencil"
+                                android_material_icon_name="edit"
+                                size={20}
+                                color={colors.primary}
+                              />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => openDeleteModal(member.id)}
+                              style={styles.deleteButton}
+                            >
+                              <IconSymbol
+                                ios_icon_name="trash"
+                                android_material_icon_name="delete"
+                                size={20}
+                                color="#ff3b30"
+                              />
+                            </TouchableOpacity>
+                          </View>
                         </View>
                       );
                     })}
@@ -822,6 +883,117 @@ export default function ChurchScreen() {
                   onPress={handleAddMember}
                 >
                   <Text style={styles.saveButtonText}>Add</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Edit Member Modal */}
+      <Modal
+        visible={isEditMemberModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setEditMemberModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <ScrollView contentContainerStyle={styles.modalScrollContent}>
+            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Member</Text>
+
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                placeholder="Email"
+                placeholderTextColor={colors.textSecondary}
+                value={editMemberEmail}
+                onChangeText={setEditMemberEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                placeholder="Name (optional)"
+                placeholderTextColor={colors.textSecondary}
+                value={editMemberName}
+                onChangeText={setEditMemberName}
+              />
+
+              <View style={styles.pickerContainer}>
+                <Text style={[styles.label, { color: colors.text }]}>Role (optional)</Text>
+                {churchRoles.length > 0 ? (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.input, { borderColor: colors.border, justifyContent: 'center' }]}
+                      onPress={() => {
+                        console.log('User tapped edit role picker');
+                        setShowEditRolePicker(!showEditRolePicker);
+                      }}
+                    >
+                      <Text style={[{ color: editMemberRole ? colors.text : colors.textSecondary }]}>
+                        {editMemberRole || 'Select a role'}
+                      </Text>
+                    </TouchableOpacity>
+                    {showEditRolePicker && (
+                      <View style={[styles.pickerList, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+                        <TouchableOpacity
+                          style={styles.pickerItem}
+                          onPress={() => {
+                            console.log('User cleared role selection');
+                            setEditMemberRole('');
+                            setShowEditRolePicker(false);
+                          }}
+                        >
+                          <Text style={[styles.pickerItemText, { color: colors.textSecondary }]}>
+                            None
+                          </Text>
+                        </TouchableOpacity>
+                        {churchRoles.map((role) => (
+                          <TouchableOpacity
+                            key={role.id}
+                            style={styles.pickerItem}
+                            onPress={() => {
+                              console.log('User selected role:', role.name);
+                              setEditMemberRole(role.name);
+                              setShowEditRolePicker(false);
+                            }}
+                          >
+                            <Text style={[styles.pickerItemText, { color: colors.text }]}>
+                              {role.name}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <Text style={[styles.helperText, { color: colors.textSecondary }]}>
+                    Add roles in the Roles tab first
+                  </Text>
+                )}
+              </View>
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton]}
+                  onPress={() => {
+                    console.log('User cancelled edit member');
+                    setEditMemberModalVisible(false);
+                    setMemberToEdit(null);
+                    setEditMemberEmail('');
+                    setEditMemberName('');
+                    setEditMemberRole('');
+                    setShowEditRolePicker(false);
+                  }}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                  onPress={handleEditMember}
+                >
+                  <Text style={styles.saveButtonText}>Save</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1269,6 +1441,13 @@ const styles = StyleSheet.create({
   memberRole: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  memberActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  editIconButton: {
+    padding: 8,
   },
   servicesList: {
     gap: 12,

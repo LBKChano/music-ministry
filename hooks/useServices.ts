@@ -71,14 +71,80 @@ export function useServices(churchId: string | null) {
     }
   }, [churchId]);
 
-  // Create a new service
+  // Create a new service with role slots from recurring service template
+  const createServiceFromTemplate = useCallback(async (
+    date: string,
+    serviceType: string,
+    notes: string | undefined,
+    roleSlots: string[]
+  ) => {
+    if (!churchId) {
+      console.error('No church selected');
+      return null;
+    }
+
+    console.log('Creating service from template:', { date, serviceType, notes, roleSlots });
+    try {
+      setError(null);
+
+      const newService: TablesInsert<'services'> = {
+        church_id: churchId,
+        date,
+        service_type: serviceType,
+        notes: notes || null,
+      };
+
+      const { data: serviceData, error: insertError } = await supabase
+        .from('services')
+        .insert(newService)
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Error creating service:', insertError);
+        setError(insertError.message);
+        return null;
+      }
+
+      console.log('Service created successfully:', serviceData);
+
+      // Create empty assignment slots for each role
+      if (roleSlots && roleSlots.length > 0) {
+        const assignmentInserts: TablesInsert<'assignments'>[] = roleSlots.map(roleName => ({
+          service_id: serviceData.id,
+          role: roleName,
+          person_name: '', // Empty slot
+          member_id: null,
+        }));
+
+        const { error: assignmentsError } = await supabase
+          .from('assignments')
+          .insert(assignmentInserts);
+
+        if (assignmentsError) {
+          console.error('Error creating assignment slots:', assignmentsError);
+        } else {
+          console.log('Created assignment slots for roles:', roleSlots);
+        }
+      }
+
+      await fetchServices();
+      return serviceData;
+    } catch (err) {
+      console.error('Error in createServiceFromTemplate:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return null;
+    }
+  }, [churchId, fetchServices]);
+
+  // Create a new service (custom, without template)
   const createService = useCallback(async (date: string, serviceType: string, notes?: string) => {
     if (!churchId) {
       console.error('No church selected');
       return null;
     }
 
-    console.log('Creating service:', { date, serviceType, notes });
+    console.log('Creating custom service:', { date, serviceType, notes });
     try {
       setError(null);
 
@@ -173,6 +239,36 @@ export function useServices(churchId: string | null) {
     }
   }, [fetchServices]);
 
+  // Update an assignment (assign a member to a slot)
+  const updateAssignment = useCallback(async (assignmentId: string, memberId: string, personName: string) => {
+    console.log('Updating assignment:', { assignmentId, memberId, personName });
+    try {
+      setError(null);
+
+      const { error: updateError } = await supabase
+        .from('assignments')
+        .update({
+          member_id: memberId,
+          person_name: personName,
+        })
+        .eq('id', assignmentId);
+
+      if (updateError) {
+        console.error('Error updating assignment:', updateError);
+        setError(updateError.message);
+        return false;
+      }
+
+      console.log('Assignment updated successfully');
+      await fetchServices();
+      return true;
+    } catch (err) {
+      console.error('Error in updateAssignment:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, [fetchServices]);
+
   // Delete an assignment
   const deleteAssignment = useCallback(async (assignmentId: string) => {
     console.log('Deleting assignment:', assignmentId);
@@ -209,8 +305,10 @@ export function useServices(churchId: string | null) {
     loading,
     error,
     createService,
+    createServiceFromTemplate,
     deleteService,
     addAssignment,
+    updateAssignment,
     deleteAssignment,
     refreshServices: fetchServices,
   };

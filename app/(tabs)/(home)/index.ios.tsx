@@ -27,18 +27,22 @@ export default function HomeScreen() {
     loading,
     error,
     createService,
+    createServiceFromTemplate,
     deleteService,
     addAssignment,
+    updateAssignment,
     deleteAssignment,
   } = useServices(currentChurch?.id || null);
 
   const [isAddServiceModalVisible, setAddServiceModalVisible] = useState(false);
   const [isAddAssignmentModalVisible, setAddAssignmentModalVisible] = useState(false);
+  const [isAssignMemberModalVisible, setAssignMemberModalVisible] = useState(false);
   const [isDeleteServiceModalVisible, setDeleteServiceModalVisible] = useState(false);
   const [isDeleteAssignmentModalVisible, setDeleteAssignmentModalVisible] = useState(false);
   const [isRecurringServicePickerVisible, setRecurringServicePickerVisible] = useState(false);
 
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
   const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
   const [assignmentToDelete, setAssignmentToDelete] = useState<{
     serviceId: string;
@@ -54,6 +58,8 @@ export default function HomeScreen() {
   const [newAssignmentPerson, setNewAssignmentPerson] = useState('');
   const [showRolePicker, setShowRolePicker] = useState(false);
   const [showMemberPicker, setShowMemberPicker] = useState(false);
+  const [showAssignMemberPicker, setShowAssignMemberPicker] = useState(false);
+  const [selectedMemberForAssignment, setSelectedMemberForAssignment] = useState<string>('');
 
   const handleSaveService = async () => {
     console.log('User tapped Save Service button');
@@ -129,10 +135,36 @@ export default function HomeScreen() {
     const [hours, minutes] = recurringService.time.split(':');
     nextDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
     
-    setNewServiceDate(nextDate);
-    setNewServiceType(recurringService.name);
-    setNewServiceNotes(recurringService.notes || '');
+    // Create service with role slots
+    createServiceFromTemplate(
+      nextDate.toISOString(),
+      recurringService.name,
+      recurringService.notes || undefined,
+      recurringService.roles || []
+    );
+    
     setRecurringServicePickerVisible(false);
+  };
+
+  const handleAssignMember = async () => {
+    console.log('User assigned member to slot');
+    if (!selectedAssignmentId || !selectedMemberForAssignment) {
+      return;
+    }
+
+    const member = members.find(m => m.id === selectedMemberForAssignment);
+    if (!member) {
+      return;
+    }
+
+    const displayName = member.name || member.email;
+    const success = await updateAssignment(selectedAssignmentId, member.id, displayName);
+    
+    if (success) {
+      setSelectedAssignmentId(null);
+      setSelectedMemberForAssignment('');
+      setAssignMemberModalVisible(false);
+    }
   };
 
   const handleDeleteAssignment = async () => {
@@ -177,6 +209,13 @@ export default function HomeScreen() {
     console.log('User tapped delete assignment:', assignmentId);
     setAssignmentToDelete({ serviceId, assignmentId });
     setDeleteAssignmentModalVisible(true);
+  };
+
+  const openAssignMemberModal = (assignmentId: string) => {
+    console.log('User tapped assign member to slot:', assignmentId);
+    setSelectedAssignmentId(assignmentId);
+    setSelectedMemberForAssignment('');
+    setAssignMemberModalVisible(true);
   };
 
   const noChurchText = 'No church selected';
@@ -257,7 +296,7 @@ export default function HomeScreen() {
               const formattedDate = formatDate(service.date);
               const assignmentCount = service.assignments.length;
               const assignmentCountText = `${assignmentCount} ${
-                assignmentCount === 1 ? 'assignment' : 'assignments'
+                assignmentCount === 1 ? 'slot' : 'slots'
               }`;
 
               return (
@@ -314,30 +353,60 @@ export default function HomeScreen() {
                       </TouchableOpacity>
                     </View>
 
-                    {service.assignments.map((assignment) => (
-                      <View key={assignment.id} style={styles.assignmentRow}>
-                        <View style={styles.assignmentInfo}>
-                          <Text style={[styles.assignmentRole, { color: colors.primary }]}>
-                            {assignment.role}
-                          </Text>
-                          <Text style={[styles.assignmentPerson, { color: colors.text }]}>
-                            {assignment.person_name}
-                          </Text>
+                    {service.assignments.map((assignment) => {
+                      const isEmptySlot = !assignment.person_name || assignment.person_name.trim() === '';
+                      const displayText = isEmptySlot ? 'Open Slot' : assignment.person_name;
+                      
+                      return (
+                        <View key={assignment.id} style={styles.assignmentRow}>
+                          <View style={styles.assignmentInfo}>
+                            <Text style={[styles.assignmentRole, { color: colors.primary }]}>
+                              {assignment.role}
+                            </Text>
+                            <Text style={[
+                              styles.assignmentPerson,
+                              { color: isEmptySlot ? colors.textSecondary : colors.text }
+                            ]}>
+                              {displayText}
+                            </Text>
+                          </View>
+                          <View style={styles.assignmentActions}>
+                            {isEmptySlot ? (
+                              <TouchableOpacity
+                                onPress={() => openAssignMemberModal(assignment.id)}
+                                style={[styles.assignButton, { backgroundColor: colors.primary }]}
+                              >
+                                <Text style={styles.assignButtonText}>Assign</Text>
+                              </TouchableOpacity>
+                            ) : (
+                              <TouchableOpacity
+                                onPress={() => openAssignMemberModal(assignment.id)}
+                                style={[styles.editButton, { borderColor: colors.primary }]}
+                              >
+                                <IconSymbol
+                                  ios_icon_name="pencil"
+                                  android_material_icon_name="edit"
+                                  size={16}
+                                  color={colors.primary}
+                                />
+                              </TouchableOpacity>
+                            )}
+                            <TouchableOpacity
+                              onPress={() =>
+                                openDeleteAssignmentModal(service.id, assignment.id)
+                              }
+                            >
+                              <IconSymbol
+                                ios_icon_name="xmark.circle"
+                                android_material_icon_name="close"
+                                size={20}
+                                color={colors.textSecondary}
+                              />
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                        <TouchableOpacity
-                          onPress={() =>
-                            openDeleteAssignmentModal(service.id, assignment.id)
-                          }
-                        >
-                          <IconSymbol
-                            ios_icon_name="xmark.circle"
-                            android_material_icon_name="close"
-                            size={20}
-                            color={colors.textSecondary}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 </View>
               );
@@ -380,6 +449,9 @@ export default function HomeScreen() {
             <ScrollView style={styles.recurringServiceList}>
               {recurringServices.map((recurringService) => {
                 const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][recurringService.day_of_week];
+                const rolesText = recurringService.roles && recurringService.roles.length > 0 
+                  ? `${recurringService.roles.length} roles` 
+                  : 'No roles';
                 return (
                   <TouchableOpacity
                     key={recurringService.id}
@@ -391,6 +463,9 @@ export default function HomeScreen() {
                     </Text>
                     <Text style={[styles.recurringServiceDay, { color: colors.textSecondary }]}>
                       {dayName}
+                    </Text>
+                    <Text style={[styles.recurringServiceDay, { color: colors.textSecondary }]}>
+                      {rolesText}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -631,6 +706,98 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
+      {/* Assign Member Modal */}
+      <Modal
+        visible={isAssignMemberModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setAssignMemberModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Assign Member</Text>
+
+            {members.length === 0 ? (
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                No members available. Add members in the Church tab first.
+              </Text>
+            ) : (
+              <ScrollView style={styles.memberPickerList}>
+                {members.map((member) => {
+                  const displayName = member.name || member.email;
+                  const roleText = member.role || '';
+                  const isSelected = selectedMemberForAssignment === member.id;
+                  
+                  return (
+                    <TouchableOpacity
+                      key={member.id}
+                      style={[
+                        styles.memberPickerItem,
+                        { borderColor: colors.border },
+                        isSelected && { backgroundColor: colors.primary, borderColor: colors.primary }
+                      ]}
+                      onPress={() => {
+                        console.log('User selected member for assignment:', displayName);
+                        setSelectedMemberForAssignment(member.id);
+                      }}
+                    >
+                      <View style={styles.memberPickerInfo}>
+                        <Text style={[
+                          styles.memberPickerName,
+                          { color: isSelected ? '#fff' : colors.text }
+                        ]}>
+                          {displayName}
+                        </Text>
+                        {roleText && (
+                          <Text style={[
+                            styles.memberPickerRole,
+                            { color: isSelected ? '#fff' : colors.textSecondary }
+                          ]}>
+                            {roleText}
+                          </Text>
+                        )}
+                      </View>
+                      {isSelected && (
+                        <IconSymbol
+                          ios_icon_name="checkmark.circle.fill"
+                          android_material_icon_name="check-circle"
+                          size={24}
+                          color="#fff"
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  console.log('User cancelled assign member');
+                  setAssignMemberModalVisible(false);
+                  setSelectedAssignmentId(null);
+                  setSelectedMemberForAssignment('');
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  { backgroundColor: selectedMemberForAssignment ? colors.primary : '#ccc' }
+                ]}
+                onPress={handleAssignMember}
+                disabled={!selectedMemberForAssignment}
+              >
+                <Text style={styles.saveButtonText}>Assign</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Delete Service Modal */}
       <Modal
         visible={isDeleteServiceModalVisible}
@@ -733,6 +900,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
   },
+  emptyText: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginVertical: 16,
+  },
   servicesList: {
     padding: 16,
     gap: 16,
@@ -811,6 +983,26 @@ const styles = StyleSheet.create({
   assignmentPerson: {
     fontSize: 14,
   },
+  assignmentActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  assignButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  assignButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  editButton: {
+    padding: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
   fab: {
     position: 'absolute',
     right: 16,
@@ -841,9 +1033,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  modalScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
   modalContent: {
     width: '90%',
     maxWidth: 400,
+    maxHeight: '80%',
     borderRadius: 16,
     padding: 24,
     shadowColor: '#000',
@@ -903,12 +1102,6 @@ const styles = StyleSheet.create({
   pickerItemText: {
     fontSize: 16,
   },
-  modalScrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
   recurringServiceList: {
     maxHeight: 400,
   },
@@ -925,6 +1118,30 @@ const styles = StyleSheet.create({
   },
   recurringServiceDay: {
     fontSize: 14,
+  },
+  memberPickerList: {
+    maxHeight: 300,
+    marginBottom: 16,
+  },
+  memberPickerItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  memberPickerInfo: {
+    flex: 1,
+  },
+  memberPickerName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  memberPickerRole: {
+    fontSize: 12,
   },
   modalButtons: {
     flexDirection: 'row',
