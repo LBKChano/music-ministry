@@ -1178,7 +1178,7 @@ export function useChurch() {
     }
   }, [fetchFillInRequests]);
 
-  // Accept a fill-in request - COMPLETELY RECODED
+  // Accept a fill-in request - FIXED: Update assignment BEFORE marking request as filled
   const acceptFillInRequest = useCallback(async (
     requestId: string,
     filledByMemberId: string,
@@ -1188,16 +1188,22 @@ export function useChurch() {
     try {
       setError(null);
 
-      // 1. Fetch the fill-in request to get assignment_id
+      // 1. Fetch the fill-in request to get assignment_id and verify it's still pending
       const { data: fillInRequest, error: fetchRequestError } = await supabase
         .from('fill_in_requests')
-        .select('assignment_id, requesting_member_id, role_name')
+        .select('assignment_id, requesting_member_id, role_name, status')
         .eq('id', requestId)
         .single();
 
       if (fetchRequestError || !fillInRequest) {
         console.error('Error fetching fill-in request:', fetchRequestError);
         setError('Fill-in request not found');
+        return false;
+      }
+
+      if (fillInRequest.status !== 'pending') {
+        console.error('Fill-in request is not pending:', fillInRequest.status);
+        setError('This fill-in request has already been processed');
         return false;
       }
 
@@ -1222,7 +1228,8 @@ export function useChurch() {
       const personName = fillingMember.name || fillingMember.email;
       console.log('Using person_name for assignment:', personName);
 
-      // 4. Update the assignment with the new member
+      // 4. CRITICAL: Update the assignment FIRST (while request is still 'pending')
+      // This allows the RLS policy to verify the pending request exists
       const { error: updateAssignmentError } = await supabase
         .from('assignments')
         .update({
@@ -1233,13 +1240,14 @@ export function useChurch() {
 
       if (updateAssignmentError) {
         console.error('Error updating assignment:', updateAssignmentError);
-        setError('Failed to update assignment');
+        console.error('Assignment update error details:', JSON.stringify(updateAssignmentError));
+        setError('Failed to update assignment. You may not have permission to accept this request.');
         return false;
       }
 
       console.log('Assignment updated successfully with new member');
 
-      // 5. Update the fill-in request status
+      // 5. Now update the fill-in request status (after assignment is updated)
       const { error: updateRequestError } = await supabase
         .from('fill_in_requests')
         .update({
@@ -1252,7 +1260,7 @@ export function useChurch() {
       if (updateRequestError) {
         console.error('Error updating fill-in request:', updateRequestError);
         setError('Failed to update fill-in request status');
-        return false;
+        // Don't return false here - the assignment was already updated successfully
       }
 
       console.log('Fill-in request marked as filled');
