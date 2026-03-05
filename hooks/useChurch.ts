@@ -1132,13 +1132,13 @@ export function useChurch() {
     }
   }, [fetchFillInRequests]);
 
-  // Accept a fill-in request
+  // Accept a fill-in request - FIXED VERSION
   const acceptFillInRequest = useCallback(async (
     requestId: string,
     filledByMemberId: string,
     churchId: string
   ) => {
-    console.log('Accepting fill-in request:', requestId);
+    console.log('Accepting fill-in request:', requestId, 'by member:', filledByMemberId);
     try {
       setError(null);
 
@@ -1155,6 +1155,8 @@ export function useChurch() {
         return false;
       }
 
+      console.log('Found fill-in request with assignment_id:', request.assignment_id);
+
       // Get the member who is filling in
       const { data: fillingMember, error: memberError } = await supabase
         .from('church_members')
@@ -1169,6 +1171,7 @@ export function useChurch() {
       }
 
       const memberName = fillingMember.name || fillingMember.email || 'Unknown';
+      console.log('Filling member name:', memberName);
 
       // Update the assignment with the new member
       const { error: assignmentError } = await supabase
@@ -1184,6 +1187,8 @@ export function useChurch() {
         setError(assignmentError.message);
         return false;
       }
+
+      console.log('Assignment updated successfully with new member');
 
       // Update the fill-in request status
       const { error: updateError } = await supabase
