@@ -1,3 +1,4 @@
+
 {
   "cli": {
     "version": ">= 5.9.3"
@@ -30,7 +31,8 @@
       "ios": {
         "buildConfiguration": "Release",
         "resourceClass": "m-medium",
-        "autoIncrement": true
+        "autoIncrement": true,
+        "scheme": "musicministry"
       },
       "android": {
         "buildType": "apk"
