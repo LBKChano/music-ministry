@@ -16,13 +16,16 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.musicministry.app",
+      "buildNumber": "1.0.0",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "This app uses the camera to take photos for member profiles.",
         "NSPhotoLibraryUsageDescription": "This app accesses your photo library to select images.",
-        "NSMicrophoneUsageDescription": "This app uses the microphone for audio features."
-      },
-      "buildNumber": "1"
+        "NSPhotoLibraryAddUsageDescription": "This app needs to save photos to your photo library.",
+        "NSMicrophoneUsageDescription": "This app uses the microphone for audio features.",
+        "NSUserTrackingUsageDescription": "This app does not track you.",
+        "UIBackgroundModes": ["remote-notification"]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -31,7 +34,13 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.musicministry.app",
-      "versionCode": 1
+      "versionCode": 1,
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "NOTIFICATIONS"
+      ]
     },
     "web": {
       "favicon": "./assets/images/final_quest_240x240.png",
