@@ -113,15 +113,14 @@ export default function ProfileScreen() {
   const isAdmin = currentChurch?.admin_id === user?.id;
   const userRole = isAdmin ? 'Admin' : 'Member';
   
-  // Calculate next quarter dates
+  // FIXED: Allow marking from current date forward (not just next quarter)
   const today = new Date();
-  const currentMonth = today.getMonth();
-  const currentYear = today.getFullYear();
-  const nextQuarterStart = new Date(currentYear, currentMonth + 1, 1);
-  const nextQuarterEnd = new Date(currentYear, currentMonth + 4, 0);
+  const minDateString = today.toISOString().split('T')[0];
   
-  const minDateString = nextQuarterStart.toISOString().split('T')[0];
-  const maxDateString = nextQuarterEnd.toISOString().split('T')[0];
+  // Set max date to 1 year from now
+  const maxDate = new Date(today);
+  maxDate.setFullYear(maxDate.getFullYear() + 1);
+  const maxDateString = maxDate.toISOString().split('T')[0];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -165,7 +164,7 @@ export default function ProfileScreen() {
               </Text>
             </View>
             <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
-              Select dates in the next quarter when you won&apos;t be available to assist. Tap a date to mark/unmark it.
+              Select dates when you won&apos;t be available to assist. Tap a date to mark/unmark it. This helps the admin avoid scheduling you on those days.
             </Text>
             
             {loadingDates ? (
