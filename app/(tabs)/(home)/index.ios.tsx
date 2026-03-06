@@ -1,5 +1,6 @@
 
 import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
 import { useChurch } from '@/hooks/useChurch';
 import {
   StyleSheet,
@@ -397,6 +398,22 @@ export default function HomeScreen() {
       try {
         console.log('Registering for push notifications...');
         
+        // Only register on physical devices
+        if (!Device.isDevice) {
+          console.log('Push notifications only work on physical devices');
+          return;
+        }
+
+        // Set up notification channel for Android
+        if (Platform.OS === 'android') {
+          await Notifications.setNotificationChannelAsync('default', {
+            name: 'default',
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#FF231F7C',
+          });
+        }
+        
         // Request permissions
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
         let finalStatus = existingStatus;
@@ -412,9 +429,12 @@ export default function HomeScreen() {
         }
 
         // Get the project ID from app.json via Constants
-        const projectId = Constants.expoConfig?.extra?.eas?.projectId || 
-                         Constants.manifest?.extra?.eas?.projectId ||
-                         Constants.manifest2?.extra?.eas?.projectId;
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+
+        if (!projectId) {
+          console.error('No EAS project ID found in app.json');
+          return;
+        }
 
         console.log('Expo project ID:', projectId);
 
