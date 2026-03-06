@@ -24,7 +24,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Constants from 'expo-constants';
 
-// Configure notification handler
+// Configure notification handler for iOS
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -390,22 +390,28 @@ export default function HomeScreen() {
     refreshFillInRequests,
   } = useChurch();
 
-  // Register for push notifications when component mounts
+  // Register for push notifications when component mounts - FIXED FOR iOS
   useEffect(() => {
-    if (!currentMember) return;
+    if (!currentMember) {
+      console.log('No current member, skipping push notification registration');
+      return;
+    }
 
     const registerForPushNotifications = async () => {
       try {
-        console.log('Registering for push notifications...');
+        console.log('Starting push notification registration for member:', currentMember.id);
         
         // Only register on physical devices
         if (!Device.isDevice) {
-          console.log('Push notifications only work on physical devices');
+          console.log('Push notifications only work on physical devices, not simulators');
           return;
         }
 
+        console.log('Device check passed, requesting permissions...');
+
         // Set up notification channel for Android
         if (Platform.OS === 'android') {
+          console.log('Setting up Android notification channel');
           await Notifications.setNotificationChannelAsync('default', {
             name: 'default',
             importance: Notifications.AndroidImportance.MAX,
@@ -414,29 +420,43 @@ export default function HomeScreen() {
           });
         }
         
-        // Request permissions
+        // Request permissions - iOS requires explicit permission request
+        console.log('Requesting notification permissions...');
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        console.log('Existing permission status:', existingStatus);
+        
         let finalStatus = existingStatus;
         
         if (existingStatus !== 'granted') {
+          console.log('Permissions not granted, requesting...');
           const { status } = await Notifications.requestPermissionsAsync();
           finalStatus = status;
+          console.log('Permission request result:', status);
         }
         
         if (finalStatus !== 'granted') {
-          console.log('Push notification permissions not granted');
+          console.log('Push notification permissions not granted by user');
+          Alert.alert(
+            'Notifications Disabled',
+            'Please enable notifications in your device settings to receive service reminders and fill-in requests.',
+            [{ text: 'OK' }]
+          );
           return;
         }
+
+        console.log('Permissions granted, getting project ID...');
 
         // Get the project ID from app.json via Constants
         const projectId = Constants.expoConfig?.extra?.eas?.projectId;
 
         if (!projectId) {
-          console.error('No EAS project ID found in app.json');
+          console.error('CRITICAL: No EAS project ID found in app.json. Push notifications will not work.');
+          console.error('Please ensure app.json has extra.eas.projectId set');
           return;
         }
 
-        console.log('Expo project ID:', projectId);
+        console.log('EAS Project ID found:', projectId);
+        console.log('Getting Expo push token...');
 
         // Get the Expo push token
         const tokenData = await Notifications.getExpoPushTokenAsync({
@@ -444,48 +464,74 @@ export default function HomeScreen() {
         });
         
         const token = tokenData.data;
-        console.log('Got Expo push token:', token);
+        console.log('Successfully obtained Expo push token:', token);
 
-        // Register the token with the backend
+        // Register the token with Supabase - FIXED: Use church_members.id, not auth user ID
+        console.log('Registering token with Supabase for member ID:', currentMember.id);
         const success = await registerPushToken(currentMember.id, token, Platform.OS);
         
         if (success) {
-          console.log('Push token registered successfully');
+          console.log('✅ Push token registered successfully in database');
         } else {
-          console.error('Failed to register push token');
+          console.error('❌ Failed to register push token in database');
+          Alert.alert(
+            'Registration Failed',
+            'Failed to register your device for notifications. Please try again later.',
+            [{ text: 'OK' }]
+          );
         }
       } catch (error) {
-        console.error('Error registering for push notifications:', error);
+        console.error('❌ Error during push notification registration:', error);
+        if (error instanceof Error) {
+          console.error('Error message:', error.message);
+          console.error('Error stack:', error.stack);
+        }
+        // Don't show alert for every error to avoid annoying users
+        // Only log for debugging
       }
     };
 
     registerForPushNotifications();
   }, [currentMember, registerPushToken]);
 
-  // Listen for incoming notifications
+  // Listen for incoming notifications - IMPROVED LOGGING
   useEffect(() => {
+    console.log('Setting up notification listeners');
+    
     const subscription = Notifications.addNotificationReceivedListener(notification => {
-      console.log('Notification received:', notification);
+      console.log('📬 Notification received while app is open:', {
+        title: notification.request.content.title,
+        body: notification.request.content.body,
+        data: notification.request.content.data,
+      });
     });
 
     const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('Notification response:', response);
+      console.log('👆 User tapped notification:', {
+        title: response.notification.request.content.title,
+        data: response.notification.request.content.data,
+      });
+      
       const data = response.notification.request.content.data;
       
       if (data.type === 'fill_in_request') {
-        // Handle fill-in request notification tap
-        console.log('User tapped fill-in request notification:', data.fillInRequestId);
+        console.log('Handling fill-in request notification tap:', data.fillInRequestId);
+        // Refresh fill-in requests to show the new request
+        if (refreshFillInRequests) {
+          refreshFillInRequests();
+        }
       } else if (data.type === 'service_reminder') {
-        // Handle service reminder notification tap
-        console.log('User tapped service reminder notification:', data.serviceId);
+        console.log('Handling service reminder notification tap:', data.serviceId);
+        // User tapped a service reminder - could navigate to that service
       }
     });
 
     return () => {
+      console.log('Cleaning up notification listeners');
       subscription.remove();
       responseSubscription.remove();
     };
-  }, []);
+  }, [refreshFillInRequests]);
 
   const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment } = useServices(currentChurch?.id || null);
 
