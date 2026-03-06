@@ -31,21 +31,15 @@
       "ios": {
         "buildConfiguration": "Release",
         "resourceClass": "m-medium",
-        "autoIncrement": true,
-        "scheme": "musicministry"
+        "autoIncrement": true
       },
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "autoIncrement": true
       }
     }
   },
   "submit": {
-    "production": {
-      "ios": {
-        "appleId": "your-apple-id@example.com",
-        "ascAppId": "placeholder",
-        "appleTeamId": "placeholder"
-      }
-    }
+    "production": {}
   }
 }

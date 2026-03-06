@@ -1306,15 +1306,15 @@ export function useChurch() {
     }
   }, [fetchFillInRequests]);
 
-  // Register push token
-  const registerPushToken = useCallback(async (memberId: string, token: string, deviceType?: string) => {
+  // Register push token - FIXED: Use correct column name 'token' instead of 'expo_push_token'
+  const registerPushToken = useCallback(async (memberId: string, pushToken: string, deviceType?: string) => {
     console.log('Registering push token for member:', memberId);
     try {
       setError(null);
 
       const tokenData: TablesInsert<'push_tokens'> = {
         member_id: memberId,
-        token,
+        token: pushToken,
         device_type: deviceType || null,
       };
 
@@ -1328,7 +1328,7 @@ export function useChurch() {
         return false;
       }
 
-      console.log('Push token registered successfully');
+      console.log('✅ Push token registered successfully in database');
       return true;
     } catch (err) {
       console.error('Error in registerPushToken:', err);
