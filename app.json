@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "Music Ministry",
-    "slug": "music-ministry",
+    "name": "Natively",
+    "slug": "Natively",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/app-icon-btg.png",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/app-icon-btg.png",
+      "image": "./assets/images/natively-dark.png",
       "resizeMode": "contain",
-      "backgroundColor": "#1E3A8A"
+      "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true,
@@ -21,29 +21,27 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/app-icon-btg.png",
-        "backgroundColor": "#1E3A8A"
+        "foregroundImage": "./assets/images/natively-dark.png",
+        "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.lisandrobk.musicministry"
+      "package": "com.placeholder.app"
     },
     "web": {
-      "favicon": "./assets/images/app-icon-asi.png",
+      "favicon": "./assets/images/final_quest_240x240.png",
       "bundler": "metro"
     },
     "plugins": [
       "expo-font",
       "expo-router",
-      "expo-secure-store",
       "expo-web-browser"
     ],
-    "scheme": "musicministry",
+    "scheme": "natively",
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
       "router": {},
-      "backendUrl": "https://nucffxkqp3vv9chpnxeb3a3fcnb99vdb.app.specular.dev",
       "eas": {
         "projectId": "a500e23e-d75d-44a5-bf0c-6baaf4d67839"
       }
