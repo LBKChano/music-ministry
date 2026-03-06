@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.musicministry.app",
-      "buildNumber": "1.0.0",
+      "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "This app uses the camera to take photos for member profiles.",
@@ -29,7 +29,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/natively-dark.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
@@ -43,7 +43,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/final_quest_240x240.png",
+      "favicon": "./assets/icon.png",
       "bundler": "metro"
     },
     "plugins": [
@@ -72,7 +72,9 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {},
+      "router": {
+        "origin": false
+      },
       "eas": {
         "projectId": "a500e23e-d75d-44a5-bf0c-6baaf4d67839"
       }
