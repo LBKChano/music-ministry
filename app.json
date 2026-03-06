@@ -4,11 +4,11 @@
     "slug": "music-ministry",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/images/Icon .PNG",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/natively-dark.png",
+      "image": "./assets/images/Icon .PNG",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -30,7 +30,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
+        "foregroundImage": "./assets/images/Icon .PNG",
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
