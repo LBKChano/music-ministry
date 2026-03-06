@@ -352,7 +352,7 @@ export default function HomeScreen() {
     refreshFillInRequests,
   } = useChurch();
 
-  // Register for push notifications when component mounts - FIXED FOR iOS
+  // Register for push notifications when component mounts
   useEffect(() => {
     if (!currentMember) {
       console.log('No current member, skipping push notification registration');
@@ -382,7 +382,7 @@ export default function HomeScreen() {
           });
         }
         
-        // Request permissions - iOS requires explicit permission request
+        // Request permissions
         console.log('Requesting notification permissions...');
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
         console.log('Existing permission status:', existingStatus);
@@ -398,11 +398,6 @@ export default function HomeScreen() {
         
         if (finalStatus !== 'granted') {
           console.log('Push notification permissions not granted by user');
-          Alert.alert(
-            'Notifications Disabled',
-            'Please enable notifications in your device settings to receive service reminders and fill-in requests.',
-            [{ text: 'OK' }]
-          );
           return;
         }
 
@@ -412,8 +407,8 @@ export default function HomeScreen() {
         const projectId = Constants.expoConfig?.extra?.eas?.projectId;
 
         if (!projectId) {
-          console.error('CRITICAL: No EAS project ID found in app.json. Push notifications will not work.');
-          console.error('Please ensure app.json has extra.eas.projectId set');
+          console.log('No EAS project ID found in app.json - this is expected during initial setup');
+          console.log('Push notifications will be enabled after the first EAS build');
           return;
         }
 
@@ -428,7 +423,7 @@ export default function HomeScreen() {
         const token = tokenData.data;
         console.log('Successfully obtained Expo push token:', token);
 
-        // Register the token with Supabase - FIXED: Use church_members.id, not auth user ID
+        // Register the token with Supabase
         console.log('Registering token with Supabase for member ID:', currentMember.id);
         const success = await registerPushToken(currentMember.id, token, Platform.OS);
         
@@ -436,11 +431,6 @@ export default function HomeScreen() {
           console.log('✅ Push token registered successfully in database');
         } else {
           console.error('❌ Failed to register push token in database');
-          Alert.alert(
-            'Registration Failed',
-            'Failed to register your device for notifications. Please try again later.',
-            [{ text: 'OK' }]
-          );
         }
       } catch (error) {
         console.error('❌ Error during push notification registration:', error);
@@ -448,15 +438,13 @@ export default function HomeScreen() {
           console.error('Error message:', error.message);
           console.error('Error stack:', error.stack);
         }
-        // Don't show alert for every error to avoid annoying users
-        // Only log for debugging
       }
     };
 
     registerForPushNotifications();
   }, [currentMember, registerPushToken]);
 
-  // Listen for incoming notifications - IMPROVED LOGGING
+  // Listen for incoming notifications
   useEffect(() => {
     console.log('Setting up notification listeners');
     
@@ -478,13 +466,11 @@ export default function HomeScreen() {
       
       if (data.type === 'fill_in_request') {
         console.log('Handling fill-in request notification tap:', data.fillInRequestId);
-        // Refresh fill-in requests to show the new request
         if (refreshFillInRequests) {
           refreshFillInRequests();
         }
       } else if (data.type === 'service_reminder') {
         console.log('Handling service reminder notification tap:', data.serviceId);
-        // User tapped a service reminder - could navigate to that service
       }
     });
 
@@ -535,18 +521,16 @@ export default function HomeScreen() {
   // OPTIMIZATION: Memoize filtered services to avoid recalculating on every render
   const filteredServices = useMemo(() => {
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalize to start of day
+    today.setHours(0, 0, 0, 0);
     
     return services.filter(service => {
       const serviceDate = createLocalDate(service.date);
       
-      // Check if date is valid
       if (isNaN(serviceDate.getTime())) {
         console.warn('Skipping service with invalid date:', service.date);
         return false;
       }
       
-      // CRITICAL: Only show services that are today or in the future
       return serviceDate >= today;
     });
   }, [services]);
@@ -560,7 +544,6 @@ export default function HomeScreen() {
     console.log('User pulled to refresh schedules');
     setRefreshing(true);
     try {
-      // Refresh both services and fill-in requests to ensure UI is up to date
       await Promise.all([
         refreshServices(),
         refreshFillInRequests ? refreshFillInRequests() : Promise.resolve()
@@ -580,7 +563,6 @@ export default function HomeScreen() {
       return;
     }
 
-    // Implementation handled by useServices hook
     setAddServiceModalVisible(false);
     setNewServiceType('');
     setNewServiceNotes('');
@@ -604,7 +586,6 @@ export default function HomeScreen() {
 
   const handleSaveAssignment = async () => {
     console.log('User tapped save assignment button');
-    // Implementation handled by useServices hook
     setEditServiceModalVisible(false);
     setSelectedService(null);
   };
@@ -622,7 +603,6 @@ export default function HomeScreen() {
       return;
     }
 
-    // Find the selected member
     const member = members.find(m => m.id === selectedMemberId);
     if (!member) {
       Alert.alert('Error', 'Member not found');
@@ -646,7 +626,6 @@ export default function HomeScreen() {
     console.log('User confirmed delete assignment');
     if (!assignmentToDelete) return;
 
-    // Clear the assignment by setting member_id to null and person_name to empty
     const success = await updateAssignment(assignmentToDelete.assignmentId, '', '');
     
     if (success) {
@@ -662,7 +641,6 @@ export default function HomeScreen() {
   const formatDate = useCallback((dateString: string) => {
     const date = createLocalDate(dateString);
     
-    // Check if date is valid
     if (isNaN(date.getTime())) {
       return 'Invalid Date';
     }
@@ -680,7 +658,6 @@ export default function HomeScreen() {
     if (!timeString) return '';
     
     try {
-      // timeString is in format "HH:MM:SS" or "HH:MM"
       const [hours, minutes] = timeString.split(':');
       const hour = parseInt(hours, 10);
       const ampm = hour >= 12 ? 'PM' : 'AM';
@@ -767,7 +744,6 @@ export default function HomeScreen() {
     
     if (success) {
       Alert.alert('Success', 'You have accepted the fill-in request and been assigned to this role');
-      // Refresh services to show updated assignment
       refreshServices();
     } else {
       Alert.alert('Error', 'Failed to accept fill-in request');
@@ -851,7 +827,6 @@ export default function HomeScreen() {
                 <Text style={styles.serviceDateTime}>{dateTimeDisplay}</Text>
                 {service.notes && <Text style={styles.serviceNotes}>{service.notes}</Text>}
 
-                {/* Display fill-in requests for this service */}
                 {serviceFillInRequests.map(request => {
                   const requestingMemberDisplayName = request.requesting_member_name || request.requesting_member_email;
                   const isMyRequest = currentMember?.id === request.requesting_member_id;
@@ -890,7 +865,6 @@ export default function HomeScreen() {
                   );
                 })}
 
-                {/* Display assignments sorted by role display_order */}
                 {sortedRoles.map(role => {
                   const assignment = service.assignments.find(a => a.role === role.name);
                   if (!assignment) return null;
