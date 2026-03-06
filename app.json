@@ -1,4 +1,3 @@
-
 {
   "expo": {
     "name": "Music Ministry",
@@ -15,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.musicministry.app",
+      "bundleIdentifier": "com.lbkchano.musicministry",
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -24,7 +23,9 @@
         "NSPhotoLibraryAddUsageDescription": "This app needs to save photos to your photo library.",
         "NSMicrophoneUsageDescription": "This app uses the microphone for audio features.",
         "NSUserTrackingUsageDescription": "This app does not track you.",
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
