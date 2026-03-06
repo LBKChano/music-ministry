@@ -12,6 +12,7 @@ import {
   Platform,
   Alert,
   Switch,
+  RefreshControl,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -74,9 +75,14 @@ export default function ChurchScreen() {
     removeMemberRole,
     fetchMemberUnavailability,
     updateNotificationSettings,
+    refreshChurches,
+    refreshMembers,
+    refreshRecurringServices,
+    refreshChurchRoles,
+    refreshNotificationSettings,
   } = useChurch();
 
-  const { services, batchUpdateAssignments, createServiceFromTemplate } = useServices(currentChurch?.id || null);
+  const { services, batchUpdateAssignments, createServiceFromTemplate, refreshServices } = useServices(currentChurch?.id || null);
 
   const [activeTab, setActiveTab] = useState<'members' | 'services' | 'roles' | 'notifications'>('members');
   const [isCreateChurchModalVisible, setCreateChurchModalVisible] = useState(false);
@@ -141,6 +147,9 @@ export default function ChurchScreen() {
   const [showAdHocTimePicker, setShowAdHocTimePicker] = useState(false);
   const [isCreatingAdHocService, setIsCreatingAdHocService] = useState(false);
 
+  // Pull-to-refresh state
+  const [refreshing, setRefreshing] = useState(false);
+
   // Update notification states when settings change
   React.useEffect(() => {
     if (notificationSettings) {
@@ -148,6 +157,28 @@ export default function ChurchScreen() {
       setSelectedNotificationHours(notificationSettings.notification_hours);
     }
   }, [notificationSettings]);
+
+  // Pull-to-refresh handler
+  const onRefresh = React.useCallback(async () => {
+    console.log('User pulled to refresh Church Management data');
+    setRefreshing(true);
+    try {
+      // Refresh all church-related data
+      await Promise.all([
+        refreshChurches(),
+        currentChurch ? refreshMembers() : Promise.resolve(),
+        currentChurch ? refreshRecurringServices() : Promise.resolve(),
+        currentChurch ? refreshChurchRoles() : Promise.resolve(),
+        currentChurch ? refreshNotificationSettings() : Promise.resolve(),
+        currentChurch ? refreshServices() : Promise.resolve(),
+      ]);
+      console.log('Church Management data refreshed successfully');
+    } catch (err) {
+      console.error('Error refreshing Church Management data:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshChurches, refreshMembers, refreshRecurringServices, refreshChurchRoles, refreshNotificationSettings, refreshServices, currentChurch]);
 
   const handleCreateChurch = async () => {
     console.log('User tapped Create Church button');
@@ -778,7 +809,7 @@ export default function ChurchScreen() {
 
       if (result) {
         console.log('Ad-hoc service created successfully:', result);
-        Alert.alert('Success', 'Service created successfully! It will now appear in the Schedules tab.');
+        Alert.alert('Success', 'Service created successfully! It will now appear in the Schedules tab and members will receive reminder notifications.');
         
         // Reset form and close modal
         setAdHocServiceName('');
@@ -847,7 +878,17 @@ export default function ChurchScreen() {
         }}
       />
 
-      <ScrollView style={styles.scrollView}>
+      <ScrollView 
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         {/* Church Selection */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -1382,7 +1423,7 @@ export default function ChurchScreen() {
                 </View>
 
                 <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 16 }]}>
-                  Configure when members receive reminders about their upcoming service assignments
+                  Configure when members receive reminders about their upcoming service assignments (including single services)
                 </Text>
 
                 {/* Enable/Disable Notifications */}
@@ -1518,7 +1559,7 @@ export default function ChurchScreen() {
                 </TouchableOpacity>
 
                 <Text style={[styles.helperText, { color: colors.textSecondary, marginTop: 16, fontStyle: 'italic' }]}>
-                  Note: Members will receive notifications at the selected times before each service they are assigned to
+                  Note: Members will receive notifications at the selected times before each service they are assigned to (including single services added via "Add Single Service")
                 </Text>
               </View>
             )}
@@ -1532,6 +1573,7 @@ export default function ChurchScreen() {
         )}
       </ScrollView>
 
+      {/* All modals remain the same - keeping them for completeness */}
       {/* Create Church Modal */}
       <Modal
         visible={isCreateChurchModalVisible}
@@ -2303,7 +2345,7 @@ export default function ChurchScreen() {
             <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Add Single Service</Text>
               <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 16 }]}>
-                Create a one-time service that will appear in the Schedules tab
+                Create a one-time service that will appear in the Schedules tab and trigger reminder notifications
               </Text>
               
               <TextInput
