@@ -1,14 +1,15 @@
+
 {
   "expo": {
     "name": "Music Ministry",
     "slug": "music-ministry",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/Icon .PNG",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/Icon .PNG",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -30,7 +31,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/Icon .PNG",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
