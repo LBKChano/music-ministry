@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/826a0aaf-6b41-4009-a409-d3979441cce5.png",
+      "image": "./assets/images/Icon .PNG",
       "resizeMode": "contain",
       "backgroundColor": "#0a1628"
     },
@@ -29,9 +29,9 @@
         ]
       },
       "splash": {
-        "image": "./assets/icon.png",
+        "image": "./assets/images/Icon .PNG",
         "resizeMode": "contain",
-        "backgroundColor": "#1E3A8A"
+        "backgroundColor": "#0a1628"
       }
     },
     "android": {
@@ -49,9 +49,9 @@
         "NOTIFICATIONS"
       ],
       "splash": {
-        "image": "./assets/icon.png",
+        "image": "./assets/images/Icon .PNG",
         "resizeMode": "contain",
-        "backgroundColor": "#1E3A8A"
+        "backgroundColor": "#0a1628"
       }
     },
     "web": {
