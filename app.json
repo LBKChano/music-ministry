@@ -40,7 +40,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.lbkchano.musicministry",
-      "versionCode": 2,
+      "versionCode": 3,
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
@@ -70,9 +70,7 @@
           "mode": "production",
           "icon": "./assets/icon.png",
           "color": "#1a2332",
-          "sounds": [
-            "./assets/notification-sound.wav"
-          ],
+          "sounds": [],
           "androidMode": "default",
           "androidCollapsedTitle": "Music Ministry",
           "iosDisplayInForeground": true
