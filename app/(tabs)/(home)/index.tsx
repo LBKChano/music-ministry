@@ -147,12 +147,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: colors.text,
-    flex: 1,
+    minWidth: 80,
+    maxWidth: 140,
   },
   personText: {
     fontSize: 14,
     color: colors.textSecondary,
-    flex: 2,
+    flex: 1,
     textAlign: 'right',
     marginRight: 8,
     fontWeight: '500',
@@ -350,6 +351,7 @@ export default function HomeScreen() {
     cancelFillInRequest,
     registerPushToken,
     refreshFillInRequests,
+    refreshMembers,
   } = useChurch();
 
   // Register for push notifications when component mounts
@@ -498,6 +500,7 @@ export default function HomeScreen() {
   const [deleteAssignmentModalVisible, setDeleteAssignmentModalVisible] = useState(false);
   const [fillInRequestModalVisible, setFillInRequestModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [isCreatingFillInRequest, setIsCreatingFillInRequest] = useState(false);
 
   const [selectedService, setSelectedService] = useState<any>(null);
   const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
@@ -546,6 +549,7 @@ export default function HomeScreen() {
     try {
       await Promise.all([
         refreshServices(),
+        refreshMembers ? refreshMembers() : Promise.resolve(),
         refreshFillInRequests ? refreshFillInRequests() : Promise.resolve()
       ]);
       console.log('Refresh completed successfully');
@@ -554,7 +558,7 @@ export default function HomeScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [refreshServices, refreshFillInRequests]);
+  }, [refreshServices, refreshMembers, refreshFillInRequests]);
 
   const handleSaveService = async () => {
     console.log('User tapped save service button');
@@ -704,10 +708,18 @@ export default function HomeScreen() {
 
   const handleCreateFillInRequest = async () => {
     console.log('User submitted fill-in request');
+    
+    if (isCreatingFillInRequest) {
+      console.log('Fill-in request already in progress, ignoring duplicate tap');
+      return;
+    }
+    
     if (!currentChurch || !currentMember || !fillInAssignmentId) {
       Alert.alert('Error', 'Missing required information');
       return;
     }
+
+    setIsCreatingFillInRequest(true);
 
     console.log('Creating fill-in request:', {
       assignmentId: fillInAssignmentId,
@@ -723,6 +735,8 @@ export default function HomeScreen() {
       fillInRoleName,
       fillInReason || undefined
     );
+
+    setIsCreatingFillInRequest(false);
 
     if (result) {
       Alert.alert('Success', 'Fill-in request created successfully. Members with the same role will be notified.');
@@ -876,7 +890,7 @@ export default function HomeScreen() {
 
                   return (
                     <View key={assignment.id} style={styles.assignmentRow}>
-                      <Text style={styles.roleNameText} numberOfLines={1} ellipsizeMode="tail">
+                      <Text style={styles.roleNameText}>
                         {assignment.role}
                       </Text>
                       <Text style={[styles.personText, !assignment.person_name && styles.emptySlot]}>
@@ -886,6 +900,7 @@ export default function HomeScreen() {
                         <TouchableOpacity
                           style={styles.fillInButton}
                           onPress={() => openFillInRequestModal(assignment.id, service.id, assignment.role)}
+                          disabled={isCreatingFillInRequest}
                         >
                           <Text style={styles.fillInButtonText}>Request Fill-In</Text>
                         </TouchableOpacity>
@@ -961,14 +976,20 @@ export default function HomeScreen() {
                   setFillInRequestModalVisible(false);
                   setFillInReason('');
                 }}
+                disabled={isCreatingFillInRequest}
               >
                 <Text style={styles.buttonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalButton, styles.saveButton]}
                 onPress={handleCreateFillInRequest}
+                disabled={isCreatingFillInRequest}
               >
-                <Text style={styles.buttonText}>Request</Text>
+                {isCreatingFillInRequest ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.buttonText}>Request</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
