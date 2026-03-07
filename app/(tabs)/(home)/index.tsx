@@ -24,12 +24,14 @@ import {
   Alert,
 } from 'react-native';
 
-// Configure notification handler for iOS and Android
+// ANDROID FIX: Configure notification handler with proper Android settings
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    // Android-specific: ensure notifications show even when app is in foreground
+    priority: Platform.OS === 'android' ? Notifications.AndroidNotificationPriority.HIGH : undefined,
   }),
 });
 
@@ -89,7 +91,7 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     backgroundColor: colors.primary,
-    paddingTop: 60,
+    paddingTop: Platform.OS === 'android' ? 60 : 60,
     paddingBottom: 20,
     paddingHorizontal: 20,
     marginBottom: 16,
@@ -392,7 +394,7 @@ export default function HomeScreen() {
     refreshMembers,
   } = useChurch();
 
-  // Register for push notifications when component mounts
+  // ANDROID FIX: Enhanced push notification registration with better error handling
   useEffect(() => {
     if (!currentMember) {
       console.log('No current member, skipping push notification registration');
@@ -401,59 +403,98 @@ export default function HomeScreen() {
 
     const registerForPushNotifications = async () => {
       try {
-        console.log('Starting push notification registration for member:', currentMember.id);
+        console.log('🔔 Starting push notification registration for member:', currentMember.id);
+        console.log('🔔 Platform:', Platform.OS);
+        console.log('🔔 Device type:', Device.isDevice ? 'Physical device' : 'Simulator/Emulator');
         
         // Only register on physical devices
         if (!Device.isDevice) {
-          console.log('Push notifications only work on physical devices, not simulators');
+          console.log('⚠️ Push notifications only work on physical devices, not simulators');
           return;
         }
 
-        console.log('Device check passed, requesting permissions...');
-
-        // Set up notification channel for Android
+        // ANDROID FIX: Set up notification channel BEFORE requesting permissions
         if (Platform.OS === 'android') {
-          console.log('Setting up Android notification channel');
-          await Notifications.setNotificationChannelAsync('default', {
-            name: 'default',
-            importance: Notifications.AndroidImportance.MAX,
-            vibrationPattern: [0, 250, 250, 250],
-            lightColor: '#FF231F7C',
-          });
+          console.log('🔔 Setting up Android notification channels');
+          
+          try {
+            // Create default channel
+            await Notifications.setNotificationChannelAsync('default', {
+              name: 'Default Notifications',
+              importance: Notifications.AndroidImportance.MAX,
+              vibrationPattern: [0, 250, 250, 250],
+              lightColor: '#1a2332',
+              sound: 'default',
+              enableVibrate: true,
+              showBadge: true,
+            });
+            console.log('✅ Default notification channel created');
+
+            // Create reminders channel
+            await Notifications.setNotificationChannelAsync('reminders', {
+              name: 'Service Reminders',
+              importance: Notifications.AndroidImportance.HIGH,
+              vibrationPattern: [0, 500, 250, 500],
+              lightColor: '#1a2332',
+              sound: 'default',
+              enableVibrate: true,
+              showBadge: true,
+            });
+            console.log('✅ Reminders notification channel created');
+
+            // Create fill-in requests channel
+            await Notifications.setNotificationChannelAsync('fill-in-requests', {
+              name: 'Fill-In Requests',
+              importance: Notifications.AndroidImportance.HIGH,
+              vibrationPattern: [0, 250, 250, 250],
+              lightColor: '#1a2332',
+              sound: 'default',
+              enableVibrate: true,
+              showBadge: true,
+            });
+            console.log('✅ Fill-in requests notification channel created');
+          } catch (channelError) {
+            console.error('❌ Error creating notification channels:', channelError);
+          }
         }
         
         // Request permissions
-        console.log('Requesting notification permissions...');
+        console.log('🔔 Requesting notification permissions...');
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        console.log('Existing permission status:', existingStatus);
+        console.log('🔔 Existing permission status:', existingStatus);
         
         let finalStatus = existingStatus;
         
         if (existingStatus !== 'granted') {
-          console.log('Permissions not granted, requesting...');
+          console.log('🔔 Permissions not granted, requesting...');
           const { status } = await Notifications.requestPermissionsAsync();
           finalStatus = status;
-          console.log('Permission request result:', status);
+          console.log('🔔 Permission request result:', status);
         }
         
         if (finalStatus !== 'granted') {
-          console.log('Push notification permissions not granted by user');
+          console.log('⚠️ Push notification permissions not granted by user');
+          Alert.alert(
+            'Notifications Disabled',
+            'Please enable notifications in your device settings to receive service reminders and fill-in requests.',
+            [{ text: 'OK' }]
+          );
           return;
         }
 
-        console.log('Permissions granted, getting project ID...');
+        console.log('✅ Permissions granted, getting project ID...');
 
         // Get the project ID from app.json via Constants
         const projectId = Constants.expoConfig?.extra?.eas?.projectId;
 
         if (!projectId) {
-          console.log('No EAS project ID found in app.json - this is expected during initial setup');
-          console.log('Push notifications will be enabled after the first EAS build');
+          console.log('⚠️ No EAS project ID found in app.json');
+          console.log('⚠️ Push notifications will be enabled after the first EAS build');
           return;
         }
 
-        console.log('EAS Project ID found:', projectId);
-        console.log('Getting Expo push token...');
+        console.log('🔔 EAS Project ID found:', projectId);
+        console.log('🔔 Getting Expo push token...');
 
         // Get the Expo push token
         const tokenData = await Notifications.getExpoPushTokenAsync({
@@ -461,16 +502,35 @@ export default function HomeScreen() {
         });
         
         const token = tokenData.data;
-        console.log('Successfully obtained Expo push token:', token);
+        console.log('✅ Successfully obtained Expo push token:', token);
 
         // Register the token with Supabase
-        console.log('Registering token with Supabase for member ID:', currentMember.id);
+        console.log('🔔 Registering token with Supabase for member ID:', currentMember.id);
         const success = await registerPushToken(currentMember.id, token, Platform.OS);
         
         if (success) {
           console.log('✅ Push token registered successfully in database');
+          
+          // ANDROID FIX: Test notification to verify setup
+          if (Platform.OS === 'android') {
+            console.log('🔔 Sending test notification to verify Android setup');
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: 'Notifications Enabled ✅',
+                body: 'You will now receive service reminders and fill-in requests',
+                sound: 'default',
+                priority: Notifications.AndroidNotificationPriority.HIGH,
+              },
+              trigger: null, // Send immediately
+            });
+          }
         } else {
           console.error('❌ Failed to register push token in database');
+          Alert.alert(
+            'Registration Failed',
+            'Failed to register for notifications. Please try again later.',
+            [{ text: 'OK' }]
+          );
         }
       } catch (error) {
         console.error('❌ Error during push notification registration:', error);
@@ -478,6 +538,13 @@ export default function HomeScreen() {
           console.error('Error message:', error.message);
           console.error('Error stack:', error.stack);
         }
+        
+        // Show user-friendly error message
+        Alert.alert(
+          'Notification Setup Failed',
+          'There was an error setting up notifications. Please check your device settings and try again.',
+          [{ text: 'OK' }]
+        );
       }
     };
 
@@ -486,7 +553,7 @@ export default function HomeScreen() {
 
   // Listen for incoming notifications
   useEffect(() => {
-    console.log('Setting up notification listeners');
+    console.log('🔔 Setting up notification listeners');
     
     const subscription = Notifications.addNotificationReceivedListener(notification => {
       console.log('📬 Notification received while app is open:', {
@@ -515,7 +582,7 @@ export default function HomeScreen() {
     });
 
     return () => {
-      console.log('Cleaning up notification listeners');
+      console.log('🧹 Cleaning up notification listeners');
       subscription.remove();
       responseSubscription.remove();
     };
@@ -744,47 +811,84 @@ export default function HomeScreen() {
     setFillInRequestModalVisible(true);
   };
 
+  // ANDROID FIX: Enhanced fill-in request handler with better error logging
   const handleCreateFillInRequest = async () => {
-    console.log('User submitted fill-in request');
+    console.log('🔔 User submitted fill-in request');
     
     if (isCreatingFillInRequest) {
-      console.log('Fill-in request already in progress, ignoring duplicate tap');
+      console.log('⚠️ Fill-in request already in progress, ignoring duplicate tap');
       return;
     }
     
     if (!currentChurch || !currentMember || !fillInAssignmentId) {
-      Alert.alert('Error', 'Missing required information');
+      console.error('❌ Missing required information for fill-in request:', {
+        hasChurch: !!currentChurch,
+        hasMember: !!currentMember,
+        hasAssignmentId: !!fillInAssignmentId,
+      });
+      Alert.alert('Error', 'Missing required information. Please try again.');
       return;
     }
 
     setIsCreatingFillInRequest(true);
 
-    console.log('Creating fill-in request:', {
+    console.log('🔔 Creating fill-in request with data:', {
       assignmentId: fillInAssignmentId,
       serviceId: fillInServiceId,
+      churchId: currentChurch.id,
+      memberId: currentMember.id,
       roleName: fillInRoleName,
+      reason: fillInReason || '(no reason provided)',
     });
 
-    const result = await createFillInRequest(
-      fillInAssignmentId,
-      fillInServiceId,
-      currentChurch.id,
-      currentMember.id,
-      fillInRoleName,
-      fillInReason || undefined
-    );
+    try {
+      const result = await createFillInRequest(
+        fillInAssignmentId,
+        fillInServiceId,
+        currentChurch.id,
+        currentMember.id,
+        fillInRoleName,
+        fillInReason || undefined
+      );
 
-    setIsCreatingFillInRequest(false);
-
-    if (result) {
-      Alert.alert('Success', 'Fill-in request created successfully. Members with the same role will be notified.');
-      setFillInRequestModalVisible(false);
-      setFillInReason('');
-      setFillInAssignmentId('');
-      setFillInServiceId('');
-      setFillInRoleName('');
-    } else {
-      Alert.alert('Error', 'Failed to create fill-in request');
+      if (result) {
+        console.log('✅ Fill-in request created successfully');
+        Alert.alert(
+          'Success', 
+          'Fill-in request created successfully. Members with the same role will be notified.',
+          [{ text: 'OK' }]
+        );
+        setFillInRequestModalVisible(false);
+        setFillInReason('');
+        setFillInAssignmentId('');
+        setFillInServiceId('');
+        setFillInRoleName('');
+        
+        // Refresh data to show the new request
+        if (refreshFillInRequests) {
+          await refreshFillInRequests();
+        }
+      } else {
+        console.error('❌ Fill-in request creation returned false');
+        Alert.alert(
+          'Error', 
+          'Failed to create fill-in request. Please check your connection and try again.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('❌ Exception during fill-in request creation:', error);
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+      }
+      Alert.alert(
+        'Error', 
+        'An unexpected error occurred. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsCreatingFillInRequest(false);
     }
   };
 
