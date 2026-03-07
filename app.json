@@ -9,9 +9,9 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/e9eb3113-e6a0-47b3-9f1f-2db752e9082a.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0a1628"
+      "image": "./assets/images/9b11f806-5921-4e61-9383-a3f7e125c18f.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#1a2332"
     },
     "ios": {
       "supportsTablet": true,
@@ -29,9 +29,9 @@
         ]
       },
       "splash": {
-        "image": "./assets/images/e9eb3113-e6a0-47b3-9f1f-2db752e9082a.png",
-        "resizeMode": "contain",
-        "backgroundColor": "#0a1628"
+        "image": "./assets/images/9b11f806-5921-4e61-9383-a3f7e125c18f.png",
+        "resizeMode": "cover",
+        "backgroundColor": "#1a2332"
       }
     },
     "android": {
@@ -49,9 +49,9 @@
         "NOTIFICATIONS"
       ],
       "splash": {
-        "image": "./assets/images/e9eb3113-e6a0-47b3-9f1f-2db752e9082a.png",
-        "resizeMode": "contain",
-        "backgroundColor": "#0a1628"
+        "image": "./assets/images/9b11f806-5921-4e61-9383-a3f7e125c18f.png",
+        "resizeMode": "cover",
+        "backgroundColor": "#1a2332"
       }
     },
     "web": {
