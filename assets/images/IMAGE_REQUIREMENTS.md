@@ -1,49 +1,148 @@
 
-# Image Requirements for Church Scheduler App
+# Image Requirements for Music Ministry App
 
-## App Icon (app-icon-asi.png)
-**Required Size:** 1024x1024 pixels
-**Background:** Navy Blue (#1E3A8A)
-**Design Elements:**
-- A simple, clean church silhouette (white or light blue #60A5FA) in the center
-- 2-3 musical notes floating around the church
-- Minimalist, modern design
-- High contrast for visibility at small sizes
+## 🚨 CRITICAL: Splash Screen Issue
 
-**Style Guide:**
-- Use a simple church icon with a steeple/cross
-- Musical notes should be eighth notes or quarter notes
-- Keep design centered with adequate padding
-- Ensure it looks good when scaled down to 60x60px
+**Current Problem:** The app is looking for "iOS Splash.png" but the file doesn't exist, causing build errors.
 
-## Splash Screen (splash-screen.png)
-**Required Size:** 1242x2436 pixels (iPhone X/11/12 Pro Max size)
-**Background:** Navy Blue gradient (#1E3A8A to #0F172A)
-**Design Elements:**
-- Large church icon in the center (white)
-- Musical notes scattered around (light blue #60A5FA)
-- App name "Church Scheduler" below the icon (white, bold)
-- Subtitle "Worship Ministry Management" (light blue #BFDBFE)
+**Quick Fix:** 
+1. Create a splash screen image (see specifications below)
+2. Save it as: `assets/images/splash.png` (lowercase, no spaces!)
+3. Update app.json to reference `./assets/images/splash.png`
 
-**Layout:**
-- Church icon: 200x200px, centered vertically and horizontally
-- Musical notes: 60-80px, positioned around the church
-- Text: Centered below icon with 40px spacing
-- Overall feel: Clean, spiritual, professional
+---
 
-## Design Tools Recommendations:
-- Figma (free online tool)
-- Canva (templates available)
-- Adobe Illustrator
-- Sketch
+## Splash Screen (splash.png)
 
-## Icon Resources:
-- Church icons: Font Awesome, Material Icons, or custom SVG
-- Musical notes: Unicode characters (♪ ♫ ♬) or icon libraries
-- Color palette: Navy Blue (#1E3A8A), Light Blue (#60A5FA), White (#FFFFFF)
+### Technical Requirements (MUST FOLLOW):
+- **Format:** PNG
+- **Size:** 2048x2732 pixels (recommended) or minimum 1242x2436 pixels
+- **Background:** SOLID COLOR - NO TRANSPARENCY (iOS requirement)
+- **File Size:** Under 1MB
+- **Filename:** `splash.png` (lowercase, no spaces)
+- **Location:** `assets/images/splash.png`
 
-## Installation:
-1. Create the images according to specifications above
-2. Save app icon as: `assets/images/app-icon-asi.png`
-3. Save splash screen as: `assets/images/splash-screen.png`
-4. Restart the Expo development server to see changes
+### Design Specifications:
+- **Background Color:** Navy Blue (#1E3A8A) or your brand color
+- **Logo/Icon:** Centered, approximately 400x400px
+- **Safe Area:** Keep important content 200px from edges
+- **Text:** Optional app name below logo (white or light color)
+
+### Why These Specs Matter:
+- **2048x2732px:** Covers all iPhone sizes from SE to Pro Max
+- **No Transparency:** iOS splash screens require solid backgrounds
+- **resizeMode: "contain":** Automatically scales for all devices
+- **backgroundColor:** Fills empty space on different screen ratios
+
+### How It Adjusts for All iPhones:
+The `resizeMode: "contain"` setting in app.json ensures your splash screen automatically adjusts:
+- **iPhone SE (1334x750):** Scales down proportionally
+- **iPhone 13 (2532x1170):** Optimal display
+- **iPhone 14 Pro Max (2796x1290):** Scales to fit
+- **All sizes:** Maintains aspect ratio, no distortion
+
+---
+
+## App Icon (icon.png)
+
+### Current Status: ✅ EXISTS
+- Location: `assets/icon.png`
+- Size: 1024x1024 pixels
+- Format: PNG
+
+### If You Need to Replace:
+- **Size:** 1024x1024 pixels (required)
+- **Format:** PNG with transparency OK
+- **Design:** Simple, recognizable at small sizes
+- **Background:** Can be transparent or solid
+
+---
+
+## Design Resources
+
+### Free Tools:
+- **Canva:** Easiest, has splash screen templates
+- **Figma:** Professional, free tier available
+- **Photopea:** Free Photoshop alternative (online)
+
+### Quick Start Template:
+1. Create 2048x2732px canvas
+2. Fill with solid color (#1E3A8A navy blue)
+3. Add your logo/icon in center (400x400px)
+4. Add app name text below (optional)
+5. Export as PNG
+6. Save as `assets/images/splash.png`
+
+### Icon Resources:
+- **Icons:** Font Awesome, Material Icons, Flaticon
+- **Colors:** Navy (#1E3A8A), Light Blue (#60A5FA), White (#FFFFFF)
+- **Fonts:** Bold, clean sans-serif (Montserrat, Poppins, Inter)
+
+---
+
+## Common Errors & Solutions
+
+### Error: "ENOENT: no such file or directory, open './assets/splash.png'"
+**Solution:** The splash.png file doesn't exist. Create it following specs above.
+
+### Error: "Splash screen image has transparency"
+**Solution:** Remove alpha channel. Use solid background color.
+
+### Error: "Image too large"
+**Solution:** Compress to under 1MB using TinyPNG or similar tool.
+
+### Error: "Splash screen looks stretched/distorted"
+**Solution:** Use `resizeMode: "contain"` in app.json (already configured).
+
+---
+
+## Current Configuration
+
+The app.json is currently using the app icon as a temporary splash screen to prevent build errors:
+
+```json
+"splash": {
+  "image": "./assets/icon.png",
+  "resizeMode": "contain",
+  "backgroundColor": "#1E3A8A"
+}
+```
+
+Once you add `assets/images/splash.png`, update app.json to:
+
+```json
+"splash": {
+  "image": "./assets/images/splash.png",
+  "resizeMode": "contain",
+  "backgroundColor": "#1E3A8A"
+}
+```
+
+---
+
+## Testing Checklist
+
+After adding your splash screen:
+- [ ] File exists at `assets/images/splash.png`
+- [ ] File is 2048x2732px (or minimum 1242x2436px)
+- [ ] File has solid background (no transparency)
+- [ ] File size is under 1MB
+- [ ] app.json references correct path
+- [ ] Restart Expo dev server
+- [ ] Test on iOS simulator (multiple device sizes)
+- [ ] Test on Android emulator
+- [ ] Verify it looks good in both light and dark mode
+
+---
+
+## Need Help?
+
+If you're stuck:
+1. Use your existing app icon as a starting point
+2. Place it on a 2048x2732px navy blue background
+3. Export as PNG with no transparency
+4. Save as `assets/images/splash.png`
+5. Update app.json path
+6. Restart the dev server
+
+The splash screen will automatically scale and adjust for all iPhone sizes thanks to the `resizeMode: "contain"` configuration.

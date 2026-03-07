@@ -9,9 +9,9 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/iOS Splash.png",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#000000"
+      "backgroundColor": "#1E3A8A"
     },
     "ios": {
       "supportsTablet": true,
@@ -29,9 +29,9 @@
         ]
       },
       "splash": {
-        "image": "./assets/images/iOS Splash.png",
+        "image": "./assets/icon.png",
         "resizeMode": "contain",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#1E3A8A"
       }
     },
     "android": {
@@ -49,9 +49,9 @@
         "NOTIFICATIONS"
       ],
       "splash": {
-        "image": "./assets/images/iOS Splash.png",
+        "image": "./assets/icon.png",
         "resizeMode": "contain",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#1E3A8A"
       }
     },
     "web": {
