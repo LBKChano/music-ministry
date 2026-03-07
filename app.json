@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/Icon .PNG",
+      "image": "./assets/images/e9eb3113-e6a0-47b3-9f1f-2db752e9082a.png",
       "resizeMode": "contain",
       "backgroundColor": "#0a1628"
     },
@@ -29,7 +29,7 @@
         ]
       },
       "splash": {
-        "image": "./assets/images/Icon .PNG",
+        "image": "./assets/images/e9eb3113-e6a0-47b3-9f1f-2db752e9082a.png",
         "resizeMode": "contain",
         "backgroundColor": "#0a1628"
       }
@@ -49,7 +49,7 @@
         "NOTIFICATIONS"
       ],
       "splash": {
-        "image": "./assets/images/Icon .PNG",
+        "image": "./assets/images/e9eb3113-e6a0-47b3-9f1f-2db752e9082a.png",
         "resizeMode": "contain",
         "backgroundColor": "#0a1628"
       }
