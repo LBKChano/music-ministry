@@ -87,6 +87,33 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 100,
   },
+  headerContainer: {
+    backgroundColor: colors.primary,
+    paddingTop: 60,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#BFDBFE',
+    textAlign: 'center',
+    marginTop: 4,
+  },
   serviceCard: {
     backgroundColor: colors.cardBackground,
     borderRadius: 16,
@@ -168,10 +195,15 @@ const styles = StyleSheet.create({
   },
   addButton: {
     backgroundColor: colors.primary,
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: 12,
+    padding: 16,
     alignItems: 'center',
     marginTop: 16,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
   addButtonText: {
     color: '#FFFFFF',
@@ -186,17 +218,23 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: colors.cardBackground,
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: 16,
+    padding: 24,
     width: '90%',
     maxWidth: 400,
     maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 16,
+    marginBottom: 20,
+    textAlign: 'center',
   },
   input: {
     backgroundColor: colors.inputBackground,
@@ -777,6 +815,10 @@ export default function HomeScreen() {
     }
   };
 
+  const churchName = currentChurch?.name || 'Schedule';
+  const upcomingCount = filteredServices.length;
+  const upcomingText = `${upcomingCount} upcoming ${upcomingCount === 1 ? 'service' : 'services'}`;
+
   if (servicesLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -790,11 +832,14 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <Stack.Screen
         options={{
-          title: currentChurch?.name || 'Schedule',
-          headerStyle: { backgroundColor: colors.headerBackground },
-          headerTintColor: colors.headerText,
+          headerShown: false,
         }}
       />
+
+      <View style={styles.headerContainer}>
+        <Text style={styles.headerTitle}>{churchName}</Text>
+        <Text style={styles.headerSubtitle}>{upcomingText}</Text>
+      </View>
 
       <ScrollView 
         style={styles.container} 
@@ -964,7 +1009,7 @@ export default function HomeScreen() {
             <TextInput
               style={[styles.input, styles.textArea]}
               placeholder="Reason (optional)"
-              placeholderTextColor={colors.textTertiary}
+              placeholderTextColor={colors.textSecondary}
               value={fillInReason}
               onChangeText={setFillInReason}
               multiline
