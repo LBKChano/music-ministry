@@ -90,6 +90,8 @@ export default function OnboardingScreen() {
       }
 
       const user = signUpResult.data.user;
+      const session = signUpResult.data.session;
+      
       if (!user) {
         setError('Failed to create user account');
         setLoading(false);
@@ -97,6 +99,7 @@ export default function OnboardingScreen() {
       }
 
       console.log('Admin user created:', user.id);
+      console.log('Session created:', session ? 'Yes' : 'No');
 
       // Step 2: Generate unique invitation code
       const invitationCode = generateInvitationCode();
@@ -146,14 +149,19 @@ export default function OnboardingScreen() {
       }
 
       console.log('Admin added as member successfully:', memberResult.data);
-      console.log('Onboarding complete! Auth listener will redirect to app');
+      console.log('Account created successfully! Redirecting to app...');
       
-      // Success! The auth state change listener will handle the redirect
+      // Wait a moment for the database to settle
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Redirect to the app
+      console.log('Navigating to church homepage');
+      router.replace('/(tabs)');
+      
+      // Keep loading state true during redirect
     } catch (err) {
       console.error('Error in onboarding:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
-      setLoading(false);
-    } finally {
       setLoading(false);
     }
   };
@@ -193,10 +201,15 @@ export default function OnboardingScreen() {
       }
 
       console.log('Admin logged in successfully! User ID:', signInResult.data.user?.id);
-      console.log('Auth listener will redirect to app');
+      console.log('Redirecting to app...');
       
-      // The auth state change listener in _layout.tsx will handle the redirect
-      // Don't set loading to false here - let the redirect happen
+      // Wait a moment for the session to be established
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Redirect to the app
+      router.replace('/(tabs)');
+      
+      // Keep loading state true during redirect
     } catch (err) {
       console.error('Error in admin login:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -228,12 +241,18 @@ export default function OnboardingScreen() {
         return;
       }
 
-      console.log('Member logged in successfully, auth listener will redirect');
-      // The auth state change listener in _layout.tsx will handle the redirect
+      console.log('Member logged in successfully! Redirecting to app...');
+      
+      // Wait a moment for the session to be established
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Redirect to the app
+      router.replace('/(tabs)');
+      
+      // Keep loading state true during redirect
     } catch (err) {
       console.error('Error in member login:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
       setLoading(false);
     }
   };
@@ -312,6 +331,8 @@ export default function OnboardingScreen() {
       }
 
       const user = signUpResult.data.user;
+      const session = signUpResult.data.session;
+      
       if (!user) {
         console.error('No user returned from signup');
         setError('Failed to create user account');
@@ -320,6 +341,7 @@ export default function OnboardingScreen() {
       }
 
       console.log('Member user created successfully! User ID:', user.id);
+      console.log('Session created:', session ? 'Yes' : 'No');
 
       // Step 3: Add member to church with member_id linking to auth.users
       console.log('Adding member to church:', churchData.id, 'with member_id:', user.id);
@@ -347,11 +369,12 @@ export default function OnboardingScreen() {
 
       console.log('Member successfully joined church:', churchData.name);
       console.log('Member data:', memberData);
-      console.log('Member account created! Redirecting to app...');
+      console.log('Member account created successfully! Redirecting to app...');
       
-      // Wait a moment for the database to settle, then redirect
+      // Wait a moment for the database to settle
       await new Promise(resolve => setTimeout(resolve, 500));
       
+      // Redirect to the app
       console.log('Navigating to church homepage');
       router.replace('/(tabs)');
       
