@@ -24,13 +24,22 @@ import {
   Alert,
 } from 'react-native';
 
-// Configure notification handler for iOS
+// Configure notification handler for iOS - CRITICAL for iOS notifications
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
+  handleNotification: async (notification) => {
+    console.log('🔔 iOS Notification Handler called:', {
+      title: notification.request.content.title,
+      body: notification.request.content.body,
+      data: notification.request.content.data,
+    });
+    
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      priority: Notifications.AndroidNotificationPriority.MAX,
+    };
+  },
 });
 
 interface SpecialService {
@@ -401,47 +410,73 @@ export default function HomeScreen() {
 
     const registerForPushNotifications = async () => {
       try {
-        console.log('🔔 Starting push notification registration for member:', currentMember.id);
+        console.log('🔔 [iOS] Starting push notification registration for member:', currentMember.id);
         
         // Only register on physical devices
         if (!Device.isDevice) {
-          console.log('⚠️ Push notifications only work on physical devices, not simulators');
+          console.log('⚠️ [iOS] Push notifications only work on physical devices, not simulators');
+          Alert.alert(
+            'Simulator Detected',
+            'Push notifications only work on physical iOS devices. Please test on a real device.',
+            [{ text: 'OK' }]
+          );
           return;
         }
 
-        console.log('🔔 Device check passed, requesting permissions...');
+        console.log('🔔 [iOS] Device check passed, requesting permissions...');
         
-        // Request permissions
+        // Request permissions with explicit iOS settings
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        console.log('🔔 Existing permission status:', existingStatus);
+        console.log('🔔 [iOS] Existing permission status:', existingStatus);
         
         let finalStatus = existingStatus;
         
         if (existingStatus !== 'granted') {
-          console.log('🔔 Permissions not granted, requesting...');
-          const { status } = await Notifications.requestPermissionsAsync();
+          console.log('🔔 [iOS] Permissions not granted, requesting...');
+          const { status } = await Notifications.requestPermissionsAsync({
+            ios: {
+              allowAlert: true,
+              allowBadge: true,
+              allowSound: true,
+              allowDisplayInCarPlay: false,
+              allowCriticalAlerts: false,
+              provideAppNotificationSettings: false,
+              allowProvisional: false,
+              allowAnnouncements: false,
+            },
+          });
           finalStatus = status;
-          console.log('🔔 Permission request result:', status);
+          console.log('🔔 [iOS] Permission request result:', status);
         }
         
         if (finalStatus !== 'granted') {
-          console.log('⚠️ Push notification permissions not granted by user');
+          console.log('⚠️ [iOS] Push notification permissions not granted by user');
+          Alert.alert(
+            'Notifications Disabled',
+            'Please enable notifications in Settings > Music Ministry > Notifications to receive service reminders.',
+            [{ text: 'OK' }]
+          );
           return;
         }
 
-        console.log('✅ Permissions granted, getting project ID...');
+        console.log('✅ [iOS] Permissions granted, getting project ID...');
 
         // Get the project ID from app.json via Constants
         const projectId = Constants.expoConfig?.extra?.eas?.projectId;
 
         if (!projectId) {
-          console.log('⚠️ No EAS project ID found in app.json');
-          console.log('⚠️ Push notifications will be enabled after the first EAS build');
+          console.log('⚠️ [iOS] No EAS project ID found in app.json');
+          console.log('⚠️ [iOS] Push notifications will be enabled after the first EAS build');
+          Alert.alert(
+            'Setup Required',
+            'Push notifications require an EAS build. They will work after your first build is complete.',
+            [{ text: 'OK' }]
+          );
           return;
         }
 
-        console.log('🔔 EAS Project ID found:', projectId);
-        console.log('🔔 Getting Expo push token...');
+        console.log('🔔 [iOS] EAS Project ID found:', projectId);
+        console.log('🔔 [iOS] Getting Expo push token...');
 
         // Get the Expo push token
         const tokenData = await Notifications.getExpoPushTokenAsync({
@@ -449,43 +484,75 @@ export default function HomeScreen() {
         });
         
         const token = tokenData.data;
-        console.log('✅ Successfully obtained Expo push token:', token);
+        console.log('✅ [iOS] Successfully obtained Expo push token:', token);
 
         // Register the token with Supabase
-        console.log('🔔 Registering token with Supabase for member ID:', currentMember.id);
-        const success = await registerPushToken(currentMember.id, token, Platform.OS);
+        console.log('🔔 [iOS] Registering token with Supabase for member ID:', currentMember.id);
+        const success = await registerPushToken(currentMember.id, token, 'ios');
         
         if (success) {
-          console.log('✅ Push token registered successfully in database');
+          console.log('✅ [iOS] Push token registered successfully in database');
+          
+          // Schedule a local notification to confirm setup (iOS only)
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: '🔔 Notifications Enabled',
+              body: 'You will now receive service reminders on this device.',
+              sound: 'default',
+              badge: 1,
+            },
+            trigger: {
+              seconds: 2,
+            },
+          });
         } else {
-          console.error('❌ Failed to register push token in database');
+          console.error('❌ [iOS] Failed to register push token in database');
+          Alert.alert(
+            'Registration Failed',
+            'Failed to register for notifications. Please check your connection and try again.',
+            [{ text: 'OK' }]
+          );
         }
       } catch (error) {
-        console.error('❌ Error during push notification registration:', error);
+        console.error('❌ [iOS] Error during push notification registration:', error);
         if (error instanceof Error) {
           console.error('Error message:', error.message);
           console.error('Error stack:', error.stack);
         }
+        Alert.alert(
+          'Setup Error',
+          'An error occurred while setting up notifications. Please try again later.',
+          [{ text: 'OK' }]
+        );
       }
     };
 
     registerForPushNotifications();
   }, [currentMember, registerPushToken]);
 
-  // Listen for incoming notifications
+  // Listen for incoming notifications - iOS specific handling
   useEffect(() => {
-    console.log('🔔 Setting up notification listeners');
+    console.log('🔔 [iOS] Setting up notification listeners');
     
-    const subscription = Notifications.addNotificationReceivedListener(notification => {
-      console.log('📬 Notification received while app is open:', {
+    // Handle notifications received while app is in foreground
+    const foregroundSubscription = Notifications.addNotificationReceivedListener(notification => {
+      console.log('📬 [iOS] Notification received in foreground:', {
         title: notification.request.content.title,
         body: notification.request.content.body,
         data: notification.request.content.data,
       });
+      
+      // On iOS, show an alert for foreground notifications
+      Alert.alert(
+        notification.request.content.title || 'Notification',
+        notification.request.content.body || '',
+        [{ text: 'OK' }]
+      );
     });
 
+    // Handle notification taps (when user taps on notification)
     const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('👆 User tapped notification:', {
+      console.log('👆 [iOS] User tapped notification:', {
         title: response.notification.request.content.title,
         data: response.notification.request.content.data,
       });
@@ -493,18 +560,20 @@ export default function HomeScreen() {
       const data = response.notification.request.content.data;
       
       if (data.type === 'fill_in_request') {
-        console.log('Handling fill-in request notification tap:', data.fillInRequestId);
+        console.log('[iOS] Handling fill-in request notification tap:', data.fillInRequestId);
         if (refreshFillInRequests) {
           refreshFillInRequests();
         }
       } else if (data.type === 'service_reminder') {
-        console.log('Handling service reminder notification tap:', data.serviceId);
+        console.log('[iOS] Handling service reminder notification tap:', data.serviceId);
+        // Refresh services to show updated data
+        refreshServices();
       }
     });
 
     return () => {
-      console.log('🧹 Cleaning up notification listeners');
-      subscription.remove();
+      console.log('🧹 [iOS] Cleaning up notification listeners');
+      foregroundSubscription.remove();
       responseSubscription.remove();
     };
   }, [refreshFillInRequests]);
