@@ -4,7 +4,7 @@ import * as Device from 'expo-device';
 import { useChurch } from '@/hooks/useChurch';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors } from '@/styles/commonStyles';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Stack } from 'expo-router';
 import { useServices } from '@/hooks/useServices';
 import { useTheme } from '@react-navigation/native';
@@ -394,10 +394,19 @@ export default function HomeScreen() {
     refreshMembers,
   } = useChurch();
 
+  // Track if we've already registered for this session to avoid duplicate test notifications
+  const hasRegisteredThisSession = useRef(false);
+
   // ANDROID FIX: Enhanced push notification registration with better error handling
   useEffect(() => {
     if (!currentMember) {
       console.log('No current member, skipping push notification registration');
+      return;
+    }
+
+    // Skip if already registered this session
+    if (hasRegisteredThisSession.current) {
+      console.log('🔔 Already registered for push notifications this session, skipping');
       return;
     }
 
@@ -511,7 +520,10 @@ export default function HomeScreen() {
         if (success) {
           console.log('✅ Push token registered successfully in database');
           
-          // ANDROID FIX: Test notification to verify setup
+          // Mark as registered for this session to prevent duplicate test notifications
+          hasRegisteredThisSession.current = true;
+          
+          // ANDROID FIX: Test notification to verify setup (only once per session)
           if (Platform.OS === 'android') {
             console.log('🔔 Sending test notification to verify Android setup');
             await Notifications.scheduleNotificationAsync({

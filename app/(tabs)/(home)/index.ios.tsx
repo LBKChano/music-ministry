@@ -4,7 +4,7 @@ import * as Device from 'expo-device';
 import { useChurch } from '@/hooks/useChurch';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors } from '@/styles/commonStyles';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Stack } from 'expo-router';
 import { useServices } from '@/hooks/useServices';
 import { useTheme } from '@react-navigation/native';
@@ -401,10 +401,19 @@ export default function HomeScreen() {
     refreshMembers,
   } = useChurch();
 
+  // Track if we've already registered for this session to avoid duplicate test notifications
+  const hasRegisteredThisSession = useRef(false);
+
   // Register for push notifications when component mounts
   useEffect(() => {
     if (!currentMember) {
       console.log('No current member, skipping push notification registration');
+      return;
+    }
+
+    // Skip if already registered this session
+    if (hasRegisteredThisSession.current) {
+      console.log('🔔 [iOS] Already registered for push notifications this session, skipping');
       return;
     }
 
@@ -493,7 +502,10 @@ export default function HomeScreen() {
         if (success) {
           console.log('✅ [iOS] Push token registered successfully in database');
           
-          // Schedule a local notification to confirm setup (iOS only)
+          // Mark as registered for this session to prevent duplicate test notifications
+          hasRegisteredThisSession.current = true;
+          
+          // Schedule a local notification to confirm setup (iOS only, once per session)
           await Notifications.scheduleNotificationAsync({
             content: {
               title: '🔔 Notifications Enabled',
