@@ -1422,7 +1422,42 @@ export default function ChurchScreen() {
                   <Text style={[styles.sectionTitle, { color: colors.text }]}>Notification Settings</Text>
                 </View>
 
-                <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 16 }]}>
+                {/* Automation Status Banner */}
+                <View style={[styles.automationBanner, { backgroundColor: '#4CAF50' + '20', borderColor: '#4CAF50', borderWidth: 2 }]}>
+                  <View style={styles.automationBannerContent}>
+                    <IconSymbol
+                      ios_icon_name="checkmark.circle.fill"
+                      android_material_icon_name="check-circle"
+                      size={32}
+                      color="#4CAF50"
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.automationBannerTitle, { color: '#4CAF50' }]}>
+                        ✅ Automated Notifications Active
+                      </Text>
+                      <Text style={[styles.automationBannerText, { color: colors.text }]}>
+                        The system automatically checks every hour and sends reminders to members at the times you've configured below. Members will receive notifications even when the app is closed.
+                      </Text>
+                      <Text style={[styles.automationBannerText, { color: colors.text, marginTop: 8, fontWeight: '600' }]}>
+                        How it works:
+                      </Text>
+                      <Text style={[styles.automationBannerText, { color: colors.text }]}>
+                        • Every hour, the system checks for upcoming services
+                      </Text>
+                      <Text style={[styles.automationBannerText, { color: colors.text }]}>
+                        • If a service is 6 hours away (or 24 hours, etc.), notifications are sent
+                      </Text>
+                      <Text style={[styles.automationBannerText, { color: colors.text }]}>
+                        • Members receive push notifications on their devices
+                      </Text>
+                      <Text style={[styles.automationBannerText, { color: colors.text }]}>
+                        • Works for both recurring and single services
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 16, marginTop: 16 }]}>
                   Configure when members receive reminders about their upcoming service assignments (including single services)
                 </Text>
 
@@ -1561,6 +1596,28 @@ export default function ChurchScreen() {
                 <Text style={[styles.helperText, { color: colors.textSecondary, marginTop: 16, fontStyle: 'italic' }]}>
                   Note: Members will receive notifications at the selected times before each service they are assigned to (including single services added via "Add Single Service")
                 </Text>
+
+                {/* Troubleshooting Info */}
+                <View style={[styles.troubleshootingCard, { backgroundColor: colors.inputBackground, marginTop: 16 }]}>
+                  <Text style={[styles.troubleshootingTitle, { color: colors.text }]}>
+                    💡 Not receiving notifications?
+                  </Text>
+                  <Text style={[styles.troubleshootingText, { color: colors.textSecondary }]}>
+                    The system checks every hour for services that match your reminder times. For example, if you have a 6-hour reminder enabled:
+                  </Text>
+                  <Text style={[styles.troubleshootingText, { color: colors.textSecondary, marginTop: 8 }]}>
+                    • A service at 3:00 PM will trigger a notification around 9:00 AM
+                  </Text>
+                  <Text style={[styles.troubleshootingText, { color: colors.textSecondary }]}>
+                    • A service at 7:30 PM will trigger a notification around 1:30 PM
+                  </Text>
+                  <Text style={[styles.troubleshootingText, { color: colors.textSecondary, marginTop: 8 }]}>
+                    The system checks within a 30-minute window, so notifications may arrive slightly before or after the exact time.
+                  </Text>
+                  <Text style={[styles.troubleshootingText, { color: colors.textSecondary, marginTop: 8, fontWeight: '600' }]}>
+                    To test: Create a service 6 hours from now and wait for the next hourly check!
+                  </Text>
+                </View>
               </View>
             )}
           </>
@@ -3006,5 +3063,37 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  automationBanner: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  automationBannerContent: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  automationBannerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  automationBannerText: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 4,
+  },
+  troubleshootingCard: {
+    borderRadius: 12,
+    padding: 16,
+  },
+  troubleshootingTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  troubleshootingText: {
+    fontSize: 14,
+    lineHeight: 20,
   },
 });
