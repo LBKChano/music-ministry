@@ -23,6 +23,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  AppState,
 } from 'react-native';
 
 // ANDROID FIX: Configure notification handler with proper Android settings
@@ -30,7 +31,7 @@ Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
-    shouldSetBadge: true,
+    shouldSetBadge: false,
     // Android-specific: ensure notifications show even when app is in foreground
     priority: Platform.OS === 'android' ? Notifications.AndroidNotificationPriority.HIGH : undefined,
   }),
@@ -397,6 +398,17 @@ export default function HomeScreen() {
 
   // Track if we've already registered for this session to avoid duplicate test notifications
   const hasRegisteredThisSession = useRef(false);
+
+  // Clear badge count on mount and whenever the app becomes active
+  useEffect(() => {
+    Notifications.setBadgeCountAsync(0);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        Notifications.setBadgeCountAsync(0);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
 
   // ANDROID FIX: Enhanced push notification registration with better error handling
   useEffect(() => {

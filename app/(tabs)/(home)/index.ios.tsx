@@ -23,6 +23,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  AppState,
 } from 'react-native';
 
 // Configure notification handler for iOS - CRITICAL for iOS notifications
@@ -37,7 +38,7 @@ Notifications.setNotificationHandler({
     return {
       shouldShowAlert: true,
       shouldPlaySound: true,
-      shouldSetBadge: true,
+      shouldSetBadge: false,
       priority: Notifications.AndroidNotificationPriority.MAX,
     };
   },
@@ -405,6 +406,17 @@ export default function HomeScreen() {
   // Track if we've already registered for this session to avoid duplicate test notifications
   const hasRegisteredThisSession = useRef(false);
 
+  // Clear badge count on mount and whenever the app becomes active
+  useEffect(() => {
+    Notifications.setBadgeCountAsync(0);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        Notifications.setBadgeCountAsync(0);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
   // Register for push notifications when component mounts
   useEffect(() => {
     if (!currentMember) {
@@ -522,7 +534,6 @@ export default function HomeScreen() {
               title: '🔔 Notifications Enabled',
               body: 'You will now receive service reminders on this device.',
               sound: 'default',
-              badge: 1,
             },
             trigger: {
               seconds: 2,
