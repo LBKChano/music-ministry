@@ -1,6 +1,7 @@
 
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useChurch } from '@/hooks/useChurch';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors } from '@/styles/commonStyles';
@@ -404,7 +405,7 @@ export default function HomeScreen() {
       return;
     }
 
-    // Skip if already registered this session
+    // Skip if already registered this session (in-memory fast path)
     if (hasRegisteredThisSession.current) {
       console.log('🔔 Already registered for push notifications this session, skipping');
       return;
@@ -412,6 +413,15 @@ export default function HomeScreen() {
 
     const registerForPushNotifications = async () => {
       try {
+        // Check persisted flag first — skip entirely if already registered on this device
+        const storageKey = `push_token_registered_${currentMember.id}`;
+        const alreadyRegistered = await AsyncStorage.getItem(storageKey);
+        if (alreadyRegistered === 'true') {
+          console.log('🔔 Push token already registered for this member (persisted), skipping');
+          hasRegisteredThisSession.current = true;
+          return;
+        }
+
         console.log('🔔 Starting push notification registration for member:', currentMember.id);
         console.log('🔔 Platform:', Platform.OS);
         console.log('🔔 Device type:', Device.isDevice ? 'Physical device' : 'Simulator/Emulator');
@@ -519,11 +529,12 @@ export default function HomeScreen() {
         
         if (success) {
           console.log('✅ Push token registered successfully in database');
-          
-          // Mark as registered for this session to prevent duplicate test notifications
+
+          // Persist registration flag so we never show the confirmation notification again
+          await AsyncStorage.setItem(storageKey, 'true');
           hasRegisteredThisSession.current = true;
-          
-          // ANDROID FIX: Test notification to verify setup (only once per session)
+
+          // ANDROID FIX: Test notification to verify setup (only first time)
           if (Platform.OS === 'android') {
             console.log('🔔 Sending test notification to verify Android setup');
             await Notifications.scheduleNotificationAsync({
