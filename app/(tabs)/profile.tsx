@@ -2,8 +2,8 @@
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@react-navigation/native";
 import { colors } from "@/styles/commonStyles";
-import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity, Modal, ActivityIndicator } from "react-native";
+import React, { useState, useEffect, useRef } from "react";
+import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity, Modal, ActivityIndicator, Animated } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { Stack, useRouter } from "expo-router";
 import { useChurch } from "@/hooks/useChurch";
@@ -12,15 +12,40 @@ import type { Tables } from "@/lib/supabase/types";
 
 type MemberUnavailability = Tables<'member_unavailability'>;
 
+type ToastType = 'success' | 'error';
+
 export default function ProfileScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { user, currentMember, currentChurch, signOut, fetchMemberUnavailability, addMemberUnavailability, removeMemberUnavailability } = useChurch();
+  const { user, currentMember, currentChurch, signOut, fetchMemberUnavailability, saveUnavailableDates } = useChurch();
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-  const [unavailabilityDates, setUnavailabilityDates] = useState<MemberUnavailability[]>([]);
+  const [savedDates, setSavedDates] = useState<MemberUnavailability[]>([]);
+  const [pendingDates, setPendingDates] = useState<Set<string>>(new Set());
   const [loadingDates, setLoadingDates] = useState(false);
-  const [markedDates, setMarkedDates] = useState<{ [key: string]: any }>({});
+  const [saving, setSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // Toast state
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<ToastType>('success');
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToastMessage(message);
+    setToastType(type);
+    setToastVisible(true);
+    Animated.sequence([
+      Animated.timing(toastOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.delay(2200),
+      Animated.timing(toastOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start(() => {
+      setToastVisible(false);
+    });
+  };
 
   // Fetch unavailability dates when member loads
   useEffect(() => {
@@ -29,18 +54,10 @@ export default function ProfileScreen() {
         console.log('Loading unavailability dates for member:', currentMember.id);
         setLoadingDates(true);
         const dates = await fetchMemberUnavailability(currentMember.id);
-        setUnavailabilityDates(dates);
-        
-        // Build marked dates object for calendar
-        const marked: { [key: string]: any } = {};
-        dates.forEach(d => {
-          marked[d.unavailable_date] = {
-            selected: true,
-            selectedColor: '#FF3B30',
-            marked: true,
-          };
-        });
-        setMarkedDates(marked);
+        setSavedDates(dates);
+        const dateSet = new Set(dates.map(d => d.unavailable_date));
+        setPendingDates(dateSet);
+        setHasUnsavedChanges(false);
         setLoadingDates(false);
       }
     };
@@ -62,49 +79,53 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleDayPress = async (day: DateData) => {
+  const handleDayPress = (day: DateData) => {
     if (!currentMember?.id) {
-      console.log('No current member');
+      console.log('No current member, ignoring day press');
       return;
     }
 
-    console.log('User tapped date:', day.dateString);
+    console.log('User tapped date (local toggle):', day.dateString);
     const dateString = day.dateString;
-    
-    // Check if date is already marked as unavailable
-    const existingUnavailability = unavailabilityDates.find(d => d.unavailable_date === dateString);
-    
-    if (existingUnavailability) {
-      // Remove unavailability
-      console.log('Removing unavailability for date:', dateString);
-      const success = await removeMemberUnavailability(existingUnavailability.id);
-      if (success) {
-        const updatedDates = unavailabilityDates.filter(d => d.id !== existingUnavailability.id);
-        setUnavailabilityDates(updatedDates);
-        
-        const newMarked = { ...markedDates };
-        delete newMarked[dateString];
-        setMarkedDates(newMarked);
+
+    setPendingDates(prev => {
+      const next = new Set(prev);
+      if (next.has(dateString)) {
+        next.delete(dateString);
+        console.log('Unmarked date locally:', dateString);
+      } else {
+        next.add(dateString);
+        console.log('Marked date locally:', dateString);
       }
-    } else {
-      // Add unavailability
-      console.log('Adding unavailability for date:', dateString);
-      const success = await addMemberUnavailability(currentMember.id, [dateString]);
+      return next;
+    });
+    setHasUnsavedChanges(true);
+  };
+
+  const handleSave = async () => {
+    if (!currentMember?.id) return;
+    const datesToSave = Array.from(pendingDates).sort();
+    console.log('User tapped Save Unavailable Dates, saving', datesToSave.length, 'dates to Supabase');
+    setSaving(true);
+    try {
+      const success = await saveUnavailableDates(currentMember.id, datesToSave);
       if (success) {
-        // Refresh the dates
-        const dates = await fetchMemberUnavailability(currentMember.id);
-        setUnavailabilityDates(dates);
-        
-        const marked: { [key: string]: any } = {};
-        dates.forEach(d => {
-          marked[d.unavailable_date] = {
-            selected: true,
-            selectedColor: '#FF3B30',
-            marked: true,
-          };
-        });
-        setMarkedDates(marked);
+        console.log('Save successful, refreshing from Supabase');
+        const refreshed = await fetchMemberUnavailability(currentMember.id);
+        setSavedDates(refreshed);
+        const refreshedSet = new Set(refreshed.map(d => d.unavailable_date));
+        setPendingDates(refreshedSet);
+        setHasUnsavedChanges(false);
+        showToast('Unavailable dates saved!', 'success');
+      } else {
+        console.error('Save failed');
+        showToast('Failed to save. Please try again.', 'error');
       }
+    } catch (err) {
+      console.error('Error saving unavailable dates:', err);
+      showToast('An error occurred. Please try again.', 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -112,19 +133,30 @@ export default function ProfileScreen() {
   const displayEmail = currentMember?.email || user?.email || '';
   const isAdmin = currentChurch?.admin_id === user?.id;
   const userRole = isAdmin ? 'Admin' : 'Member';
-  
-  // FIXED: Allow marking from current date forward (not just next quarter)
+
   const today = new Date();
   const minDateString = today.toISOString().split('T')[0];
-  
-  // Set max date to 1 year from now
   const maxDate = new Date(today);
   maxDate.setFullYear(maxDate.getFullYear() + 1);
   const maxDateString = maxDate.toISOString().split('T')[0];
 
+  // Build markedDates from pendingDates (local state)
+  const markedDates: { [key: string]: any } = {};
+  pendingDates.forEach(date => {
+    markedDates[date] = {
+      selected: true,
+      selectedColor: '#FF3B30',
+      marked: true,
+    };
+  });
+
+  const pendingCount = pendingDates.size;
+  const countLabel = pendingCount === 1 ? '1 date selected' : `${pendingCount} dates selected`;
+  const toastBg = toastType === 'success' ? '#34C759' : '#FF3B30';
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-      <Stack.Screen 
+      <Stack.Screen
         options={{
           headerShown: true,
           title: 'Profile',
@@ -136,10 +168,10 @@ export default function ProfileScreen() {
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <View style={[styles.avatarContainer, { backgroundColor: colors.primary }]}>
-            <IconSymbol 
-              android_material_icon_name="person" 
-              size={48} 
-              color="#FFFFFF" 
+            <IconSymbol
+              android_material_icon_name="person"
+              size={48}
+              color="#FFFFFF"
             />
           </View>
           <Text style={[styles.name, { color: colors.text }]}>{displayName}</Text>
@@ -152,19 +184,19 @@ export default function ProfileScreen() {
         {currentMember && (
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.cardHeader}>
-              <IconSymbol 
-                android_material_icon_name="event-busy" 
-                size={24} 
-                color={colors.primary} 
+              <IconSymbol
+                android_material_icon_name="event-busy"
+                size={24}
+                color={colors.primary}
               />
               <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0, marginLeft: 12 }]}>
                 My Unavailability
               </Text>
             </View>
             <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
-              Select dates when you won&apos;t be available to assist. Tap a date to mark/unmark it. This helps the admin avoid scheduling you on those days.
+              Tap dates to mark or unmark them, then tap Save to persist your changes. The scheduling system uses these dates to avoid assigning you to services.
             </Text>
-            
+
             {loadingDates ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={colors.primary} />
@@ -192,23 +224,46 @@ export default function ProfileScreen() {
                 }}
               />
             )}
-            
-            {unavailabilityDates.length > 0 && (
-              <View style={styles.unavailabilityList}>
-                <Text style={[styles.unavailabilityListTitle, { color: colors.text }]}>
-                  Unavailable Dates
+
+            <View style={styles.calendarFooter}>
+              {pendingCount > 0 && (
+                <View style={styles.countRow}>
+                  <View style={[styles.countDot, { backgroundColor: '#FF3B30' }]} />
+                  <Text style={[styles.countText, { color: colors.textSecondary }]}>
+                    {countLabel}
+                  </Text>
+                  {hasUnsavedChanges && (
+                    <View style={[styles.unsavedBadge, { backgroundColor: '#FF9500' }]}>
+                      <Text style={styles.unsavedBadgeText}>Unsaved</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[
+                  styles.saveButton,
+                  { backgroundColor: hasUnsavedChanges ? colors.primary : colors.border },
+                  saving && styles.saveButtonDisabled,
+                ]}
+                onPress={handleSave}
+                disabled={saving || !hasUnsavedChanges}
+                activeOpacity={0.8}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <IconSymbol
+                    android_material_icon_name="save"
+                    size={18}
+                    color="#FFFFFF"
+                  />
+                )}
+                <Text style={styles.saveButtonText}>
+                  {saving ? 'Saving...' : 'Save Unavailable Dates'}
                 </Text>
-                <Text style={[styles.unavailabilityCount, { color: colors.textSecondary }]}>
-                  {unavailabilityDates.length}
-                </Text>
-                <Text style={[styles.unavailabilityCount, { color: colors.textSecondary }]}>
-                  {unavailabilityDates.length === 1 ? 'date' : 'dates'}
-                </Text>
-                <Text style={[styles.unavailabilityCount, { color: colors.textSecondary }]}>
-                  selected
-                </Text>
-              </View>
-            )}
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -219,14 +274,21 @@ export default function ProfileScreen() {
             setShowSignOutModal(true);
           }}
         >
-          <IconSymbol 
-            android_material_icon_name="logout" 
-            size={20} 
-            color="#FFFFFF" 
+          <IconSymbol
+            android_material_icon_name="logout"
+            size={20}
+            color="#FFFFFF"
           />
           <Text style={styles.signOutButtonText}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Toast notification */}
+      {toastVisible && (
+        <Animated.View style={[styles.toast, { backgroundColor: toastBg, opacity: toastOpacity }]}>
+          <Text style={styles.toastText}>{toastMessage}</Text>
+        </Animated.View>
+      )}
 
       <Modal
         visible={showSignOutModal}
@@ -344,21 +406,53 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  unavailabilityList: {
+  calendarFooter: {
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: 'rgba(0, 0, 0, 0.1)',
+    gap: 12,
+  },
+  countRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 8,
   },
-  unavailabilityListTitle: {
+  countDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  countText: {
     fontSize: 14,
+    flex: 1,
+  },
+  unsavedBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  unsavedBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
     fontWeight: '600',
   },
-  unavailabilityCount: {
-    fontSize: 14,
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    gap: 8,
+  },
+  saveButtonDisabled: {
+    opacity: 0.7,
+  },
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   signOutButton: {
     flexDirection: 'row',
@@ -372,6 +466,26 @@ const styles = StyleSheet.create({
   signOutButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  toast: {
+    position: 'absolute',
+    bottom: 100,
+    left: 24,
+    right: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  toastText: {
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '600',
   },
   modalOverlay: {
@@ -413,12 +527,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
-  cancelButton: {
-    // backgroundColor set dynamically
-  },
-  confirmButton: {
-    // backgroundColor set dynamically
-  },
+  cancelButton: {},
+  confirmButton: {},
   modalButtonText: {
     fontSize: 16,
     fontWeight: '600',

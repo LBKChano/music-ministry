@@ -1011,6 +1011,52 @@ export function useChurch() {
     }
   }, []);
 
+  // Save (sync) all unavailability dates for a member — deletes removed, inserts new
+  const saveUnavailableDates = useCallback(async (memberId: string, dates: string[]): Promise<boolean> => {
+    console.log('Saving unavailable dates for member:', memberId, 'dates:', dates);
+    try {
+      setError(null);
+
+      // Delete all existing unavailability rows for this member
+      const { error: deleteError } = await supabase
+        .from('member_unavailability')
+        .delete()
+        .eq('member_id', memberId);
+
+      if (deleteError) {
+        console.error('Error clearing existing unavailability:', deleteError);
+        setError(deleteError.message);
+        return false;
+      }
+
+      // Insert the new set (skip if empty)
+      if (dates.length > 0) {
+        const inserts = dates.map(date => ({
+          member_id: memberId,
+          unavailable_date: date,
+          reason: null as string | null,
+        }));
+
+        const { error: insertError } = await supabase
+          .from('member_unavailability')
+          .insert(inserts);
+
+        if (insertError) {
+          console.error('Error inserting unavailability dates:', insertError);
+          setError(insertError.message);
+          return false;
+        }
+      }
+
+      console.log('Unavailable dates saved successfully:', dates.length, 'dates');
+      return true;
+    } catch (err) {
+      console.error('Error in saveUnavailableDates:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, []);
+
   // Remove unavailability date
   const removeMemberUnavailability = useCallback(async (unavailabilityId: string) => {
     console.log('Removing unavailability:', unavailabilityId);
@@ -1528,6 +1574,7 @@ export function useChurch() {
     fetchMemberUnavailability,
     addMemberUnavailability,
     removeMemberUnavailability,
+    saveUnavailableDates,
     fetchNotificationSettings,
     updateNotificationSettings,
     createFillInRequest,
