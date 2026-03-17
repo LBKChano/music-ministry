@@ -19,7 +19,9 @@ import { WidgetProvider } from "@/contexts/WidgetContext";
 import { supabase } from "@/lib/supabase/client";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // Already hidden or not prevented — safe to ignore
+});
 
 export const unstable_settings = {
   initialRouteName: "(tabs)",
@@ -167,6 +169,9 @@ async function checkUserHasChurches(userId: string, userEmail: string | undefine
   }
 }
 
+// Maximum ms to wait for startup auth check before forcing the splash to hide.
+const SPLASH_TIMEOUT_MS = 7000;
+
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const networkState = useNetworkState();
@@ -178,26 +183,59 @@ export default function RootLayout() {
   const [needsOnboarding, setNeedsOnboarding] = useState(true);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
+  // Track whether the initial checkAuth has already completed so the
+  // auth-state-change listener doesn't re-block the splash on INITIAL_SESSION.
+  const initialCheckDone = React.useRef(false);
+
+  const hideSplash = useCallback(() => {
+    SplashScreen.hideAsync().catch((err) => {
+      console.warn('⚠️ SplashScreen.hideAsync error (safe to ignore):', err);
+    });
+  }, []);
+
+  // Hide splash once fonts are loaded AND auth check is done.
+  // The absolute timeout below guarantees this always fires within SPLASH_TIMEOUT_MS.
   useEffect(() => {
     if (loaded && !isCheckingAuth) {
-      SplashScreen.hideAsync();
+      console.log('✅ Fonts + auth ready — hiding splash screen');
+      hideSplash();
     }
-  }, [loaded, isCheckingAuth]);
+  }, [loaded, isCheckingAuth, hideSplash]);
+
+  // Absolute safety-net: hide the splash after SPLASH_TIMEOUT_MS no matter what.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      console.warn(`⏰ Splash timeout (${SPLASH_TIMEOUT_MS}ms) reached — forcing hide`);
+      setIsCheckingAuth(false); // unblock any pending state
+      hideSplash();
+    }, SPLASH_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [hideSplash]);
 
   // Check authentication and onboarding status
   useEffect(() => {
     console.log('🔐 Initializing authentication check');
+
+    // Wrap getSession in a race against a 5 s timeout so a hung network call
+    // never blocks the splash indefinitely.
+    const getSessionWithTimeout = (): Promise<Awaited<ReturnType<typeof supabase.auth.getSession>>> => {
+      return Promise.race([
+        supabase.auth.getSession(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('getSession timed out after 5 s')), 5000)
+        ),
+      ]);
+    };
     
     const checkAuth = async () => {
       try {
         console.log('🔍 Fetching current session from storage...');
-        const sessionResult = await supabase.auth.getSession();
+        const sessionResult = await getSessionWithTimeout();
         
         if (sessionResult.error) {
           console.error('❌ Error fetching session:', sessionResult.error);
           setUser(null);
           setNeedsOnboarding(true);
-          setIsCheckingAuth(false);
           return;
         }
 
@@ -223,6 +261,7 @@ export default function RootLayout() {
         setNeedsOnboarding(true);
       } finally {
         console.log('✅ Auth check complete, setting isCheckingAuth to false');
+        initialCheckDone.current = true;
         setIsCheckingAuth(false);
       }
     };
@@ -240,35 +279,51 @@ export default function RootLayout() {
         console.log('👤 No user in auth change event');
       }
 
+      // INITIAL_SESSION fires concurrently with checkAuth — ignore it here so
+      // we don't re-block the splash after checkAuth already finished.
+      if (event === 'INITIAL_SESSION') {
+        console.log('🔄 Initial session event - already handled by checkAuth, skipping');
+        return;
+      }
+
       setUser(currentUser);
 
       if (currentUser && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
-        // Set checking auth to true while we verify churches
-        setIsCheckingAuth(true);
-        
-        // Add a delay to ensure database operations have completed
-        console.log('⏳ Waiting for database to settle after sign in...');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Check for churches with retry logic
-        console.log('🏛️ Checking churches after auth change...');
-        const hasChurches = await checkUserHasChurches(currentUser.id, currentUser.email);
-        
-        console.log('🏛️ Auth change - User has churches:', hasChurches);
-        setNeedsOnboarding(!hasChurches);
-        setIsCheckingAuth(false);
-        
-        // If user has churches, redirect to app
-        if (hasChurches) {
-          console.log('✅ User has churches, will redirect to app');
+        // Only block the splash on SIGNED_IN if the initial check hasn't finished yet.
+        // After startup, we update state in the background without re-blocking.
+        const blockSplash = !initialCheckDone.current;
+        if (blockSplash) {
+          setIsCheckingAuth(true);
+        }
+
+        try {
+          // Add a delay to ensure database operations have completed
+          console.log('⏳ Waiting for database to settle after sign in...');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Check for churches with retry logic
+          console.log('🏛️ Checking churches after auth change...');
+          const hasChurches = await checkUserHasChurches(currentUser.id, currentUser.email);
+          
+          console.log('🏛️ Auth change - User has churches:', hasChurches);
+          setNeedsOnboarding(!hasChurches);
+
+          if (hasChurches) {
+            console.log('✅ User has churches, will redirect to app');
+          }
+        } catch (error) {
+          console.error('❌ Error checking churches after auth change:', error);
+          setNeedsOnboarding(true);
+        } finally {
+          if (blockSplash) {
+            initialCheckDone.current = true;
+            setIsCheckingAuth(false);
+          }
         }
       } else if (!currentUser && (event === 'SIGNED_OUT' || event === 'USER_DELETED')) {
         console.log('🚪 User signed out or deleted');
         setNeedsOnboarding(true);
         setIsCheckingAuth(false);
-      } else if (event === 'INITIAL_SESSION') {
-        console.log('🔄 Initial session event - already handled by checkAuth');
-        // Don't change state here, let the initial checkAuth handle it
       }
     });
 
