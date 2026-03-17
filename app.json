@@ -66,13 +66,9 @@
       [
         "expo-notifications",
         {
-          "mode": "production",
-          "icon": "./assets/icon.png",
+          "icon": "./assets/notification-icon.png",
           "color": "#1a2332",
-          "sounds": [],
-          "androidMode": "default",
-          "androidCollapsedTitle": "Music Ministry",
-          "iosDisplayInForeground": true
+          "defaultChannel": "default"
         }
       ],
       [

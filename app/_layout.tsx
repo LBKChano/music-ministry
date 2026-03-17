@@ -347,7 +347,11 @@ export default function RootLayout() {
     }
   }, [networkState.isConnected, networkState.isInternetReachable]);
 
-  if (!loaded) {
+  // While fonts are loading OR auth check is still in progress, render nothing
+  // visible (splash screen is still showing). This prevents the blank/white
+  // screen flash on Android after a force-close where the JS bundle loads but
+  // the navigation guard hasn't fired yet.
+  if (!loaded || isCheckingAuth) {
     return null;
   }
 
