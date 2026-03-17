@@ -601,33 +601,39 @@ export default function ChurchScreen() {
       });
 
       // OPTIMIZATION 2: Fetch ALL unavailability in a single query
-      console.log('Fetching all member unavailability in one query...');
-      const { data: allUnavailability, error: unavailError } = await supabase
-        .from('member_unavailability')
-        .select('member_id, unavailable_date')
-        .in('member_id', members.map(m => m.id));
+      // Include all member IDs; guard against empty array to avoid Supabase .in() error
+      const memberIds = members.map(m => m.id);
+      console.log('Fetching all member unavailability in one query for', memberIds.length, 'members...');
 
-      if (unavailError) {
-        console.error('Error fetching unavailability:', unavailError);
-        Alert.alert('Error', 'Failed to fetch member availability');
-        setIsAutoAssigning(false);
-        return;
-      }
-
-      // Build unavailability map
       const memberUnavailability: { [memberId: string]: Set<string> } = {};
       members.forEach(member => {
         memberUnavailability[member.id] = new Set();
       });
-      
-      (allUnavailability || []).forEach(unavail => {
-        if (!memberUnavailability[unavail.member_id]) {
-          memberUnavailability[unavail.member_id] = new Set();
-        }
-        memberUnavailability[unavail.member_id].add(unavail.unavailable_date);
-      });
 
-      console.log('Unavailability data loaded for', members.length, 'members');
+      if (memberIds.length > 0) {
+        const { data: allUnavailability, error: unavailError } = await supabase
+          .from('member_unavailability')
+          .select('member_id, unavailable_date')
+          .in('member_id', memberIds);
+
+        if (unavailError) {
+          console.error('Error fetching unavailability:', unavailError);
+          Alert.alert('Error', 'Failed to fetch member availability');
+          setIsAutoAssigning(false);
+          return;
+        }
+
+        (allUnavailability || []).forEach(unavail => {
+          if (!memberUnavailability[unavail.member_id]) {
+            memberUnavailability[unavail.member_id] = new Set();
+          }
+          memberUnavailability[unavail.member_id].add(unavail.unavailable_date);
+        });
+
+        console.log('Unavailability data loaded:', (allUnavailability || []).length, 'unavailability records for', memberIds.length, 'members');
+      } else {
+        console.log('No members found, skipping unavailability fetch');
+      }
 
       // OPTIMIZATION 3: Track assignment counts
       const assignmentCounts: { [memberId: string]: number } = {};
@@ -2212,7 +2218,98 @@ export default function ChurchScreen() {
                 </>
               )}
 
-              {prepareQuarterStep === 'special' && (
+              {prepareQuarterStep === 'special' && showAddSpecialService && (
+                <View>
+                  <Text style={[styles.modalTitle, { color: colors.text, fontSize: 20, marginBottom: 16 }]}>Add Special Service</Text>
+                  <Text style={[styles.label, { color: colors.text }]}>Service Name</Text>
+                  <TextInput
+                    style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.cardBackground }]}
+                    placeholder="e.g. Christmas Service"
+                    placeholderTextColor={colors.textSecondary}
+                    value={specialServiceName}
+                    onChangeText={setSpecialServiceName}
+                  />
+                  <Text style={[styles.label, { color: colors.text }]}>Date</Text>
+                  <TouchableOpacity
+                    style={[styles.dateButton, { backgroundColor: colors.cardBackground, borderColor: colors.border, borderWidth: 1 }]}
+                    onPress={() => setShowSpecialServiceDatePicker(true)}
+                  >
+                    <Text style={[styles.dateButtonText, { color: colors.text }]}>
+                      {formatDate(specialServiceDate.toISOString())}
+                    </Text>
+                  </TouchableOpacity>
+                  {showSpecialServiceDatePicker && (
+                    <DateTimePicker
+                      value={specialServiceDate}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={(event, date) => {
+                        setShowSpecialServiceDatePicker(false);
+                        if (date) setSpecialServiceDate(date);
+                      }}
+                    />
+                  )}
+                  <Text style={[styles.label, { color: colors.text }]}>Time</Text>
+                  <TouchableOpacity
+                    style={[styles.dateButton, { backgroundColor: colors.cardBackground, borderColor: colors.border, borderWidth: 1 }]}
+                    onPress={() => setShowSpecialServiceTimePicker(true)}
+                  >
+                    <Text style={[styles.dateButtonText, { color: colors.text }]}>
+                      {formatTime(formatTimeForDatabase(specialServiceTime))}
+                    </Text>
+                  </TouchableOpacity>
+                  {showSpecialServiceTimePicker && (
+                    <DateTimePicker
+                      value={specialServiceTime}
+                      mode="time"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={(event, time) => {
+                        setShowSpecialServiceTimePicker(false);
+                        if (time) setSpecialServiceTime(time);
+                      }}
+                    />
+                  )}
+                  <Text style={[styles.label, { color: colors.text }]}>Notes (optional)</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.border, backgroundColor: colors.cardBackground }]}
+                    placeholder="Any special notes..."
+                    placeholderTextColor={colors.textSecondary}
+                    value={specialServiceNotes}
+                    onChangeText={setSpecialServiceNotes}
+                    multiline
+                  />
+                  <Text style={[styles.label, { color: colors.text }]}>Roles</Text>
+                  <View style={styles.roleCheckboxContainer}>
+                    {churchRoles.map(role => {
+                      const isSelected = specialServiceRoles.includes(role.id);
+                      return (
+                        <TouchableOpacity
+                          key={role.id}
+                          style={[styles.roleCheckbox, { borderColor: isSelected ? colors.primary : colors.border, backgroundColor: isSelected ? colors.primary : colors.cardBackground }]}
+                          onPress={() => toggleSpecialServiceRole(role.id)}
+                        >
+                          <Text style={[styles.roleCheckboxText, { color: isSelected ? '#fff' : colors.text }]}>{role.name}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.primary, marginTop: 20 }]} onPress={handleAddSpecialService}>
+                    <Text style={[styles.primaryButtonText]}>Add Service</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.secondaryButton, { backgroundColor: '#e0e0e0', marginTop: 12 }]} onPress={() => {
+                    console.log('User cancelled Add Special Service form');
+                    setShowAddSpecialService(false);
+                    setSpecialServiceName('');
+                    setSpecialServiceTime(new Date());
+                    setSpecialServiceNotes('');
+                    setSpecialServiceRoles([]);
+                    setSpecialServiceDate(new Date());
+                  }}>
+                    <Text style={[styles.secondaryButtonText, { color: colors.text }]}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {prepareQuarterStep === 'special' && !showAddSpecialService && (
                 <>
                   <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>Special Services</Text>
                   <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 12 }]}>
@@ -2250,7 +2347,10 @@ export default function ChurchScreen() {
                   })}
                   <TouchableOpacity
                     style={{ marginTop: 12, marginBottom: 20 }}
-                    onPress={() => setShowAddSpecialService(true)}
+                    onPress={() => {
+                      console.log('User tapped Add Special Service button');
+                      setShowAddSpecialService(true);
+                    }}
                   >
                     <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '600' }}>+ Add Special Service</Text>
                   </TouchableOpacity>
@@ -2289,8 +2389,8 @@ export default function ChurchScreen() {
         </View>
       </Modal>
 
-      {/* Add Special Service Modal */}
-      <Modal visible={showAddSpecialService} animationType="slide" transparent>
+      {/* Add Special Service - rendered inline inside Prepare Quarter modal to avoid nested Modal issues */}
+      <Modal visible={false} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <ScrollView contentContainerStyle={styles.modalScrollContent}>
             <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff', maxWidth: 500 }]}>
