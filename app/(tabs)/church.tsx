@@ -2401,8 +2401,7 @@ export default function ChurchScreen() {
       <Modal visible={showAdHocServiceModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <ScrollView contentContainerStyle={styles.modalScrollContent}>
-            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff', maxWidth: 500, maxHeight: '75%' }]}>
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff', maxWidth: 500 }]}>
               <Text style={[styles.modalTitle, { color: colors.text, fontSize: 22, marginBottom: 8 }]}>Add Single Service</Text>
               <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 16 }]}>
                 Create a one-time service that will appear in the Schedules tab and trigger reminder notifications
@@ -2896,7 +2895,6 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '90%',
     maxWidth: 400,
-    maxHeight: '85%',
     borderRadius: 16,
     padding: 24,
     shadowColor: '#000',
