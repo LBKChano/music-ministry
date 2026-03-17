@@ -95,6 +95,9 @@
       "eas": {
         "projectId": "a500e23e-d75d-44a5-bf0c-6baaf4d67839"
       }
+    },
+    "notification": {
+      "icon": "./assets/notification-icon.png"
     }
   }
 }
