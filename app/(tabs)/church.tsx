@@ -2242,7 +2242,7 @@ export default function ChurchScreen() {
                     <DateTimePicker
                       value={specialServiceDate}
                       mode="date"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      display="spinner"
                       onChange={(event, date) => {
                         setShowSpecialServiceDatePicker(false);
                         if (date) setSpecialServiceDate(date);
@@ -2262,7 +2262,7 @@ export default function ChurchScreen() {
                     <DateTimePicker
                       value={specialServiceTime}
                       mode="time"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      display="spinner"
                       onChange={(event, time) => {
                         setShowSpecialServiceTimePicker(false);
                         if (time) setSpecialServiceTime(time);
@@ -2419,7 +2419,7 @@ export default function ChurchScreen() {
                 <DateTimePicker
                   value={specialServiceDate}
                   mode="date"
-                  display="default"
+                  display="spinner"
                   onChange={(event, date) => {
                     console.log('User selected date:', date);
                     setShowSpecialServiceDatePicker(false);
@@ -2443,7 +2443,7 @@ export default function ChurchScreen() {
                 <DateTimePicker
                   value={specialServiceTime}
                   mode="time"
-                  display="default"
+                  display="spinner"
                   onChange={(event, date) => {
                     console.log('User selected time:', date);
                     setShowSpecialServiceTimePicker(false);
@@ -2530,7 +2530,7 @@ export default function ChurchScreen() {
                 <DateTimePicker
                   value={adHocServiceDate}
                   mode="date"
-                  display="default"
+                  display="spinner"
                   onChange={(event, date) => {
                     console.log('User selected ad-hoc date:', date);
                     setShowAdHocDatePicker(false);
@@ -2554,7 +2554,7 @@ export default function ChurchScreen() {
                 <DateTimePicker
                   value={adHocServiceTime}
                   mode="time"
-                  display="default"
+                  display="spinner"
                   onChange={(event, date) => {
                     console.log('User selected ad-hoc time:', date);
                     setShowAdHocTimePicker(false);

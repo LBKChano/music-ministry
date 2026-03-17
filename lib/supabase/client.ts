@@ -157,7 +157,8 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     persistSession: true,
     detectSessionInUrl: false,
     storageKey: 'supabase.auth.token',
-    // ANDROID FIX: Add flow type for better session handling
-    flowType: 'pkce',
+    // Use implicit flow for React Native — PKCE requires URL callback handling
+    // which is unreliable after Android force-close and causes session loss/crashes
+    flowType: 'implicit',
   },
 });
