@@ -42,7 +42,6 @@
       "versionCode": 10,
       "googleServicesFile": "./google-services.json",
       "permissions": [
-        "CAMERA",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
         "NOTIFICATIONS",
