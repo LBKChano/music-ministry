@@ -289,12 +289,12 @@ export default function RootLayout() {
       setUser(currentUser);
 
       if (currentUser && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
-        // Only block the splash on SIGNED_IN if the initial check hasn't finished yet.
-        // After startup, we update state in the background without re-blocking.
+        // Always block navigation guard while we re-check churches after a sign-in.
+        // Without this, useProtectedRoute sees user=set + needsOnboarding=true (stale)
+        // and immediately redirects back to /onboarding, undoing the login navigation.
         const blockSplash = !initialCheckDone.current;
-        if (blockSplash) {
-          setIsCheckingAuth(true);
-        }
+        console.log('🔒 Blocking navigation guard for church check (blockSplash:', blockSplash, ')');
+        setIsCheckingAuth(true);
 
         try {
           // Add a delay to ensure database operations have completed
@@ -315,10 +315,9 @@ export default function RootLayout() {
           console.error('❌ Error checking churches after auth change:', error);
           setNeedsOnboarding(true);
         } finally {
-          if (blockSplash) {
-            initialCheckDone.current = true;
-            setIsCheckingAuth(false);
-          }
+          initialCheckDone.current = true;
+          setIsCheckingAuth(false);
+          console.log('🔓 Navigation guard unblocked after church check');
         }
       } else if (!currentUser && (event === 'SIGNED_OUT' || event === 'USER_DELETED')) {
         console.log('🚪 User signed out or deleted');

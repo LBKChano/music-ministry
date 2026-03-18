@@ -149,16 +149,14 @@ export default function OnboardingScreen() {
       }
 
       console.log('Admin added as member successfully:', memberResult.data);
-      console.log('Account created successfully! Redirecting to app...');
+      console.log('Account created successfully! Auth state change will handle navigation.');
       
-      // Wait a moment for the database to settle
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Do NOT call router.replace here — the onAuthStateChange listener in _layout.tsx
+      // will set isCheckingAuth=true, verify churches, then set needsOnboarding=false,
+      // which triggers useProtectedRoute to navigate to /(tabs) safely.
+      // Calling router.replace while isCheckingAuth=true causes a blank screen on Android.
       
-      // Redirect to the app
-      console.log('Navigating to church homepage');
-      router.replace('/(tabs)');
-      
-      // Keep loading state true during redirect
+      // Keep loading state true — navigation guard will redirect
     } catch (err) {
       console.error('Error in onboarding:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -201,15 +199,13 @@ export default function OnboardingScreen() {
       }
 
       console.log('Admin logged in successfully! User ID:', signInResult.data.user?.id);
-      console.log('Redirecting to app...');
+      console.log('Auth state change will handle navigation to app.');
       
-      // Wait a moment for the session to be established
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Do NOT call router.replace here — the onAuthStateChange listener in _layout.tsx
+      // will set isCheckingAuth=true, verify churches, then set needsOnboarding=false,
+      // which triggers useProtectedRoute to navigate to /(tabs) safely.
       
-      // Redirect to the app
-      router.replace('/(tabs)');
-      
-      // Keep loading state true during redirect
+      // Keep loading state true — navigation guard will redirect
     } catch (err) {
       console.error('Error in admin login:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -241,15 +237,13 @@ export default function OnboardingScreen() {
         return;
       }
 
-      console.log('Member logged in successfully! Redirecting to app...');
+      console.log('Member logged in successfully! Auth state change will handle navigation.');
       
-      // Wait a moment for the session to be established
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Do NOT call router.replace here — the onAuthStateChange listener in _layout.tsx
+      // will set isCheckingAuth=true, verify churches, then set needsOnboarding=false,
+      // which triggers useProtectedRoute to navigate to /(tabs) safely.
       
-      // Redirect to the app
-      router.replace('/(tabs)');
-      
-      // Keep loading state true during redirect
+      // Keep loading state true — navigation guard will redirect
     } catch (err) {
       console.error('Error in member login:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -369,16 +363,13 @@ export default function OnboardingScreen() {
 
       console.log('Member successfully joined church:', churchData.name);
       console.log('Member data:', memberData);
-      console.log('Member account created successfully! Redirecting to app...');
+      console.log('Member account created successfully! Auth state change will handle navigation.');
       
-      // Wait a moment for the database to settle
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Do NOT call router.replace here — the onAuthStateChange listener in _layout.tsx
+      // will set isCheckingAuth=true, verify churches, then set needsOnboarding=false,
+      // which triggers useProtectedRoute to navigate to /(tabs) safely.
       
-      // Redirect to the app
-      console.log('Navigating to church homepage');
-      router.replace('/(tabs)');
-      
-      // Keep loading state true during redirect
+      // Keep loading state true — navigation guard will redirect
     } catch (err) {
       console.error('Unexpected error in member signup:', err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
