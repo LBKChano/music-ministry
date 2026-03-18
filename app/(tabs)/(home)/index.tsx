@@ -532,18 +532,18 @@ export default function HomeScreen() {
           const alreadyConfirmed = await AsyncStorage.getItem(storageKey);
           if (alreadyConfirmed !== 'true') {
             console.log('🔔 [Android] Sending first-time confirmation notification');
+            // channelId MUST be in content (not trigger) on Android 8+
             await Notifications.scheduleNotificationAsync({
               content: {
                 title: 'Notifications Enabled',
                 body: 'You will now receive service reminders and fill-in requests.',
                 sound: 'default',
-                // channelId is REQUIRED on Android — must match a created channel
-                data: { channelId: 'default' },
+                // Android requires channelId in content to route to the correct channel
+                ...(Platform.OS === 'android' ? { data: { channelId: 'default' } } : {}),
               },
-              trigger: {
-                channelId: 'default',
-                seconds: 1,
-              },
+              trigger: Platform.OS === 'android'
+                ? { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 1, channelId: 'default' }
+                : { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 1 },
             });
             await AsyncStorage.setItem(storageKey, 'true');
           }
