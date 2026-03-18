@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "239685316788",
+    "project_id": "music-ministry-ddfa0",
+    "storage_bucket": "music-ministry-ddfa0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:239685316788:android:8efc7b09e3ce9e5a4467e1",
+        "android_client_info": {
+          "package_name": "com.lbkchano.musicministry"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDUW0n0WUs5olaw-FYOlH1_-clmG-udyKE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
