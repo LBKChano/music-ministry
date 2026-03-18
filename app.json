@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.lbkchano.musicministry",
+      "bundleIdentifier": "com.a500e23ed75d44a5bf0c6baaf4d67839.app",
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
