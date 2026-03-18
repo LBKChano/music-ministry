@@ -507,17 +507,47 @@ export default function HomeScreen() {
           Constants.expoConfig?.extra?.eas?.projectId ??
           Constants.easConfig?.projectId;
 
+        console.log('🔔 [Android] Constants.expoConfig:', JSON.stringify(Constants.expoConfig?.extra));
+        console.log('🔔 [Android] Constants.easConfig:', JSON.stringify(Constants.easConfig));
+
         if (!projectId) {
-          console.warn('⚠️ [Android] No EAS project ID found — push tokens require an EAS build');
+          const msg = 'No EAS project ID found in Constants.expoConfig.extra.eas.projectId or Constants.easConfig.projectId';
+          console.warn('⚠️ [Android]', msg);
+          Alert.alert('Notification Setup Failed', msg, [{ text: 'OK' }]);
           return;
         }
 
         console.log('🔔 [Android] EAS Project ID:', projectId);
         console.log('🔔 [Android] Getting Expo push token...');
 
-        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-        const token = tokenData.data;
-        console.log('✅ [Android] Expo push token obtained:', token);
+        let token: string;
+        try {
+          const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+          token = tokenData.data;
+          console.log('✅ [Android] Expo push token obtained:', token);
+        } catch (expoTokenError: any) {
+          // Log every detail so we can see exactly what's failing
+          console.error('❌ [Android] getExpoPushTokenAsync failed:');
+          console.error('  message:', expoTokenError?.message);
+          console.error('  code:', expoTokenError?.code);
+          console.error('  full:', JSON.stringify(expoTokenError));
+          console.warn('⚠️ [Android] Falling back to getDevicePushTokenAsync...');
+
+          // Fallback: get the raw FCM token directly from the device
+          try {
+            const deviceTokenData = await Notifications.getDevicePushTokenAsync();
+            token = deviceTokenData.data as string;
+            console.log('✅ [Android] Device push token (FCM) obtained via fallback:', token);
+          } catch (deviceTokenError: any) {
+            console.error('❌ [Android] getDevicePushTokenAsync also failed:');
+            console.error('  message:', deviceTokenError?.message);
+            console.error('  code:', deviceTokenError?.code);
+            console.error('  full:', JSON.stringify(deviceTokenError));
+            throw new Error(
+              `Both token methods failed.\nExpo: ${expoTokenError?.message}\nDevice: ${deviceTokenError?.message}`
+            );
+          }
+        }
 
         // Register the token with Supabase
         console.log('🔔 [Android] Registering token with Supabase for member ID:', currentMember.id);
@@ -555,15 +585,15 @@ export default function HomeScreen() {
             [{ text: 'OK' }]
           );
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('❌ [Android] Error during push notification registration:', error);
-        if (error instanceof Error) {
-          console.error('[Android] Error message:', error.message);
-          console.error('[Android] Error stack:', error.stack);
-        }
+        console.error('[Android] Error message:', error?.message);
+        console.error('[Android] Error code:', error?.code);
+        console.error('[Android] Error stack:', error?.stack);
+        console.error('[Android] Full error JSON:', JSON.stringify(error));
         Alert.alert(
           'Notification Setup Failed',
-          'There was an error setting up notifications. Please check your device settings and try again.',
+          `Error: ${error?.message || JSON.stringify(error)}`,
           [{ text: 'OK' }]
         );
       }
