@@ -26,14 +26,12 @@ import {
   AppState,
 } from 'react-native';
 
-// ANDROID FIX: Configure notification handler with proper Android settings
+// Configure notification handler — controls foreground notification display on both platforms
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
-    // Android-specific: ensure notifications show even when app is in foreground
-    priority: Platform.OS === 'android' ? Notifications.AndroidNotificationPriority.HIGH : undefined,
   }),
 });
 
@@ -425,31 +423,21 @@ export default function HomeScreen() {
 
     const registerForPushNotifications = async () => {
       try {
-        // Check persisted flag first — skip entirely if already registered on this device
-        const storageKey = `push_token_registered_${currentMember.id}`;
-        const alreadyRegistered = await AsyncStorage.getItem(storageKey);
-        if (alreadyRegistered === 'true') {
-          console.log('🔔 Push token already registered for this member (persisted), skipping');
-          hasRegisteredThisSession.current = true;
-          return;
-        }
+        console.log('🔔 [Android] Starting push notification registration for member:', currentMember.id);
+        console.log('🔔 [Android] Platform:', Platform.OS);
+        console.log('🔔 [Android] Device type:', Device.isDevice ? 'Physical device' : 'Simulator/Emulator');
 
-        console.log('🔔 Starting push notification registration for member:', currentMember.id);
-        console.log('🔔 Platform:', Platform.OS);
-        console.log('🔔 Device type:', Device.isDevice ? 'Physical device' : 'Simulator/Emulator');
-        
         // Only register on physical devices
         if (!Device.isDevice) {
-          console.log('⚠️ Push notifications only work on physical devices, not simulators');
+          console.log('⚠️ [Android] Push notifications only work on physical devices, not simulators');
           return;
         }
 
-        // ANDROID FIX: Set up notification channel BEFORE requesting permissions
+        // CRITICAL: Create notification channels BEFORE requesting permissions on Android.
+        // Without a channel, notifications are silently dropped on Android 8+.
         if (Platform.OS === 'android') {
-          console.log('🔔 Setting up Android notification channels');
-          
+          console.log('🔔 [Android] Setting up notification channels');
           try {
-            // Create default channel
             await Notifications.setNotificationChannelAsync('default', {
               name: 'Default Notifications',
               importance: Notifications.AndroidImportance.MAX,
@@ -459,9 +447,8 @@ export default function HomeScreen() {
               enableVibrate: true,
               showBadge: true,
             });
-            console.log('✅ Default notification channel created');
+            console.log('✅ [Android] Default notification channel created');
 
-            // Create reminders channel
             await Notifications.setNotificationChannelAsync('reminders', {
               name: 'Service Reminders',
               importance: Notifications.AndroidImportance.HIGH,
@@ -471,9 +458,8 @@ export default function HomeScreen() {
               enableVibrate: true,
               showBadge: true,
             });
-            console.log('✅ Reminders notification channel created');
+            console.log('✅ [Android] Reminders notification channel created');
 
-            // Create fill-in requests channel
             await Notifications.setNotificationChannelAsync('fill-in-requests', {
               name: 'Fill-In Requests',
               importance: Notifications.AndroidImportance.HIGH,
@@ -483,28 +469,29 @@ export default function HomeScreen() {
               enableVibrate: true,
               showBadge: true,
             });
-            console.log('✅ Fill-in requests notification channel created');
+            console.log('✅ [Android] Fill-in requests notification channel created');
           } catch (channelError) {
-            console.error('❌ Error creating notification channels:', channelError);
+            console.error('❌ [Android] Error creating notification channels:', channelError);
+            // Continue — channels may already exist from a previous run
           }
         }
-        
+
         // Request permissions
-        console.log('🔔 Requesting notification permissions...');
+        console.log('🔔 [Android] Requesting notification permissions...');
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        console.log('🔔 Existing permission status:', existingStatus);
-        
+        console.log('🔔 [Android] Existing permission status:', existingStatus);
+
         let finalStatus = existingStatus;
-        
+
         if (existingStatus !== 'granted') {
-          console.log('🔔 Permissions not granted, requesting...');
+          console.log('🔔 [Android] Permissions not granted, requesting...');
           const { status } = await Notifications.requestPermissionsAsync();
           finalStatus = status;
-          console.log('🔔 Permission request result:', status);
+          console.log('🔔 [Android] Permission request result:', status);
         }
-        
+
         if (finalStatus !== 'granted') {
-          console.log('⚠️ Push notification permissions not granted by user');
+          console.log('⚠️ [Android] Push notification permissions not granted by user');
           Alert.alert(
             'Notifications Disabled',
             'Please enable notifications in your device settings to receive service reminders and fill-in requests.',
@@ -513,54 +500,55 @@ export default function HomeScreen() {
           return;
         }
 
-        console.log('✅ Permissions granted, getting project ID...');
+        console.log('✅ [Android] Permissions granted, getting project ID...');
 
-        // Get the project ID from app.json via Constants
-        const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+        // Get the project ID — required by getExpoPushTokenAsync
+        const projectId =
+          Constants.expoConfig?.extra?.eas?.projectId ??
+          Constants.easConfig?.projectId;
 
         if (!projectId) {
-          console.log('⚠️ No EAS project ID found in app.json');
-          console.log('⚠️ Push notifications will be enabled after the first EAS build');
+          console.warn('⚠️ [Android] No EAS project ID found — push tokens require an EAS build');
           return;
         }
 
-        console.log('🔔 EAS Project ID found:', projectId);
-        console.log('🔔 Getting Expo push token...');
+        console.log('🔔 [Android] EAS Project ID:', projectId);
+        console.log('🔔 [Android] Getting Expo push token...');
 
-        // Get the Expo push token
-        const tokenData = await Notifications.getExpoPushTokenAsync({
-          projectId: projectId,
-        });
-        
+        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
         const token = tokenData.data;
-        console.log('✅ Successfully obtained Expo push token:', token);
+        console.log('✅ [Android] Expo push token obtained:', token);
 
         // Register the token with Supabase
-        console.log('🔔 Registering token with Supabase for member ID:', currentMember.id);
+        console.log('🔔 [Android] Registering token with Supabase for member ID:', currentMember.id);
         const success = await registerPushToken(currentMember.id, token, Platform.OS);
-        
-        if (success) {
-          console.log('✅ Push token registered successfully in database');
 
-          // Persist registration flag so we never show the confirmation notification again
-          await AsyncStorage.setItem(storageKey, 'true');
+        if (success) {
+          console.log('✅ [Android] Push token registered successfully in database');
           hasRegisteredThisSession.current = true;
 
-          // ANDROID FIX: Test notification to verify setup (only first time)
-          if (Platform.OS === 'android') {
-            console.log('🔔 Sending test notification to verify Android setup');
+          // Check persisted flag — only show the confirmation notification the first time
+          const storageKey = `push_token_confirmed_${currentMember.id}`;
+          const alreadyConfirmed = await AsyncStorage.getItem(storageKey);
+          if (alreadyConfirmed !== 'true') {
+            console.log('🔔 [Android] Sending first-time confirmation notification');
             await Notifications.scheduleNotificationAsync({
               content: {
-                title: 'Notifications Enabled ✅',
-                body: 'You will now receive service reminders and fill-in requests',
+                title: 'Notifications Enabled',
+                body: 'You will now receive service reminders and fill-in requests.',
                 sound: 'default',
-                priority: Notifications.AndroidNotificationPriority.HIGH,
+                // channelId is REQUIRED on Android — must match a created channel
+                data: { channelId: 'default' },
               },
-              trigger: null, // Send immediately
+              trigger: {
+                channelId: 'default',
+                seconds: 1,
+              },
             });
+            await AsyncStorage.setItem(storageKey, 'true');
           }
         } else {
-          console.error('❌ Failed to register push token in database');
+          console.error('❌ [Android] Failed to register push token in database');
           Alert.alert(
             'Registration Failed',
             'Failed to register for notifications. Please try again later.',
@@ -568,13 +556,11 @@ export default function HomeScreen() {
           );
         }
       } catch (error) {
-        console.error('❌ Error during push notification registration:', error);
+        console.error('❌ [Android] Error during push notification registration:', error);
         if (error instanceof Error) {
-          console.error('Error message:', error.message);
-          console.error('Error stack:', error.stack);
+          console.error('[Android] Error message:', error.message);
+          console.error('[Android] Error stack:', error.stack);
         }
-        
-        // Show user-friendly error message
         Alert.alert(
           'Notification Setup Failed',
           'There was an error setting up notifications. Please check your device settings and try again.',

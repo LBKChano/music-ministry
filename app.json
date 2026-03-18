@@ -40,6 +40,7 @@
       },
       "package": "com.lbkchano.musicministry",
       "versionCode": 10,
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
@@ -53,6 +54,11 @@
         "image": "./assets/images/9b11f806-5921-4e61-9383-a3f7e125c18f.png",
         "resizeMode": "cover",
         "backgroundColor": "#1a2332"
+      },
+      "notification": {
+        "icon": "./assets/notification-icon.png",
+        "color": "#1a2332",
+        "androidMode": "default"
       }
     },
     "web": {

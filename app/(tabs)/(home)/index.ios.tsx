@@ -26,20 +26,18 @@ import {
   AppState,
 } from 'react-native';
 
-// Configure notification handler for iOS - CRITICAL for iOS notifications
+// Configure notification handler for iOS — controls foreground notification display
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
-    console.log('🔔 iOS Notification Handler called:', {
+    console.log('🔔 [iOS] Notification Handler called:', {
       title: notification.request.content.title,
       body: notification.request.content.body,
       data: notification.request.content.data,
     });
-    
     return {
       shouldShowAlert: true,
       shouldPlaySound: true,
       shouldSetBadge: false,
-      priority: Notifications.AndroidNotificationPriority.MAX,
     };
   },
 });
@@ -492,12 +490,13 @@ export default function HomeScreen() {
 
         console.log('✅ [iOS] Permissions granted, getting project ID...');
 
-        // Get the project ID from app.json via Constants
-        const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+        // Get the project ID — required by getExpoPushTokenAsync
+        const projectId =
+          Constants.expoConfig?.extra?.eas?.projectId ??
+          Constants.easConfig?.projectId;
 
         if (!projectId) {
-          console.log('⚠️ [iOS] No EAS project ID found in app.json');
-          console.log('⚠️ [iOS] Push notifications will be enabled after the first EAS build');
+          console.warn('⚠️ [iOS] No EAS project ID found — push tokens require an EAS build');
           Alert.alert(
             'Setup Required',
             'Push notifications require an EAS build. They will work after your first build is complete.',
@@ -506,13 +505,11 @@ export default function HomeScreen() {
           return;
         }
 
-        console.log('🔔 [iOS] EAS Project ID found:', projectId);
+        console.log('🔔 [iOS] EAS Project ID:', projectId);
         console.log('🔔 [iOS] Getting Expo push token...');
 
         // Get the Expo push token
-        const tokenData = await Notifications.getExpoPushTokenAsync({
-          projectId: projectId,
-        });
+        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
         
         const token = tokenData.data;
         console.log('✅ [iOS] Successfully obtained Expo push token:', token);
