@@ -31,29 +31,34 @@ function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: 
   const segments = useSegments();
   const router = useRouter();
   const [hasNavigated, setHasNavigated] = useState(false);
+  const prevIsCheckingAuth = React.useRef(isCheckingAuth);
 
   useEffect(() => {
-    // Don't navigate while still checking auth
+    // When isCheckingAuth transitions from true -> false, reset the navigation flag
+    if (prevIsCheckingAuth.current === true && isCheckingAuth === false) {
+      console.log('🔄 isCheckingAuth flipped to false — resetting hasNavigated');
+      setHasNavigated(false);
+    }
+    prevIsCheckingAuth.current = isCheckingAuth;
+  }, [isCheckingAuth]);
+
+  useEffect(() => {
     if (isCheckingAuth) {
       console.log('⏳ Still checking auth, waiting...');
       return;
     }
 
-    console.log('🛡️ Protected route check:', { 
-      user: !!user, 
-      needsOnboarding, 
+    console.log('🛡️ Protected route check:', {
+      user: !!user,
+      needsOnboarding,
       segments: segments.join('/'),
       hasNavigated,
     });
-    
-    const inOnboarding = segments[0] === 'onboarding';
-    const inTabs = segments[0] === '(tabs)';
 
-    // If user needs onboarding and not on onboarding screen, redirect
+    const inOnboarding = segments[0] === 'onboarding';
+
     if (needsOnboarding && !inOnboarding) {
       console.log('🔀 User needs onboarding, redirecting...');
-      // Use setTimeout to ensure navigation happens after layout is mounted
-      // Only navigate once to prevent loops
       if (!hasNavigated) {
         setHasNavigated(true);
         setTimeout(() => {
@@ -66,9 +71,7 @@ function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: 
           }
         }, 100);
       }
-    } 
-    // If user doesn't need onboarding and is on onboarding screen, redirect to app
-    else if (!needsOnboarding && inOnboarding) {
+    } else if (!needsOnboarding && inOnboarding) {
       console.log('🔀 User has churches, redirecting to app...');
       if (!hasNavigated) {
         setHasNavigated(true);
@@ -83,7 +86,6 @@ function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: 
         }, 100);
       }
     } else {
-      // Reset navigation flag when we're on the correct screen
       if (hasNavigated) {
         console.log('✅ On correct screen, resetting navigation flag');
         setHasNavigated(false);
@@ -288,23 +290,18 @@ export default function RootLayout() {
 
       setUser(currentUser);
 
-      if (currentUser && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
-        // Always block navigation guard while we re-check churches after a sign-in.
-        // Without this, useProtectedRoute sees user=set + needsOnboarding=true (stale)
-        // and immediately redirects back to /onboarding, undoing the login navigation.
-        const blockSplash = !initialCheckDone.current;
-        console.log('🔒 Blocking navigation guard for church check (blockSplash:', blockSplash, ')');
+      if (currentUser && event === 'SIGNED_IN') {
+        // Full church check only on actual sign-in
+        console.log('🔒 SIGNED_IN — blocking navigation guard for church check');
         setIsCheckingAuth(true);
 
         try {
-          // Add a delay to ensure database operations have completed
           console.log('⏳ Waiting for database to settle after sign in...');
           await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // Check for churches with retry logic
+
           console.log('🏛️ Checking churches after auth change...');
           const hasChurches = await checkUserHasChurches(currentUser.id, currentUser.email);
-          
+
           console.log('🏛️ Auth change - User has churches:', hasChurches);
           setNeedsOnboarding(!hasChurches);
 
@@ -318,6 +315,15 @@ export default function RootLayout() {
           initialCheckDone.current = true;
           setIsCheckingAuth(false);
           console.log('🔓 Navigation guard unblocked after church check');
+        }
+      } else if (currentUser && event === 'TOKEN_REFRESHED') {
+        // Just update user, don't re-check churches or block navigation
+        // The session is still valid, user is still logged in
+        console.log('🔄 Token refreshed, keeping current auth state');
+        if (!initialCheckDone.current) {
+          // Only unblock if initial check hasn't run yet
+          setIsCheckingAuth(false);
+          initialCheckDone.current = true;
         }
       } else if (!currentUser && (event === 'SIGNED_OUT' || event === 'USER_DELETED')) {
         console.log('🚪 User signed out or deleted');

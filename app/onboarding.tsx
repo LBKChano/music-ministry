@@ -149,14 +149,10 @@ export default function OnboardingScreen() {
       }
 
       console.log('Admin added as member successfully:', memberResult.data);
-      console.log('Account created successfully! Auth state change will handle navigation.');
+      console.log('Church and admin account created successfully, navigating to app');
       
-      // Do NOT call router.replace here — the onAuthStateChange listener in _layout.tsx
-      // will set isCheckingAuth=true, verify churches, then set needsOnboarding=false,
-      // which triggers useProtectedRoute to navigate to /(tabs) safely.
-      // Calling router.replace while isCheckingAuth=true causes a blank screen on Android.
-      
-      // Keep loading state true — navigation guard will redirect
+      setLoading(false);
+      router.replace('/(tabs)');
     } catch (err) {
       console.error('Error in onboarding:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -363,13 +359,10 @@ export default function OnboardingScreen() {
 
       console.log('Member successfully joined church:', churchData.name);
       console.log('Member data:', memberData);
-      console.log('Member account created successfully! Auth state change will handle navigation.');
-      
-      // Do NOT call router.replace here — the onAuthStateChange listener in _layout.tsx
-      // will set isCheckingAuth=true, verify churches, then set needsOnboarding=false,
-      // which triggers useProtectedRoute to navigate to /(tabs) safely.
-      
-      // Keep loading state true — navigation guard will redirect
+      console.log('Member account created successfully, navigating to app');
+
+      setLoading(false);
+      router.replace('/(tabs)');
     } catch (err) {
       console.error('Unexpected error in member signup:', err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
