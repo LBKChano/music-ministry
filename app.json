@@ -31,6 +31,12 @@
         "image": "./assets/images/9b11f806-5921-4e61-9383-a3f7e125c18f.png",
         "resizeMode": "cover",
         "backgroundColor": "#1a2332"
+      },
+      "entitlements": {
+        "aps-environment": "production",
+        "com.apple.security.application-groups": [
+          "group.com.a500e23ed75d44a5bf0c6baaf4d67839.app.onesignal"
+        ]
       }
     },
     "android": {
@@ -67,6 +73,12 @@
       "bundler": "metro"
     },
     "plugins": [
+      [
+        "onesignal-expo-plugin",
+        {
+          "mode": "production"
+        }
+      ],
       "expo-font",
       "expo-router",
       "expo-web-browser",
@@ -97,7 +109,8 @@
       "backendUrl": "https://nucffxkqp3vv9chpnxeb3a3fcnb99vdb.app.specular.dev",
       "eas": {
         "projectId": "a500e23e-d75d-44a5-bf0c-6baaf4d67839"
-      }
+      },
+      "oneSignalAppId": "8b605bf5-c7ff-424c-ab10-5ef6ce58cebd"
     },
     "notification": {
       "icon": "./assets/notification-icon.png"

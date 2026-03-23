@@ -16,6 +16,7 @@ import {
 } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
+import { NotificationProvider } from "@/contexts/NotificationContext";
 import { supabase } from "@/lib/supabase/client";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
@@ -386,7 +387,8 @@ export default function RootLayout() {
   };
 
   return (
-    <>
+    <NotificationProvider>
+      <>
       <StatusBar style="auto" animated />
       <ThemeProvider
         value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
@@ -403,5 +405,6 @@ export default function RootLayout() {
         </WidgetProvider>
       </ThemeProvider>
     </>
+    </NotificationProvider>
   );
 }

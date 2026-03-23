@@ -1352,9 +1352,9 @@ export function useChurch() {
     }
   }, [fetchFillInRequests]);
 
-  // Register push token - FIXED: Use correct column name 'token' instead of 'expo_push_token'
+  // Register OneSignal player ID (push subscription ID) in push_tokens table
   const registerPushToken = useCallback(async (memberId: string, pushToken: string, deviceType?: string) => {
-    console.log('Registering push token for member:', memberId);
+    console.log('[OneSignal] Registering push token (player ID) for member:', memberId, 'device:', deviceType);
     try {
       setError(null);
 

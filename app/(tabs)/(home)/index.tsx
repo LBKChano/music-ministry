@@ -1,8 +1,7 @@
 
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useChurch } from '@/hooks/useChurch';
+import { useNotifications } from '@/contexts/NotificationContext';
+import { NotificationBell } from "@/components/NotificationBell";
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors } from '@/styles/commonStyles';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -10,7 +9,6 @@ import { Stack } from 'expo-router';
 import { useServices } from '@/hooks/useServices';
 import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
-import Constants from 'expo-constants';
 import {
   StyleSheet,
   View,
@@ -23,17 +21,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
-  AppState,
 } from 'react-native';
-
-// Configure notification handler — controls foreground notification display on both platforms
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
 
 interface SpecialService {
   id: string;
@@ -394,259 +382,67 @@ export default function HomeScreen() {
     refreshMembers,
   } = useChurch();
 
-  // Track if we've already registered for this session to avoid duplicate test notifications
+  // OneSignal notification context — replaces expo-notifications push token logic
+  const { requestPermission, oneSignalPlayerId, hasPermission } = useNotifications();
+
+  // Track if we've already registered the OneSignal player ID for this member
   const hasRegisteredThisSession = useRef(false);
 
-  // Clear badge count on mount and whenever the app becomes active
-  useEffect(() => {
-    Notifications.setBadgeCountAsync(0);
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        Notifications.setBadgeCountAsync(0);
-      }
-    });
-    return () => subscription.remove();
-  }, []);
-
-  // ANDROID FIX: Enhanced push notification registration with better error handling
+  // Register OneSignal player ID with Supabase push_tokens table
   useEffect(() => {
     if (!currentMember) {
-      console.log('No current member, skipping push notification registration');
+      console.log('[OneSignal] No current member, skipping push token registration');
       return;
     }
 
-    // Skip if already registered this session (in-memory fast path)
     if (hasRegisteredThisSession.current) {
-      console.log('🔔 Already registered for push notifications this session, skipping');
+      console.log('[OneSignal] Already registered push token this session, skipping');
       return;
     }
 
-    const registerForPushNotifications = async () => {
+    const registerOneSignalToken = async () => {
       try {
-        // Check persisted flag first — skip entirely if already registered on this device
-        const storageKey = `push_token_registered_${currentMember.id}`;
-        const alreadyRegistered = await AsyncStorage.getItem(storageKey);
-        if (alreadyRegistered === 'true') {
-          console.log('🔔 [Android] Push token already registered for this member (persisted), skipping');
-          hasRegisteredThisSession.current = true;
+        console.log('[OneSignal] Starting push notification setup for member:', currentMember.id);
+
+        // Request permission via OneSignal (handles both iOS and Android)
+        let permissionGranted = hasPermission;
+        if (!permissionGranted) {
+          console.log('[OneSignal] Requesting notification permission...');
+          permissionGranted = await requestPermission();
+          console.log('[OneSignal] Permission result:', permissionGranted);
+        }
+
+        if (!permissionGranted) {
+          console.log('[OneSignal] Notification permission not granted, skipping token registration');
           return;
         }
 
-        console.log('🔔 [Android] Starting push notification registration for member:', currentMember.id);
-        console.log('🔔 [Android] Platform:', Platform.OS);
-        console.log('🔔 [Android] Device type:', Device.isDevice ? 'Physical device' : 'Simulator/Emulator');
-
-        // Only register on physical devices
-        if (!Device.isDevice) {
-          console.log('⚠️ [Android] Push notifications only work on physical devices, not simulators');
+        // Wait for player ID to become available (may take a moment after permission grant)
+        let playerId = oneSignalPlayerId;
+        if (!playerId) {
+          console.log('[OneSignal] Player ID not yet available, waiting...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          // Re-read from context won't work here — we rely on the effect re-running
+          // when oneSignalPlayerId updates in context
           return;
         }
 
-        // CRITICAL: Create notification channels BEFORE requesting permissions on Android.
-        // Without a channel, notifications are silently dropped on Android 8+.
-        if (Platform.OS === 'android') {
-          console.log('🔔 [Android] Setting up notification channels');
-          try {
-            await Notifications.setNotificationChannelAsync('default', {
-              name: 'Default Notifications',
-              importance: Notifications.AndroidImportance.MAX,
-              vibrationPattern: [0, 250, 250, 250],
-              lightColor: '#1a2332',
-              sound: 'default',
-              enableVibrate: true,
-              showBadge: true,
-            });
-            console.log('✅ [Android] Default notification channel created');
-
-            await Notifications.setNotificationChannelAsync('reminders', {
-              name: 'Service Reminders',
-              importance: Notifications.AndroidImportance.HIGH,
-              vibrationPattern: [0, 500, 250, 500],
-              lightColor: '#1a2332',
-              sound: 'default',
-              enableVibrate: true,
-              showBadge: true,
-            });
-            console.log('✅ [Android] Reminders notification channel created');
-
-            await Notifications.setNotificationChannelAsync('fill-in-requests', {
-              name: 'Fill-In Requests',
-              importance: Notifications.AndroidImportance.HIGH,
-              vibrationPattern: [0, 250, 250, 250],
-              lightColor: '#1a2332',
-              sound: 'default',
-              enableVibrate: true,
-              showBadge: true,
-            });
-            console.log('✅ [Android] Fill-in requests notification channel created');
-          } catch (channelError) {
-            console.error('❌ [Android] Error creating notification channels:', channelError);
-            // Continue — channels may already exist from a previous run
-          }
-        }
-
-        // Request permissions
-        console.log('🔔 [Android] Requesting notification permissions...');
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        console.log('🔔 [Android] Existing permission status:', existingStatus);
-
-        let finalStatus = existingStatus;
-
-        if (existingStatus !== 'granted') {
-          console.log('🔔 [Android] Permissions not granted, requesting...');
-          const { status } = await Notifications.requestPermissionsAsync();
-          finalStatus = status;
-          console.log('🔔 [Android] Permission request result:', status);
-        }
-
-        if (finalStatus !== 'granted') {
-          console.log('⚠️ [Android] Push notification permissions not granted by user');
-          Alert.alert(
-            'Notifications Disabled',
-            'Please enable notifications in your device settings to receive service reminders and fill-in requests.',
-            [{ text: 'OK' }]
-          );
-          return;
-        }
-
-        console.log('✅ [Android] Permissions granted, getting project ID...');
-
-        // Get the project ID — required by getExpoPushTokenAsync
-        const projectId =
-          Constants.expoConfig?.extra?.eas?.projectId ??
-          Constants.easConfig?.projectId;
-
-        console.log('🔔 [Android] Constants.expoConfig:', JSON.stringify(Constants.expoConfig?.extra));
-        console.log('🔔 [Android] Constants.easConfig:', JSON.stringify(Constants.easConfig));
-
-        if (!projectId) {
-          const msg = 'No EAS project ID found in Constants.expoConfig.extra.eas.projectId or Constants.easConfig.projectId';
-          console.warn('⚠️ [Android]', msg);
-          Alert.alert('Notification Setup Failed', msg, [{ text: 'OK' }]);
-          return;
-        }
-
-        console.log('🔔 [Android] EAS Project ID:', projectId);
-        console.log('🔔 [Android] Getting Expo push token...');
-
-        let token: string;
-        try {
-          const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-          token = tokenData.data;
-          console.log('✅ [Android] Expo push token obtained:', token);
-        } catch (expoTokenError: any) {
-          // Log every detail so we can see exactly what's failing
-          console.error('❌ [Android] getExpoPushTokenAsync failed:');
-          console.error('  message:', expoTokenError?.message);
-          console.error('  code:', expoTokenError?.code);
-          console.error('  full:', JSON.stringify(expoTokenError));
-          console.warn('⚠️ [Android] Falling back to getDevicePushTokenAsync...');
-
-          // Fallback: get the raw FCM token directly from the device
-          try {
-            const deviceTokenData = await Notifications.getDevicePushTokenAsync();
-            token = deviceTokenData.data as string;
-            console.log('✅ [Android] Device push token (FCM) obtained via fallback:', token);
-          } catch (deviceTokenError: any) {
-            console.error('❌ [Android] getDevicePushTokenAsync also failed:');
-            console.error('  message:', deviceTokenError?.message);
-            console.error('  code:', deviceTokenError?.code);
-            console.error('  full:', JSON.stringify(deviceTokenError));
-            throw new Error(
-              `Both token methods failed.\nExpo: ${expoTokenError?.message}\nDevice: ${deviceTokenError?.message}`
-            );
-          }
-        }
-
-        // Register the token with Supabase
-        console.log('🔔 [Android] Registering token with Supabase for member ID:', currentMember.id);
-        const success = await registerPushToken(currentMember.id, token, Platform.OS);
+        console.log('[OneSignal] Registering player ID with Supabase:', playerId);
+        const success = await registerPushToken(currentMember.id, playerId, Platform.OS);
 
         if (success) {
-          console.log('✅ [Android] Push token registered successfully in database');
+          console.log('[OneSignal] Push token (player ID) registered successfully in database');
           hasRegisteredThisSession.current = true;
-
-          // Persist registration flag so we skip re-registration on future launches
-          const storageKey = `push_token_registered_${currentMember.id}`;
-          const alreadyConfirmed = await AsyncStorage.getItem(storageKey);
-          if (alreadyConfirmed !== 'true') {
-            console.log('🔔 [Android] Sending first-time confirmation notification');
-            // On Android 8+, channelId must be set in the trigger (not in content.data)
-            await Notifications.scheduleNotificationAsync({
-              content: {
-                title: 'Notifications Enabled',
-                body: 'You will now receive service reminders and fill-in requests.',
-                sound: 'default',
-              },
-              trigger: {
-                type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-                seconds: 1,
-                channelId: 'default',
-              },
-            });
-            await AsyncStorage.setItem(storageKey, 'true');
-          }
         } else {
-          console.error('❌ [Android] Failed to register push token in database');
-          Alert.alert(
-            'Registration Failed',
-            'Failed to register for notifications. Please try again later.',
-            [{ text: 'OK' }]
-          );
+          console.error('[OneSignal] Failed to register push token in database');
         }
       } catch (error: any) {
-        console.error('❌ [Android] Error during push notification registration:', error);
-        console.error('[Android] Error message:', error?.message);
-        console.error('[Android] Error code:', error?.code);
-        console.error('[Android] Error stack:', error?.stack);
-        console.error('[Android] Full error JSON:', JSON.stringify(error));
-        Alert.alert(
-          'Notification Setup Failed',
-          `Error: ${error?.message || JSON.stringify(error)}`,
-          [{ text: 'OK' }]
-        );
+        console.error('[OneSignal] Error during push notification registration:', error?.message || error);
       }
     };
 
-    registerForPushNotifications();
-  }, [currentMember, registerPushToken]);
-
-  // Listen for incoming notifications
-  useEffect(() => {
-    console.log('🔔 Setting up notification listeners');
-    
-    const subscription = Notifications.addNotificationReceivedListener(notification => {
-      console.log('📬 Notification received while app is open:', {
-        title: notification.request.content.title,
-        body: notification.request.content.body,
-        data: notification.request.content.data,
-      });
-    });
-
-    const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('👆 User tapped notification:', {
-        title: response.notification.request.content.title,
-        data: response.notification.request.content.data,
-      });
-      
-      const data = response.notification.request.content.data;
-      
-      if (data.type === 'fill_in_request') {
-        console.log('Handling fill-in request notification tap:', data.fillInRequestId);
-        if (refreshFillInRequests) {
-          refreshFillInRequests();
-        }
-      } else if (data.type === 'service_reminder') {
-        console.log('Handling service reminder notification tap:', data.serviceId);
-      }
-    });
-
-    return () => {
-      console.log('🧹 Cleaning up notification listeners');
-      subscription.remove();
-      responseSubscription.remove();
-    };
-  }, [refreshFillInRequests]);
+    registerOneSignalToken();
+  }, [currentMember, oneSignalPlayerId, hasPermission, requestPermission, registerPushToken]);
 
   const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment } = useServices(currentChurch?.id || null);
 
@@ -871,17 +667,16 @@ export default function HomeScreen() {
     setFillInRequestModalVisible(true);
   };
 
-  // ANDROID FIX: Enhanced fill-in request handler with better error logging
   const handleCreateFillInRequest = async () => {
-    console.log('🔔 User submitted fill-in request');
+    console.log('User submitted fill-in request');
     
     if (isCreatingFillInRequest) {
-      console.log('⚠️ Fill-in request already in progress, ignoring duplicate tap');
+      console.log('Fill-in request already in progress, ignoring duplicate tap');
       return;
     }
     
     if (!currentChurch || !currentMember || !fillInAssignmentId) {
-      console.error('❌ Missing required information for fill-in request:', {
+      console.error('Missing required information for fill-in request:', {
         hasChurch: !!currentChurch,
         hasMember: !!currentMember,
         hasAssignmentId: !!fillInAssignmentId,
@@ -892,7 +687,7 @@ export default function HomeScreen() {
 
     setIsCreatingFillInRequest(true);
 
-    console.log('🔔 Creating fill-in request with data:', {
+    console.log('Creating fill-in request with data:', {
       assignmentId: fillInAssignmentId,
       serviceId: fillInServiceId,
       churchId: currentChurch.id,
@@ -912,7 +707,7 @@ export default function HomeScreen() {
       );
 
       if (result) {
-        console.log('✅ Fill-in request created successfully');
+        console.log('Fill-in request created successfully');
         Alert.alert(
           'Success', 
           'Fill-in request created successfully. Members with the same role will be notified.',
@@ -924,12 +719,11 @@ export default function HomeScreen() {
         setFillInServiceId('');
         setFillInRoleName('');
         
-        // Refresh data to show the new request
         if (refreshFillInRequests) {
           await refreshFillInRequests();
         }
       } else {
-        console.error('❌ Fill-in request creation returned false');
+        console.error('Fill-in request creation returned false');
         Alert.alert(
           'Error', 
           'Failed to create fill-in request. Please check your connection and try again.',
@@ -937,10 +731,9 @@ export default function HomeScreen() {
         );
       }
     } catch (error) {
-      console.error('❌ Exception during fill-in request creation:', error);
+      console.error('Exception during fill-in request creation:', error);
       if (error instanceof Error) {
         console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
       }
       Alert.alert(
         'Error', 
@@ -1151,7 +944,10 @@ export default function HomeScreen() {
         )}
 
         {isAdmin && (
-          <TouchableOpacity style={styles.addButton} onPress={() => setAddServiceModalVisible(true)}>
+          <TouchableOpacity style={styles.addButton} onPress={() => {
+            console.log('User tapped Add Service button');
+            setAddServiceModalVisible(true);
+          }}>
             <Text style={styles.addButtonText}>Add Service</Text>
           </TouchableOpacity>
         )}

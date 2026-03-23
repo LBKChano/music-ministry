@@ -1,8 +1,7 @@
 
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useChurch } from '@/hooks/useChurch';
+import { useNotifications } from '@/contexts/NotificationContext';
+import { NotificationBell } from "@/components/NotificationBell";
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors } from '@/styles/commonStyles';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -10,7 +9,6 @@ import { Stack } from 'expo-router';
 import { useServices } from '@/hooks/useServices';
 import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
-import Constants from 'expo-constants';
 import {
   StyleSheet,
   View,
@@ -23,24 +21,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
-  AppState,
 } from 'react-native';
-
-// Configure notification handler for iOS — controls foreground notification display
-Notifications.setNotificationHandler({
-  handleNotification: async (notification) => {
-    console.log('🔔 [iOS] Notification Handler called:', {
-      title: notification.request.content.title,
-      body: notification.request.content.body,
-      data: notification.request.content.data,
-    });
-    return {
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    };
-  },
-});
 
 interface SpecialService {
   id: string;
@@ -59,7 +40,6 @@ const createLocalDate = (dateString: string): Date => {
     return new Date(NaN);
   }
 
-  // Extract "YYYY-MM-DD" part, handling potential full ISO strings from timestamp with time zone
   const datePart = dateString.split('T')[0];
   const parts = datePart.split('-');
   
@@ -77,7 +57,6 @@ const createLocalDate = (dateString: string): Date => {
     return new Date(NaN);
   }
 
-  // Month is 0-indexed in Date constructor
   return new Date(year, month - 1, day);
 };
 
@@ -401,85 +380,38 @@ export default function HomeScreen() {
     refreshMembers,
   } = useChurch();
 
-  // Track if we've already registered for this session to avoid duplicate test notifications
+  // OneSignal notification context — replaces expo-notifications push token logic on iOS
+  const { requestPermission, oneSignalPlayerId, hasPermission } = useNotifications();
+
+  // Track if we've already registered the OneSignal player ID for this member
   const hasRegisteredThisSession = useRef(false);
 
-  // Clear badge count on mount and whenever the app becomes active
-  useEffect(() => {
-    Notifications.setBadgeCountAsync(0);
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        Notifications.setBadgeCountAsync(0);
-      }
-    });
-    return () => subscription.remove();
-  }, []);
-
-  // Register for push notifications when component mounts
+  // Register OneSignal player ID with Supabase push_tokens table
   useEffect(() => {
     if (!currentMember) {
-      console.log('No current member, skipping push notification registration');
+      console.log('[OneSignal] [iOS] No current member, skipping push token registration');
       return;
     }
 
-    // Skip if already registered this session (in-memory fast path)
     if (hasRegisteredThisSession.current) {
-      console.log('🔔 [iOS] Already registered for push notifications this session, skipping');
+      console.log('[OneSignal] [iOS] Already registered push token this session, skipping');
       return;
     }
 
-    const registerForPushNotifications = async () => {
+    const registerOneSignalToken = async () => {
       try {
-        // Check persisted flag first — skip entirely if already registered on this device
-        const storageKey = `push_token_registered_${currentMember.id}`;
-        const alreadyRegistered = await AsyncStorage.getItem(storageKey);
-        if (alreadyRegistered === 'true') {
-          console.log('🔔 [iOS] Push token already registered for this member (persisted), skipping');
-          hasRegisteredThisSession.current = true;
-          return;
+        console.log('[OneSignal] [iOS] Starting push notification setup for member:', currentMember.id);
+
+        // Request permission via OneSignal (shows iOS native permission dialog)
+        let permissionGranted = hasPermission;
+        if (!permissionGranted) {
+          console.log('[OneSignal] [iOS] Requesting notification permission...');
+          permissionGranted = await requestPermission();
+          console.log('[OneSignal] [iOS] Permission result:', permissionGranted);
         }
 
-        console.log('🔔 [iOS] Starting push notification registration for member:', currentMember.id);
-        
-        // Only register on physical devices
-        if (!Device.isDevice) {
-          console.log('⚠️ [iOS] Push notifications only work on physical devices, not simulators');
-          Alert.alert(
-            'Simulator Detected',
-            'Push notifications only work on physical iOS devices. Please test on a real device.',
-            [{ text: 'OK' }]
-          );
-          return;
-        }
-
-        console.log('🔔 [iOS] Device check passed, requesting permissions...');
-        
-        // Request permissions with explicit iOS settings
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        console.log('🔔 [iOS] Existing permission status:', existingStatus);
-        
-        let finalStatus = existingStatus;
-        
-        if (existingStatus !== 'granted') {
-          console.log('🔔 [iOS] Permissions not granted, requesting...');
-          const { status } = await Notifications.requestPermissionsAsync({
-            ios: {
-              allowAlert: true,
-              allowBadge: true,
-              allowSound: true,
-              allowDisplayInCarPlay: false,
-              allowCriticalAlerts: false,
-              provideAppNotificationSettings: false,
-              allowProvisional: false,
-              allowAnnouncements: false,
-            },
-          });
-          finalStatus = status;
-          console.log('🔔 [iOS] Permission request result:', status);
-        }
-        
-        if (finalStatus !== 'granted') {
-          console.log('⚠️ [iOS] Push notification permissions not granted by user');
+        if (!permissionGranted) {
+          console.log('[OneSignal] [iOS] Notification permission not granted, skipping token registration');
           Alert.alert(
             'Notifications Disabled',
             'Please enable notifications in Settings > Music Ministry > Notifications to receive service reminders.',
@@ -488,126 +420,30 @@ export default function HomeScreen() {
           return;
         }
 
-        console.log('✅ [iOS] Permissions granted, getting project ID...');
-
-        // Get the project ID — required by getExpoPushTokenAsync
-        const projectId =
-          Constants.expoConfig?.extra?.eas?.projectId ??
-          Constants.easConfig?.projectId;
-
-        if (!projectId) {
-          console.warn('⚠️ [iOS] No EAS project ID found — push tokens require an EAS build');
-          Alert.alert(
-            'Setup Required',
-            'Push notifications require an EAS build. They will work after your first build is complete.',
-            [{ text: 'OK' }]
-          );
+        // Wait for player ID to become available (may take a moment after permission grant)
+        let playerId = oneSignalPlayerId;
+        if (!playerId) {
+          console.log('[OneSignal] [iOS] Player ID not yet available, waiting for subscription change event...');
+          // The effect will re-run when oneSignalPlayerId updates in context
           return;
         }
 
-        console.log('🔔 [iOS] EAS Project ID:', projectId);
-        console.log('🔔 [iOS] Getting Expo push token...');
+        console.log('[OneSignal] [iOS] Registering player ID with Supabase:', playerId);
+        const success = await registerPushToken(currentMember.id, playerId, 'ios');
 
-        // Get the Expo push token
-        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-        
-        const token = tokenData.data;
-        console.log('✅ [iOS] Successfully obtained Expo push token:', token);
-
-        // Register the token with Supabase
-        console.log('🔔 [iOS] Registering token with Supabase for member ID:', currentMember.id);
-        const success = await registerPushToken(currentMember.id, token, 'ios');
-        
         if (success) {
-          console.log('✅ [iOS] Push token registered successfully in database');
-
-          // Persist registration flag so we never show the confirmation notification again
-          await AsyncStorage.setItem(storageKey, 'true');
+          console.log('[OneSignal] [iOS] Push token (player ID) registered successfully in database');
           hasRegisteredThisSession.current = true;
-
-          // Schedule a local notification to confirm setup (iOS only, first time only)
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: '🔔 Notifications Enabled',
-              body: 'You will now receive service reminders on this device.',
-              sound: 'default',
-            },
-            trigger: {
-              seconds: 2,
-            },
-          });
         } else {
-          console.error('❌ [iOS] Failed to register push token in database');
-          Alert.alert(
-            'Registration Failed',
-            'Failed to register for notifications. Please check your connection and try again.',
-            [{ text: 'OK' }]
-          );
+          console.error('[OneSignal] [iOS] Failed to register push token in database');
         }
-      } catch (error) {
-        console.error('❌ [iOS] Error during push notification registration:', error);
-        if (error instanceof Error) {
-          console.error('Error message:', error.message);
-          console.error('Error stack:', error.stack);
-        }
-        Alert.alert(
-          'Setup Error',
-          'An error occurred while setting up notifications. Please try again later.',
-          [{ text: 'OK' }]
-        );
+      } catch (error: any) {
+        console.error('[OneSignal] [iOS] Error during push notification registration:', error?.message || error);
       }
     };
 
-    registerForPushNotifications();
-  }, [currentMember, registerPushToken]);
-
-  // Listen for incoming notifications - iOS specific handling
-  useEffect(() => {
-    console.log('🔔 [iOS] Setting up notification listeners');
-    
-    // Handle notifications received while app is in foreground
-    const foregroundSubscription = Notifications.addNotificationReceivedListener(notification => {
-      console.log('📬 [iOS] Notification received in foreground:', {
-        title: notification.request.content.title,
-        body: notification.request.content.body,
-        data: notification.request.content.data,
-      });
-      
-      // On iOS, show an alert for foreground notifications
-      Alert.alert(
-        notification.request.content.title || 'Notification',
-        notification.request.content.body || '',
-        [{ text: 'OK' }]
-      );
-    });
-
-    // Handle notification taps (when user taps on notification)
-    const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('👆 [iOS] User tapped notification:', {
-        title: response.notification.request.content.title,
-        data: response.notification.request.content.data,
-      });
-      
-      const data = response.notification.request.content.data;
-      
-      if (data.type === 'fill_in_request') {
-        console.log('[iOS] Handling fill-in request notification tap:', data.fillInRequestId);
-        if (refreshFillInRequests) {
-          refreshFillInRequests();
-        }
-      } else if (data.type === 'service_reminder') {
-        console.log('[iOS] Handling service reminder notification tap:', data.serviceId);
-        // Refresh services to show updated data
-        refreshServices();
-      }
-    });
-
-    return () => {
-      console.log('🧹 [iOS] Cleaning up notification listeners');
-      foregroundSubscription.remove();
-      responseSubscription.remove();
-    };
-  }, [refreshFillInRequests]);
+    registerOneSignalToken();
+  }, [currentMember, oneSignalPlayerId, hasPermission, requestPermission, registerPushToken]);
 
   const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment } = useServices(currentChurch?.id || null);
 
@@ -647,24 +483,20 @@ export default function HomeScreen() {
 
   const { colors: themeColors } = useTheme();
 
-  // OPTIMIZATION: Memoize filtered services to avoid recalculating on every render
   const filteredServices = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
     return services.filter(service => {
       const serviceDate = createLocalDate(service.date);
-      
       if (isNaN(serviceDate.getTime())) {
         console.warn('Skipping service with invalid date:', service.date);
         return false;
       }
-      
       return serviceDate >= today;
     });
   }, [services]);
 
-  // OPTIMIZATION: Memoize sorted roles to avoid recalculating on every render
   const sortedRoles = useMemo(() => {
     return [...churchRoles].sort((a, b) => a.display_order - b.display_order);
   }, [churchRoles]);
@@ -692,7 +524,6 @@ export default function HomeScreen() {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
-
     setAddServiceModalVisible(false);
     setNewServiceType('');
     setNewServiceNotes('');
@@ -702,14 +533,12 @@ export default function HomeScreen() {
   const handleDeleteService = async () => {
     console.log('User confirmed delete service');
     if (!serviceToDelete) return;
-
     const success = await deleteService(serviceToDelete);
     if (success) {
       Alert.alert('Success', 'Service deleted successfully');
     } else {
       Alert.alert('Error', 'Failed to delete service');
     }
-    
     setDeleteServiceModalVisible(false);
     setServiceToDelete(null);
   };
@@ -732,16 +561,13 @@ export default function HomeScreen() {
       Alert.alert('Error', 'Please select a member');
       return;
     }
-
     const member = members.find(m => m.id === selectedMemberId);
     if (!member) {
       Alert.alert('Error', 'Member not found');
       return;
     }
-
     const personName = member.name || member.email;
     const success = await updateAssignment(selectedAssignment, selectedMemberId, personName);
-    
     if (success) {
       Alert.alert('Success', 'Member assigned successfully');
       setAssignMemberModalVisible(false);
@@ -755,38 +581,26 @@ export default function HomeScreen() {
   const handleDeleteAssignment = async () => {
     console.log('User confirmed delete assignment');
     if (!assignmentToDelete) return;
-
     const success = await updateAssignment(assignmentToDelete.assignmentId, '', '');
-    
     if (success) {
       Alert.alert('Success', 'Assignment cleared successfully');
     } else {
       Alert.alert('Error', 'Failed to clear assignment');
     }
-    
     setDeleteAssignmentModalVisible(false);
     setAssignmentToDelete(null);
   };
 
   const formatDate = useCallback((dateString: string) => {
     const date = createLocalDate(dateString);
-    
-    if (isNaN(date.getTime())) {
-      return 'Invalid Date';
-    }
-    
-    const formattedDate = date.toLocaleDateString('en-US', { 
-      weekday: 'short', 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
+    if (isNaN(date.getTime())) return 'Invalid Date';
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' 
     });
-    return formattedDate;
   }, []);
 
   const formatTime = useCallback((timeString: string | null) => {
     if (!timeString) return '';
-    
     try {
       const [hours, minutes] = timeString.split(':');
       const hour = parseInt(hours, 10);
@@ -800,9 +614,7 @@ export default function HomeScreen() {
 
   const onDateChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      setNewServiceDate(selectedDate);
-    }
+    if (selectedDate) setNewServiceDate(selectedDate);
   };
 
   const openDeleteServiceModal = (serviceId: string) => {
@@ -833,15 +645,13 @@ export default function HomeScreen() {
   };
 
   const handleCreateFillInRequest = async () => {
-    console.log('🔔 User submitted fill-in request');
-    
+    console.log('User submitted fill-in request');
     if (isCreatingFillInRequest) {
-      console.log('⚠️ Fill-in request already in progress, ignoring duplicate tap');
+      console.log('Fill-in request already in progress, ignoring duplicate tap');
       return;
     }
-    
     if (!currentChurch || !currentMember || !fillInAssignmentId) {
-      console.error('❌ Missing required information for fill-in request:', {
+      console.error('Missing required information for fill-in request:', {
         hasChurch: !!currentChurch,
         hasMember: !!currentMember,
         hasAssignmentId: !!fillInAssignmentId,
@@ -851,8 +661,7 @@ export default function HomeScreen() {
     }
 
     setIsCreatingFillInRequest(true);
-
-    console.log('🔔 Creating fill-in request with data:', {
+    console.log('Creating fill-in request with data:', {
       assignmentId: fillInAssignmentId,
       serviceId: fillInServiceId,
       churchId: currentChurch.id,
@@ -872,7 +681,7 @@ export default function HomeScreen() {
       );
 
       if (result) {
-        console.log('✅ Fill-in request created successfully');
+        console.log('Fill-in request created successfully');
         Alert.alert(
           'Success', 
           'Fill-in request created successfully. Members with the same role will be notified.',
@@ -883,30 +692,15 @@ export default function HomeScreen() {
         setFillInAssignmentId('');
         setFillInServiceId('');
         setFillInRoleName('');
-        
-        // Refresh data to show the new request
-        if (refreshFillInRequests) {
-          await refreshFillInRequests();
-        }
+        if (refreshFillInRequests) await refreshFillInRequests();
       } else {
-        console.error('❌ Fill-in request creation returned false');
-        Alert.alert(
-          'Error', 
-          'Failed to create fill-in request. Please check your connection and try again.',
-          [{ text: 'OK' }]
-        );
+        console.error('Fill-in request creation returned false');
+        Alert.alert('Error', 'Failed to create fill-in request. Please check your connection and try again.', [{ text: 'OK' }]);
       }
     } catch (error) {
-      console.error('❌ Exception during fill-in request creation:', error);
-      if (error instanceof Error) {
-        console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
-      }
-      Alert.alert(
-        'Error', 
-        'An unexpected error occurred. Please try again.',
-        [{ text: 'OK' }]
-      );
+      console.error('Exception during fill-in request creation:', error);
+      if (error instanceof Error) console.error('Error message:', error.message);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.', [{ text: 'OK' }]);
     } finally {
       setIsCreatingFillInRequest(false);
     }
@@ -915,9 +709,7 @@ export default function HomeScreen() {
   const handleAcceptFillInRequest = async (requestId: string, assignmentId: string) => {
     console.log('User accepted fill-in request');
     if (!currentChurch || !currentMember) return;
-
     const success = await acceptFillInRequest(requestId, currentMember.id, currentChurch.id);
-    
     if (success) {
       Alert.alert('Success', 'You have accepted the fill-in request and been assigned to this role');
       refreshServices();
@@ -929,9 +721,7 @@ export default function HomeScreen() {
   const handleCancelFillInRequest = async (requestId: string) => {
     console.log('User cancelled fill-in request');
     if (!currentChurch) return;
-
     const success = await cancelFillInRequest(requestId, currentChurch.id);
-    
     if (success) {
       Alert.alert('Success', 'Fill-in request cancelled');
     } else {
@@ -954,11 +744,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          headerShown: false,
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
 
       <View style={styles.headerContainer}>
         <Text style={styles.headerTitle}>{churchName}</Text>
@@ -1059,9 +845,7 @@ export default function HomeScreen() {
 
                   return (
                     <View key={assignment.id} style={styles.assignmentRow}>
-                      <Text style={styles.roleNameText}>
-                        {assignment.role}
-                      </Text>
+                      <Text style={styles.roleNameText}>{assignment.role}</Text>
                       <Text style={[styles.personText, !assignment.person_name && styles.emptySlot]}>
                         {assignment.person_name || 'Unassigned'}
                       </Text>
@@ -1111,7 +895,10 @@ export default function HomeScreen() {
         )}
 
         {isAdmin && (
-          <TouchableOpacity style={styles.addButton} onPress={() => setAddServiceModalVisible(true)}>
+          <TouchableOpacity style={styles.addButton} onPress={() => {
+            console.log('User tapped Add Service button');
+            setAddServiceModalVisible(true);
+          }}>
             <Text style={styles.addButtonText}>Add Service</Text>
           </TouchableOpacity>
         )}
