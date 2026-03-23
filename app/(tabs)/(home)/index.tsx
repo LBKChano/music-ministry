@@ -423,6 +423,15 @@ export default function HomeScreen() {
 
     const registerForPushNotifications = async () => {
       try {
+        // Check persisted flag first — skip entirely if already registered on this device
+        const storageKey = `push_token_registered_${currentMember.id}`;
+        const alreadyRegistered = await AsyncStorage.getItem(storageKey);
+        if (alreadyRegistered === 'true') {
+          console.log('🔔 [Android] Push token already registered for this member (persisted), skipping');
+          hasRegisteredThisSession.current = true;
+          return;
+        }
+
         console.log('🔔 [Android] Starting push notification registration for member:', currentMember.id);
         console.log('🔔 [Android] Platform:', Platform.OS);
         console.log('🔔 [Android] Device type:', Device.isDevice ? 'Physical device' : 'Simulator/Emulator');
@@ -557,23 +566,23 @@ export default function HomeScreen() {
           console.log('✅ [Android] Push token registered successfully in database');
           hasRegisteredThisSession.current = true;
 
-          // Check persisted flag — only show the confirmation notification the first time
-          const storageKey = `push_token_confirmed_${currentMember.id}`;
+          // Persist registration flag so we skip re-registration on future launches
+          const storageKey = `push_token_registered_${currentMember.id}`;
           const alreadyConfirmed = await AsyncStorage.getItem(storageKey);
           if (alreadyConfirmed !== 'true') {
             console.log('🔔 [Android] Sending first-time confirmation notification');
-            // channelId MUST be in content (not trigger) on Android 8+
+            // On Android 8+, channelId must be set in the trigger (not in content.data)
             await Notifications.scheduleNotificationAsync({
               content: {
                 title: 'Notifications Enabled',
                 body: 'You will now receive service reminders and fill-in requests.',
                 sound: 'default',
-                // Android requires channelId in content to route to the correct channel
-                ...(Platform.OS === 'android' ? { data: { channelId: 'default' } } : {}),
               },
-              trigger: Platform.OS === 'android'
-                ? { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 1, channelId: 'default' }
-                : { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 1 },
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+                seconds: 1,
+                channelId: 'default',
+              },
             });
             await AsyncStorage.setItem(storageKey, 'true');
           }
