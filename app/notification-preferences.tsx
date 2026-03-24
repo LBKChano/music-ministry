@@ -56,15 +56,19 @@ export default function NotificationPreferencesScreen() {
   );
 
   const handleEnableNotifications = async () => {
+    console.log("[NotificationPreferences] Enable notifications tapped — permissionDenied:", permissionDenied);
+
     if (permissionDenied) {
+      console.log("[NotificationPreferences] Permission previously denied — showing settings alert");
       Alert.alert(
         "Notifications Disabled",
         "To receive notifications, please enable them in your device settings.",
         [
-          { text: "Cancel", style: "cancel" },
+          { text: "Cancel", style: "cancel", onPress: () => console.log("[NotificationPreferences] User cancelled settings prompt") },
           {
             text: "Open Settings",
             onPress: () => {
+              console.log("[NotificationPreferences] User tapped Open Settings");
               if (Platform.OS === "ios") {
                 Linking.openURL("app-settings:");
               } else {
@@ -77,10 +81,13 @@ export default function NotificationPreferencesScreen() {
       return;
     }
 
-    await requestPermission();
+    console.log("[NotificationPreferences] Requesting notification permission...");
+    const granted = await requestPermission();
+    console.log("[NotificationPreferences] Permission request result:", granted);
   };
 
   const handleCategoryToggle = (key: string, value: boolean) => {
+    console.log("[NotificationPreferences] Category toggled:", key, "->", value);
     setCategories((prev) => ({ ...prev, [key]: value }));
 
     if (value) {
@@ -90,11 +97,16 @@ export default function NotificationPreferencesScreen() {
     }
   };
 
+  const handleBack = () => {
+    console.log("[NotificationPreferences] Back button pressed");
+    router.back();
+  };
+
   if (isWeb) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={handleBack}>
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Notifications</Text>
@@ -112,7 +124,7 @@ export default function NotificationPreferencesScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={handleBack}>
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Notifications</Text>
