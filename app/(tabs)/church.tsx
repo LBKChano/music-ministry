@@ -2539,6 +2539,7 @@ export default function ChurchScreen() {
                 <View style={styles.datePickerWrapper}>
                 <DateTimePicker
                   value={adHocServiceDate}
+                  themeVariant="light"
                   mode="date"
                   display="spinner"
                   themeVariant="light"
@@ -2565,6 +2566,7 @@ export default function ChurchScreen() {
                 <View style={styles.datePickerWrapper}>
                 <DateTimePicker
                   value={adHocServiceTime}
+                  themeVariant="light"
                   mode="time"
                   display="spinner"
                   themeVariant="light"
@@ -2645,6 +2647,9 @@ export default function ChurchScreen() {
 
 const styles = StyleSheet.create({
   datePickerWrapper: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    overflow: 'hidden',
     backgroundColor: '#ffffff',
     borderRadius: 12,
     overflow: 'hidden',
