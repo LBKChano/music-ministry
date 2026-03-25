@@ -43,21 +43,26 @@ export function NotificationBell({
   if (loading || isWeb) return null;
 
   const handlePress = async () => {
+    console.log("[NotificationBell] Bell pressed — hasPermission:", hasPermission, "permissionDenied:", permissionDenied);
+
     if (hasPermission) {
       // Already has permission - could navigate to notification center
+      console.log("[NotificationBell] Notifications already enabled, no action needed");
       return;
     }
 
     if (permissionDenied) {
       // Permission was denied - direct to settings
+      console.log("[NotificationBell] Permission previously denied — prompting user to open settings");
       Alert.alert(
         "Notifications Disabled",
         "To receive notifications, please enable them in your device settings.",
         [
-          { text: "Cancel", style: "cancel" },
+          { text: "Cancel", style: "cancel", onPress: () => console.log("[NotificationBell] User cancelled settings prompt") },
           {
             text: "Open Settings",
             onPress: () => {
+              console.log("[NotificationBell] User tapped Open Settings");
               if (Platform.OS === "ios") {
                 Linking.openURL("app-settings:");
               } else {
@@ -71,6 +76,7 @@ export function NotificationBell({
     }
 
     // Request permission
+    console.log("[NotificationBell] Requesting notification permission via bell tap");
     await requestPermission();
   };
 

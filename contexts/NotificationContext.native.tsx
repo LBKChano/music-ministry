@@ -28,7 +28,7 @@ import Constants from "expo-constants";
 
 // Read App ID from app.json (expo.extra)
 const extra = Constants.expoConfig?.extra || {};
-const ONESIGNAL_APP_ID = extra.oneSignalAppId || "";
+const ONESIGNAL_APP_ID: string = extra.oneSignalAppId || "";
 
 // Check if running on web
 const isWeb = Platform.OS === "web";
@@ -69,6 +69,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
   // Initialize OneSignal on mount
   useEffect(() => {
     if (isWeb) {
+      console.log("[OneSignal] Skipping init — running on web");
       setLoading(false);
       return;
     }
@@ -82,6 +83,12 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
       return;
     }
 
+    // Define handlers outside try so cleanup can always reference them
+    let subscriptionChangeHandler: ((event: any) => void) | null = null;
+    let foregroundHandler: ((event: NotificationWillDisplayEvent) => void) | null = null;
+    let clickHandler: ((event: NotificationClickEvent) => void) | null = null;
+    let permissionHandler: ((granted: boolean) => void) | null = null;
+
     try {
       // Initialize OneSignal
       OneSignal.initialize(ONESIGNAL_APP_ID);
@@ -92,6 +99,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
 
       // Check current permission status
       const permissionStatus = OneSignal.Notifications.hasPermission();
+      console.log("[OneSignal] Current permission status:", permissionStatus);
       setHasPermission(permissionStatus);
 
       // Listen for notification events
@@ -124,10 +132,34 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
     } finally {
       setLoading(false);
     }
-  }, []);
+
+    // Cleanup — always runs regardless of whether try succeeded or threw
+    return () => {
+      console.log("[OneSignal] Cleaning up event listeners");
+      try {
+        if (subscriptionChangeHandler) {
+          OneSignal.User.pushSubscription.removeEventListener("change", subscriptionChangeHandler);
+        }
+        if (foregroundHandler) {
+          OneSignal.Notifications.removeEventListener("foregroundWillDisplay", foregroundHandler);
+        }
+        if (clickHandler) {
+          OneSignal.Notifications.removeEventListener("click", clickHandler);
+        }
+        if (permissionHandler) {
+          OneSignal.Notifications.removeEventListener("permissionChange", permissionHandler);
+        }
+      } catch (err) {
+        console.error("[OneSignal] Error during listener cleanup:", err);
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const requestPermission = useCallback(async (): Promise<boolean> => {
-    if (isWeb) return false;
+    if (isWeb) {
+      console.log("[OneSignal] requestPermission called on web — skipping");
+      return false;
+    }
 
     try {
       const granted = await OneSignal.Notifications.requestPermission(true);
@@ -143,18 +175,22 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
   const sendTag = useCallback((key: string, value: string) => {
     if (isWeb) return;
     try {
+      console.log("[OneSignal] Sending tag:", key, "=", value);
       OneSignal.User.addTag(key, value);
+      console.log("[OneSignal] Tag sent successfully:", key);
     } catch (error) {
-      console.error("[OneSignal] Failed to send tag:", error);
+      console.error("[OneSignal] Failed to send tag:", key, error);
     }
   }, []);
 
   const deleteTag = useCallback((key: string) => {
     if (isWeb) return;
     try {
+      console.log("[OneSignal] Deleting tag:", key);
       OneSignal.User.removeTag(key);
+      console.log("[OneSignal] Tag deleted successfully:", key);
     } catch (error) {
-      console.error("[OneSignal] Failed to delete tag:", error);
+      console.error("[OneSignal] Failed to delete tag:", key, error);
     }
   }, []);
 
