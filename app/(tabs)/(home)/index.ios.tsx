@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Stack } from 'expo-router';
 import { useServices } from '@/hooks/useServices';
 import { useTheme } from '@react-navigation/native';
+import { checkAndSendServiceReminders, cleanupOldReminderKeys } from '@/utils/serviceReminders';
 import { IconSymbol } from '@/components/IconSymbol';
 import {
   StyleSheet,
@@ -372,6 +373,7 @@ export default function HomeScreen() {
     fillInRequests,
     isAdmin,
     currentMember,
+    notificationSettings,
     createFillInRequest,
     acceptFillInRequest,
     cancelFillInRequest,
@@ -454,6 +456,47 @@ export default function HomeScreen() {
       refreshServices();
     }
   }, [currentChurch?.id, refreshServices]);
+
+  // Check and send service reminder notifications on app open
+  useEffect(() => {
+    if (
+      !oneSignalPlayerId ||
+      !currentChurch ||
+      !currentMember ||
+      !notificationSettings ||
+      servicesLoading ||
+      services.length === 0
+    ) {
+      return;
+    }
+
+    console.log('[ServiceReminders] [iOS] App opened — checking for due service reminders');
+
+    // Collect past service IDs for cleanup
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const pastServiceIds = services
+      .filter(s => {
+        const parts = s.date.split('-');
+        if (parts.length !== 3) return false;
+        const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        return d < now;
+      })
+      .map(s => s.id);
+
+    cleanupOldReminderKeys(pastServiceIds).catch(() => {});
+
+    checkAndSendServiceReminders({
+      playerId: oneSignalPlayerId,
+      churchName: currentChurch.name,
+      services,
+      currentMemberId: currentMember.id,
+      notificationHours: notificationSettings.notification_hours ?? [24, 6],
+      notificationsEnabled: notificationSettings.enabled ?? true,
+    }).catch(err => {
+      console.error('[ServiceReminders] [iOS] Error checking reminders:', err);
+    });
+  }, [oneSignalPlayerId, currentChurch, currentMember, notificationSettings, services, servicesLoading]);
 
   const [addServiceModalVisible, setAddServiceModalVisible] = useState(false);
   const [editServiceModalVisible, setEditServiceModalVisible] = useState(false);
