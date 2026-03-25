@@ -2251,6 +2251,14 @@ export default function ChurchScreen() {
                         if (date) setSpecialServiceDate(date);
                       }}
                     />
+                    </View>
+                  )}
+                      }}
+                    />
+                  )}
+
+                      }}
+                    />
                   )}
                   <Text style={[styles.label, { color: colors.text }]}>Time</Text>
                   <TouchableOpacity

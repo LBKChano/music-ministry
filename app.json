@@ -112,8 +112,5 @@
       },
       "oneSignalAppId": "8b605bf5-c7ff-424c-ab10-5ef6ce58cebd"
     },
-    "notification": {
-      "icon": "./assets/notification-icon.png"
-    }
   }
 }
