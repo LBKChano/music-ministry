@@ -13,11 +13,11 @@ interface NotificationContextType {
   permissionDenied: boolean;
   loading: boolean;
   isWeb: boolean;
-  oneSignalPlayerId: string | null;
   requestPermission: () => Promise<boolean>;
   sendTag: (key: string, value: string) => void;
   deleteTag: (key: string) => void;
   lastNotification: Record<string, unknown> | null;
+  oneSignalPlayerId: string | null;
 }
 
 const NotificationContext = createContext<NotificationContextType>({
@@ -25,11 +25,11 @@ const NotificationContext = createContext<NotificationContextType>({
   permissionDenied: false,
   loading: false,
   isWeb: true,
-  oneSignalPlayerId: null,
   requestPermission: async () => false,
   sendTag: () => {},
   deleteTag: () => {},
   lastNotification: null,
+  oneSignalPlayerId: null,
 });
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
@@ -40,11 +40,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         permissionDenied: false,
         loading: false,
         isWeb: true,
-        oneSignalPlayerId: null,
         requestPermission: async () => false,
         sendTag: () => {},
         deleteTag: () => {},
         lastNotification: null,
+        oneSignalPlayerId: null,
       }}
     >
       {children}

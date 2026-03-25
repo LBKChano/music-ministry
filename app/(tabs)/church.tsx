@@ -2239,13 +2239,24 @@ export default function ChurchScreen() {
                     </Text>
                   </TouchableOpacity>
                   {showSpecialServiceDatePicker && (
+                    <View style={styles.datePickerWrapper}>
                     <DateTimePicker
                       value={specialServiceDate}
                       mode="date"
                       display="spinner"
+                      themeVariant="light"
+                      textColor="#000000"
                       onChange={(event, date) => {
                         setShowSpecialServiceDatePicker(false);
                         if (date) setSpecialServiceDate(date);
+                      }}
+                    />
+                    </View>
+                  )}
+                      }}
+                    />
+                  )}
+
                       }}
                     />
                   )}
@@ -2259,10 +2270,12 @@ export default function ChurchScreen() {
                     </Text>
                   </TouchableOpacity>
                   {showSpecialServiceTimePicker && (
+                    <View style={styles.datePickerWrapper}>
                     <DateTimePicker
                       value={specialServiceTime}
                       mode="time"
                       display="spinner"
+                      themeVariant="light"
                       onChange={(event, time) => {
                         setShowSpecialServiceTimePicker(false);
                         if (time) setSpecialServiceTime(time);
@@ -2416,10 +2429,12 @@ export default function ChurchScreen() {
                 </Text>
               </TouchableOpacity>
               {showSpecialServiceDatePicker && (
+                <View style={styles.datePickerWrapper}>
                 <DateTimePicker
                   value={specialServiceDate}
                   mode="date"
                   display="spinner"
+                  themeVariant="light"
                   onChange={(event, date) => {
                     console.log('User selected date:', date);
                     setShowSpecialServiceDatePicker(false);
@@ -2440,10 +2455,12 @@ export default function ChurchScreen() {
                 </Text>
               </TouchableOpacity>
               {showSpecialServiceTimePicker && (
+                <View style={styles.datePickerWrapper}>
                 <DateTimePicker
                   value={specialServiceTime}
                   mode="time"
                   display="spinner"
+                  themeVariant="light"
                   onChange={(event, date) => {
                     console.log('User selected time:', date);
                     setShowSpecialServiceTimePicker(false);
@@ -2527,10 +2544,13 @@ export default function ChurchScreen() {
                 </Text>
               </TouchableOpacity>
               {showAdHocDatePicker && (
+                <View style={styles.datePickerWrapper}>
                 <DateTimePicker
                   value={adHocServiceDate}
+                  themeVariant="light"
                   mode="date"
                   display="spinner"
+                  themeVariant="light"
                   onChange={(event, date) => {
                     console.log('User selected ad-hoc date:', date);
                     setShowAdHocDatePicker(false);
@@ -2551,10 +2571,13 @@ export default function ChurchScreen() {
                 </Text>
               </TouchableOpacity>
               {showAdHocTimePicker && (
+                <View style={styles.datePickerWrapper}>
                 <DateTimePicker
                   value={adHocServiceTime}
+                  themeVariant="light"
                   mode="time"
                   display="spinner"
+                  themeVariant="light"
                   onChange={(event, date) => {
                     console.log('User selected ad-hoc time:', date);
                     setShowAdHocTimePicker(false);
@@ -2631,6 +2654,16 @@ export default function ChurchScreen() {
 }
 
 const styles = StyleSheet.create({
+  datePickerWrapper: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 8,
+    marginBottom: 8,
+  },
   container: {
     flex: 1,
   },

@@ -10,6 +10,7 @@ import { useServices } from '@/hooks/useServices';
 import { useTheme } from '@react-navigation/native';
 import { checkAndSendServiceReminders, cleanupOldReminderKeys } from '@/utils/serviceReminders';
 import { IconSymbol } from '@/components/IconSymbol';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   StyleSheet,
   View,
@@ -80,7 +81,6 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     backgroundColor: colors.primary,
-    paddingTop: Platform.OS === 'android' ? 60 : 60,
     paddingBottom: 20,
     paddingHorizontal: 20,
     marginBottom: 16,
@@ -150,31 +150,39 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.accent,
   },
   assignmentRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    flexDirection: 'column',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border + '50',
-    backgroundColor: colors.background + '30',
+    marginBottom: 6,
     borderRadius: 8,
-    marginBottom: 8,
+    backgroundColor: colors.background + '30',
+  },
+  assignmentTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  assignmentActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 6,
+    gap: 8,
   },
   roleNameText: {
-    fontSize: 15,
+    flex: 1,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.text,
-    minWidth: 80,
-    maxWidth: 140,
+    marginRight: 8,
   },
   personText: {
+    flex: 1,
     fontSize: 14,
     color: colors.textSecondary,
-    flex: 1,
     textAlign: 'right',
-    marginRight: 8,
-    fontWeight: '500',
   },
   emptySlot: {
     color: colors.textTertiary,
@@ -524,6 +532,7 @@ export default function HomeScreen() {
   const [fillInRoleName, setFillInRoleName] = useState('');
 
   const { colors: themeColors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   // OPTIMIZATION: Memoize filtered services to avoid recalculating on every render
   const filteredServices = useMemo(() => {
@@ -836,8 +845,15 @@ export default function HomeScreen() {
         }}
       />
 
-      <View style={styles.headerContainer}>
-        <Text style={styles.headerTitle}>{churchName}</Text>
+      <View style={[styles.headerContainer, { paddingTop: insets.top + 12 }]}>
+        <Text
+          style={styles.headerTitle}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.6}
+        >
+          {churchName}
+        </Text>
         <Text style={styles.headerSubtitle}>{upcomingText}</Text>
       </View>
 
@@ -933,50 +949,58 @@ export default function HomeScreen() {
                     req => req.assignment_id === assignment.id
                   );
 
+                  const showActions = (isMyAssignment && !hasFillInRequest) || isAdmin;
+
                   return (
                     <View key={assignment.id} style={styles.assignmentRow}>
-                      <Text style={styles.roleNameText}>
-                        {assignment.role}
-                      </Text>
-                      <Text style={[styles.personText, !assignment.person_name && styles.emptySlot]}>
-                        {assignment.person_name || 'Unassigned'}
-                      </Text>
-                      {isMyAssignment && !hasFillInRequest && (
-                        <TouchableOpacity
-                          style={styles.fillInButton}
-                          onPress={() => openFillInRequestModal(assignment.id, service.id, assignment.role)}
-                          disabled={isCreatingFillInRequest}
-                        >
-                          <Text style={styles.fillInButtonText}>Request Fill-In</Text>
-                        </TouchableOpacity>
-                      )}
-                      {isAdmin && (
-                        <>
-                          <TouchableOpacity
-                            onPress={() => openAssignMemberModal(assignment.id)}
-                            style={styles.assignButton}
-                          >
-                            <IconSymbol
-                              ios_icon_name="person.badge.plus"
-                              android_material_icon_name="person-add"
-                              size={20}
-                              color={colors.primary}
-                            />
-                          </TouchableOpacity>
-                          {assignment.member_id && (
+                      <View style={styles.assignmentTopRow}>
+                        <Text style={styles.roleNameText} numberOfLines={1} ellipsizeMode="tail">
+                          {assignment.role}
+                        </Text>
+                        <Text style={[styles.personText, !assignment.person_name && styles.emptySlot]} numberOfLines={1} ellipsizeMode="tail">
+                          {assignment.person_name || 'Unassigned'}
+                        </Text>
+                      </View>
+                      {showActions && (
+                        <View style={styles.assignmentActions}>
+                          {isMyAssignment && !hasFillInRequest && (
                             <TouchableOpacity
-                              onPress={() => openDeleteAssignmentModal(service.id, assignment.id)}
-                              style={styles.deleteButton}
+                              style={styles.fillInButton}
+                              onPress={() => openFillInRequestModal(assignment.id, service.id, assignment.role)}
+                              disabled={isCreatingFillInRequest}
                             >
-                              <IconSymbol
-                                ios_icon_name="trash"
-                                android_material_icon_name="delete"
-                                size={20}
-                                color={colors.error}
-                              />
+                              <Text style={styles.fillInButtonText}>Request Fill-In</Text>
                             </TouchableOpacity>
                           )}
-                        </>
+                          {isAdmin && (
+                            <>
+                              <TouchableOpacity
+                                onPress={() => openAssignMemberModal(assignment.id)}
+                                style={styles.assignButton}
+                              >
+                                <IconSymbol
+                                  ios_icon_name="person.badge.plus"
+                                  android_material_icon_name="person-add"
+                                  size={20}
+                                  color={colors.primary}
+                                />
+                              </TouchableOpacity>
+                              {assignment.member_id && (
+                                <TouchableOpacity
+                                  onPress={() => openDeleteAssignmentModal(service.id, assignment.id)}
+                                  style={styles.deleteButton}
+                                >
+                                  <IconSymbol
+                                    ios_icon_name="trash"
+                                    android_material_icon_name="delete"
+                                    size={20}
+                                    color={colors.error}
+                                  />
+                                </TouchableOpacity>
+                              )}
+                            </>
+                          )}
+                        </View>
                       )}
                     </View>
                   );
