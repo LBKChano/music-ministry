@@ -17,6 +17,7 @@ interface NotificationContextType {
   sendTag: (key: string, value: string) => void;
   deleteTag: (key: string) => void;
   lastNotification: Record<string, unknown> | null;
+  oneSignalPlayerId: string | null;
 }
 
 const NotificationContext = createContext<NotificationContextType>({
@@ -28,6 +29,7 @@ const NotificationContext = createContext<NotificationContextType>({
   sendTag: () => {},
   deleteTag: () => {},
   lastNotification: null,
+  oneSignalPlayerId: null,
 });
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
@@ -42,6 +44,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         sendTag: () => {},
         deleteTag: () => {},
         lastNotification: null,
+        oneSignalPlayerId: null,
       }}
     >
       {children}
