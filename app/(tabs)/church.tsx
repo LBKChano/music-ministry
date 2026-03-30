@@ -2253,13 +2253,6 @@ export default function ChurchScreen() {
                     />
                     </View>
                   )}
-                      }}
-                    />
-                  )}
-
-                      }}
-                    />
-                  )}
                   <Text style={[styles.label, { color: colors.text }]}>Time</Text>
                   <TouchableOpacity
                     style={[styles.dateButton, { backgroundColor: colors.cardBackground, borderColor: colors.border, borderWidth: 1 }]}
@@ -2281,6 +2274,7 @@ export default function ChurchScreen() {
                         if (time) setSpecialServiceTime(time);
                       }}
                     />
+                    </View>
                   )}
                   <Text style={[styles.label, { color: colors.text }]}>Notes (optional)</Text>
                   <TextInput
@@ -2441,6 +2435,7 @@ export default function ChurchScreen() {
                     if (date) setSpecialServiceDate(date);
                   }}
                 />
+                </View>
               )}
 
               <TouchableOpacity
@@ -2467,6 +2462,7 @@ export default function ChurchScreen() {
                     if (date) setSpecialServiceTime(date);
                   }}
                 />
+                </View>
               )}
 
               <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>Select Roles</Text>
@@ -2547,7 +2543,6 @@ export default function ChurchScreen() {
                 <View style={styles.datePickerWrapper}>
                 <DateTimePicker
                   value={adHocServiceDate}
-                  themeVariant="light"
                   mode="date"
                   display="spinner"
                   themeVariant="light"
@@ -2557,6 +2552,7 @@ export default function ChurchScreen() {
                     if (date) setAdHocServiceDate(date);
                   }}
                 />
+                </View>
               )}
 
               <TouchableOpacity
@@ -2574,7 +2570,6 @@ export default function ChurchScreen() {
                 <View style={styles.datePickerWrapper}>
                 <DateTimePicker
                   value={adHocServiceTime}
-                  themeVariant="light"
                   mode="time"
                   display="spinner"
                   themeVariant="light"
@@ -2584,6 +2579,7 @@ export default function ChurchScreen() {
                     if (date) setAdHocServiceTime(date);
                   }}
                 />
+                </View>
               )}
 
               <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>Select Roles</Text>
