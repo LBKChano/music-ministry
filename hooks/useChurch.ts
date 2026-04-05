@@ -459,40 +459,53 @@ export function useChurch() {
 
       console.log('Fetched recurring services:', data);
 
-      // Fetch roles for each service (ordered by display_order)
+      // Batch-fetch all recurring_service_roles and church_roles in two queries
+      const allServices = data || [];
       const servicesWithRoles: RecurringServiceWithRoles[] = [];
-      for (const service of data || []) {
-        const { data: rolesData, error: rolesError } = await supabase
+
+      if (allServices.length > 0) {
+        const serviceIds = allServices.map(s => s.id);
+
+        // Single batch query for all service roles
+        const { data: allServiceRoles, error: rolesError } = await supabase
           .from('recurring_service_roles')
-          .select('role_name')
-          .eq('recurring_service_id', service.id);
+          .select('recurring_service_id, role_name')
+          .in('recurring_service_id', serviceIds);
 
         if (rolesError) {
           console.error('Error fetching service roles:', rolesError);
         }
 
-        // Sort roles by the display_order from church_roles
-        const roleNames = rolesData?.map(r => r.role_name) || [];
-        
-        // Fetch the display order for these roles
-        if (roleNames.length > 0) {
+        // Collect all unique role names to look up display order
+        const allRoleNames = [...new Set((allServiceRoles || []).map(r => r.role_name))];
+
+        // Single batch query for display order of all roles
+        let roleOrderMap = new Map<string, number>();
+        if (allRoleNames.length > 0) {
           const { data: orderedRoles } = await supabase
             .from('church_roles')
             .select('name, display_order')
             .eq('church_id', churchId)
-            .in('name', roleNames)
+            .in('name', allRoleNames)
             .order('display_order', { ascending: true });
 
-          const sortedRoleNames = orderedRoles?.map(r => r.name) || roleNames;
-          
+          (orderedRoles || []).forEach(r => roleOrderMap.set(r.name, r.display_order));
+        }
+
+        // Build a map of serviceId -> sorted role names
+        const serviceRolesMap = new Map<string, string[]>();
+        for (const serviceId of serviceIds) {
+          const roleNames = (allServiceRoles || [])
+            .filter(r => r.recurring_service_id === serviceId)
+            .map(r => r.role_name)
+            .sort((a, b) => (roleOrderMap.get(a) ?? 999) - (roleOrderMap.get(b) ?? 999));
+          serviceRolesMap.set(serviceId, roleNames);
+        }
+
+        for (const service of allServices) {
           servicesWithRoles.push({
             ...service,
-            roles: sortedRoleNames,
-          });
-        } else {
-          servicesWithRoles.push({
-            ...service,
-            roles: [],
+            roles: serviceRolesMap.get(service.id) || [],
           });
         }
       }
@@ -1103,41 +1116,37 @@ export function useChurch() {
 
       console.log('Fetched fill-in requests:', data);
 
-      // Fetch member info for each request
+      // Batch-fetch all member info needed for these requests
       const requestsWithMemberInfo: FillInRequestWithMemberInfo[] = [];
-      
-      for (const request of data || []) {
-        // Fetch requesting member info
-        const { data: requestingMember } = await supabase
+      const allRequests = data || [];
+
+      if (allRequests.length > 0) {
+        // Collect all unique member IDs needed
+        const requestingIds = [...new Set(allRequests.map(r => r.requesting_member_id).filter(Boolean))] as string[];
+        const filledByIds = [...new Set(allRequests.map(r => r.filled_by_member_id).filter(Boolean))] as string[];
+        const allMemberIds = [...new Set([...requestingIds, ...filledByIds])];
+
+        // Single batch query for all members
+        const { data: membersData } = await supabase
           .from('church_members')
-          .select('name, email')
-          .eq('id', request.requesting_member_id)
-          .single();
+          .select('id, name, email')
+          .in('id', allMemberIds);
 
-        let filledByMemberName: string | undefined;
-        let filledByMemberEmail: string | undefined;
+        const memberMap = new Map<string, { name: string | null; email: string }>();
+        (membersData || []).forEach(m => memberMap.set(m.id, { name: m.name, email: m.email }));
 
-        // Fetch filled by member info if exists
-        if (request.filled_by_member_id) {
-          const { data: filledByMember } = await supabase
-            .from('church_members')
-            .select('name, email')
-            .eq('id', request.filled_by_member_id)
-            .single();
+        for (const request of allRequests) {
+          const requestingMember = memberMap.get(request.requesting_member_id);
+          const filledByMember = request.filled_by_member_id ? memberMap.get(request.filled_by_member_id) : undefined;
 
-          if (filledByMember) {
-            filledByMemberName = filledByMember.name || undefined;
-            filledByMemberEmail = filledByMember.email;
-          }
+          requestsWithMemberInfo.push({
+            ...request,
+            requesting_member_name: requestingMember?.name || '',
+            requesting_member_email: requestingMember?.email || '',
+            filled_by_member_name: filledByMember?.name || undefined,
+            filled_by_member_email: filledByMember?.email,
+          });
         }
-
-        requestsWithMemberInfo.push({
-          ...request,
-          requesting_member_name: requestingMember?.name || '',
-          requesting_member_email: requestingMember?.email || '',
-          filled_by_member_name: filledByMemberName,
-          filled_by_member_email: filledByMemberEmail,
-        });
       }
 
       console.log('Fill-in requests with member info:', requestsWithMemberInfo);
@@ -1187,9 +1196,9 @@ export function useChurch() {
 
       // Call Edge Function to send notifications
       try {
-        // Get the Supabase URL from the client
-        const supabaseUrl = 'https://cvgdxmmtrukahyvkgazj.supabase.co';
-        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2Z2R4bW10cnVrYWh5dmtnYXpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NTc1MzYsImV4cCI6MjA4ODIzMzUzNn0.ssx8t1fCmlvq-3K1EdpTnNyT14HSy6kAZ_-G7KZkHBs';
+        // Use the shared supabase client to get the URL and anon key
+        const supabaseUrl = (supabase as any).supabaseUrl as string;
+        const supabaseKey = (supabase as any).supabaseKey as string;
 
         const response = await fetch(
           `${supabaseUrl}/functions/v1/send-fill-in-notifications`,
@@ -1543,7 +1552,7 @@ export function useChurch() {
   }, [currentChurch, fetchMembers, fetchChurchRoles, fetchRecurringServices, fetchFillInRequests, fetchNotificationSettings]);
 
   // Check if current user is admin of current church
-  const isAdmin = currentChurch && user && currentChurch.admin_id === user.id;
+  const isAdmin = !!(currentChurch && user && currentChurch.admin_id === user.id);
 
   return {
     churches,

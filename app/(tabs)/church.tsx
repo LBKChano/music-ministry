@@ -147,6 +147,9 @@ export default function ChurchScreen() {
   const [showAdHocTimePicker, setShowAdHocTimePicker] = useState(false);
   const [isCreatingAdHocService, setIsCreatingAdHocService] = useState(false);
 
+  // Quarter preparation loading state
+  const [isPreparing, setIsPreparing] = useState(false);
+
   // Pull-to-refresh state
   const [refreshing, setRefreshing] = useState(false);
 
@@ -285,10 +288,9 @@ export default function ChurchScreen() {
   const handleSignOut = async () => {
     console.log('User confirmed sign out');
     try {
-      await supabase.auth.signOut();
-      console.log('User signed out successfully');
       setSignOutModalVisible(false);
-      router.replace('/onboarding');
+      await supabase.auth.signOut();
+      console.log('User signed out successfully — auth state listener will handle navigation');
     } catch (err) {
       console.error('Error signing out:', err);
     }
@@ -500,11 +502,9 @@ export default function ChurchScreen() {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const month = date.toLocaleDateString('en-US', { month: 'short' });
-    const day = date.getDate();
-    const year = date.getFullYear();
-    return `${month} ${day}, ${year}`;
+    // Append time to avoid UTC offset shifting the date for users in UTC-N timezones
+    const date = new Date(dateString.includes('T') ? dateString : dateString + 'T00:00:00');
+    return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   };
 
   const getQuarterDates = (quarter: number, year: number) => {
@@ -552,29 +552,61 @@ export default function ChurchScreen() {
     }
 
     console.log('User tapped Generate Services button for church:', currentChurch.id);
+    setIsPreparing(true);
+
     const generatedServices = generateQuarterServices();
+    let successCount = 0;
+    let failCount = 0;
 
     for (const { date, template } of generatedServices) {
       const dateString = formatDateForDatabase(date);
-      await createServiceFromTemplate(currentChurch.id, dateString, template.name, template.notes, template.roles, template.time);
+      try {
+        const result = await createServiceFromTemplate(currentChurch.id, dateString, template.name, template.notes, template.roles, template.time);
+        if (result) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (err) {
+        console.error('Error creating service from template:', err);
+        failCount++;
+      }
     }
 
     for (const special of specialServices) {
       const dateString = formatDateForDatabase(special.date);
-      
       const roleNames = special.selectedRoleIds
         .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
         .filter((name): name is string => name !== undefined);
-      
+
       console.log('Creating special service with roles:', { name: special.name, roleNames, time: special.time });
-      await createServiceFromTemplate(currentChurch.id, dateString, special.name, special.notes, roleNames, special.time);
+      try {
+        const result = await createServiceFromTemplate(currentChurch.id, dateString, special.name, special.notes, roleNames, special.time);
+        if (result) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (err) {
+        console.error('Error creating special service:', err);
+        failCount++;
+      }
     }
 
+    setIsPreparing(false);
     setShowPrepareQuarterModal(false);
     setPrepareQuarterStep('block');
     setBlockedServices(new Set());
     setSpecialServices([]);
-    Alert.alert('Success', 'Quarter services generated successfully!');
+
+    if (failCount > 0) {
+      Alert.alert(
+        'Partial Success',
+        `${successCount} service${successCount !== 1 ? 's' : ''} created successfully, ${failCount} failed. Please check your connection and try again for any missing services.`
+      );
+    } else {
+      Alert.alert('Success', `${successCount} quarter service${successCount !== 1 ? 's' : ''} generated successfully!`);
+    }
   };
 
   const handleAutoAssign = async () => {
@@ -2376,8 +2408,13 @@ export default function ChurchScreen() {
                   <TouchableOpacity 
                     style={[styles.primaryButton, { backgroundColor: colors.primary }]} 
                     onPress={handlePrepareQuarter}
+                    disabled={isPreparing}
                   >
-                    <Text style={styles.primaryButtonText}>Generate All Services</Text>
+                    {isPreparing ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.primaryButtonText}>Generate All Services</Text>
+                    )}
                   </TouchableOpacity>
                   <TouchableOpacity 
                     style={[styles.secondaryButton, { backgroundColor: '#e0e0e0', marginTop: 12 }]} 

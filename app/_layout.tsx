@@ -57,12 +57,13 @@ function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: 
     });
 
     const inOnboarding = segments[0] === 'onboarding';
+    const timeoutIds: ReturnType<typeof setTimeout>[] = [];
 
     if (needsOnboarding && !inOnboarding) {
       console.log('🔀 User needs onboarding, redirecting...');
       if (!hasNavigated) {
         setHasNavigated(true);
-        setTimeout(() => {
+        const tid = setTimeout(() => {
           try {
             router.replace('/onboarding');
             console.log('✅ Navigated to onboarding');
@@ -71,12 +72,13 @@ function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: 
             setHasNavigated(false);
           }
         }, 100);
+        timeoutIds.push(tid);
       }
     } else if (!needsOnboarding && inOnboarding) {
       console.log('🔀 User has churches, redirecting to app...');
       if (!hasNavigated) {
         setHasNavigated(true);
-        setTimeout(() => {
+        const tid = setTimeout(() => {
           try {
             router.replace('/(tabs)');
             console.log('✅ Navigated to app');
@@ -85,6 +87,7 @@ function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: 
             setHasNavigated(false);
           }
         }, 100);
+        timeoutIds.push(tid);
       }
     } else {
       if (hasNavigated) {
@@ -92,6 +95,12 @@ function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: 
         setHasNavigated(false);
       }
     }
+
+    return () => {
+      timeoutIds.forEach(id => clearTimeout(id));
+    };
+  // hasNavigated is useState (not useRef) so it belongs in deps, but we must
+  // NOT include the ref value — only state values trigger re-runs correctly.
   }, [user, needsOnboarding, segments, isCheckingAuth, router, hasNavigated]);
 }
 

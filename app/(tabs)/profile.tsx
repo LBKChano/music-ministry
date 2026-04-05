@@ -169,6 +169,7 @@ export default function ProfileScreen() {
         <View style={styles.header}>
           <View style={[styles.avatarContainer, { backgroundColor: colors.primary }]}>
             <IconSymbol
+              ios_icon_name="person.fill"
               android_material_icon_name="person"
               size={48}
               color="#FFFFFF"
@@ -185,6 +186,7 @@ export default function ProfileScreen() {
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.cardHeader}>
               <IconSymbol
+                ios_icon_name="calendar.badge.minus"
                 android_material_icon_name="event-busy"
                 size={24}
                 color={colors.primary}
@@ -254,6 +256,7 @@ export default function ProfileScreen() {
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <IconSymbol
+                    ios_icon_name="checkmark.circle.fill"
                     android_material_icon_name="save"
                     size={18}
                     color="#FFFFFF"
@@ -275,6 +278,7 @@ export default function ProfileScreen() {
           }}
         >
           <IconSymbol
+            ios_icon_name="rectangle.portrait.and.arrow.right"
             android_material_icon_name="logout"
             size={20}
             color="#FFFFFF"

@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,8 +22,6 @@ import Animated, {
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Href } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
-
-const { width: screenWidth } = Dimensions.get('window');
 
 export interface TabBarItem {
   name: string;
@@ -41,10 +39,12 @@ interface FloatingTabBarProps {
 
 export default function FloatingTabBar({
   tabs,
-  containerWidth = screenWidth / 2.5,
+  containerWidth,
   borderRadius = 35,
   bottomMargin
 }: FloatingTabBarProps) {
+  const { width: screenWidth } = useWindowDimensions();
+  const resolvedContainerWidth = containerWidth ?? screenWidth / 2.5;
   const router = useRouter();
   const pathname = usePathname();
   const theme = useTheme();
@@ -116,7 +116,7 @@ export default function FloatingTabBar({
       return { transform: [{ translateX: 0 }] };
     }
     
-    const tabWidth = (containerWidth - 8) / tabs.length;
+    const tabWidth = (resolvedContainerWidth - 8) / tabs.length;
     return {
       transform: [
         {
@@ -176,7 +176,7 @@ export default function FloatingTabBar({
       <View style={[
         styles.container,
         {
-          width: containerWidth,
+          width: resolvedContainerWidth,
           marginBottom: bottomMargin ?? 20
         }
       ]}>
@@ -196,7 +196,7 @@ export default function FloatingTabBar({
               const isActive = activeTabIndex === index;
 
               return (
-                <React.Fragment key={index}>
+                <React.Fragment key={tab.name}>
                   <TouchableOpacity
                     style={styles.tab}
                     onPress={() => handleTabPress(tab.route)}

@@ -1,12 +1,10 @@
 
 import { useChurch } from '@/hooks/useChurch';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { NotificationBell } from "@/components/NotificationBell";
 import { colors } from '@/styles/commonStyles';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Stack } from 'expo-router';
 import { useServices } from '@/hooks/useServices';
-import { useTheme } from '@react-navigation/native';
 import { checkAndSendServiceReminders, cleanupOldReminderKeys } from '@/utils/serviceReminders';
 import { IconSymbol } from '@/components/IconSymbol';
 import {
@@ -22,6 +20,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface SpecialService {
   id: string;
@@ -77,7 +76,6 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     backgroundColor: colors.primary,
-    paddingTop: 60,
     paddingBottom: 20,
     paddingHorizontal: 20,
     marginBottom: 16,
@@ -364,6 +362,7 @@ const styles = StyleSheet.create({
 });
 
 export default function HomeScreen() {
+  const insets = useSafeAreaInsets();
   const {
     currentChurch,
     members,
@@ -446,7 +445,7 @@ export default function HomeScreen() {
     registerOneSignalToken();
   }, [currentMember, oneSignalPlayerId, hasPermission, requestPermission, registerPushToken]);
 
-  const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment } = useServices(currentChurch?.id || null);
+  const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate } = useServices(currentChurch?.id || null);
 
   // Refresh services when church changes
   useEffect(() => {
@@ -498,7 +497,6 @@ export default function HomeScreen() {
   }, [oneSignalPlayerId, currentChurch, currentMember, notificationSettings, services, servicesLoading]);
 
   const [addServiceModalVisible, setAddServiceModalVisible] = useState(false);
-  const [editServiceModalVisible, setEditServiceModalVisible] = useState(false);
   const [assignMemberModalVisible, setAssignMemberModalVisible] = useState(false);
   const [deleteServiceModalVisible, setDeleteServiceModalVisible] = useState(false);
   const [deleteAssignmentModalVisible, setDeleteAssignmentModalVisible] = useState(false);
@@ -506,7 +504,6 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isCreatingFillInRequest, setIsCreatingFillInRequest] = useState(false);
 
-  const [selectedService, setSelectedService] = useState<any>(null);
   const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
   const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
@@ -515,15 +512,11 @@ export default function HomeScreen() {
   const [newServiceDate, setNewServiceDate] = useState(new Date());
   const [newServiceType, setNewServiceType] = useState('');
   const [newServiceNotes, setNewServiceNotes] = useState('');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showRecurringServicePicker, setShowRecurringServicePicker] = useState(false);
 
   const [fillInReason, setFillInReason] = useState('');
   const [fillInAssignmentId, setFillInAssignmentId] = useState('');
   const [fillInServiceId, setFillInServiceId] = useState('');
   const [fillInRoleName, setFillInRoleName] = useState('');
-
-  const { colors: themeColors } = useTheme();
 
   const filteredServices = useMemo(() => {
     const today = new Date();
@@ -562,14 +555,42 @@ export default function HomeScreen() {
 
   const handleSaveService = async () => {
     console.log('User tapped save service button');
-    if (!currentChurch || !newServiceType) {
+    if (!currentChurch || !newServiceType.trim()) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
-    setAddServiceModalVisible(false);
-    setNewServiceType('');
-    setNewServiceNotes('');
-    setNewServiceDate(new Date());
+
+    // Format date as YYYY-MM-DD
+    const year = newServiceDate.getFullYear();
+    const month = String(newServiceDate.getMonth() + 1).padStart(2, '0');
+    const day = String(newServiceDate.getDate()).padStart(2, '0');
+    const dateString = `${year}-${month}-${day}`;
+
+    // Find the matching recurring service to get its role slots
+    const matchingRecurring = recurringServices.find(rs => rs.name === newServiceType.trim());
+    const roleSlots = matchingRecurring?.roles ?? [];
+
+    console.log('Creating service:', { date: dateString, type: newServiceType, roles: roleSlots });
+
+    const result = await createServiceFromTemplate(
+      currentChurch.id,
+      dateString,
+      newServiceType.trim(),
+      newServiceNotes.trim() || undefined,
+      roleSlots,
+    );
+
+    if (result) {
+      console.log('Service created successfully:', result.id);
+      Alert.alert('Success', 'Service added successfully');
+      setAddServiceModalVisible(false);
+      setNewServiceType('');
+      setNewServiceNotes('');
+      setNewServiceDate(new Date());
+    } else {
+      console.error('Failed to create service');
+      Alert.alert('Error', 'Failed to add service. Please try again.');
+    }
   };
 
   const handleDeleteService = async () => {
@@ -587,14 +608,11 @@ export default function HomeScreen() {
 
   const handleSaveAssignment = async () => {
     console.log('User tapped save assignment button');
-    setEditServiceModalVisible(false);
-    setSelectedService(null);
   };
 
   const handleSelectRecurringService = (recurringService: any) => {
     console.log('User selected recurring service:', recurringService.name);
     setNewServiceType(recurringService.name);
-    setShowRecurringServicePicker(false);
   };
 
   const handleAssignMember = async () => {
@@ -654,8 +672,7 @@ export default function HomeScreen() {
     }
   }, []);
 
-  const onDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
+  const onDateChange = (_event: any, selectedDate?: Date) => {
     if (selectedDate) setNewServiceDate(selectedDate);
   };
 
@@ -788,7 +805,7 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={styles.headerContainer}>
+      <View style={[styles.headerContainer, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.headerTitle}>{churchName}</Text>
         <Text style={styles.headerSubtitle}>{upcomingText}</Text>
       </View>

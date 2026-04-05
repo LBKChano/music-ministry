@@ -10,10 +10,13 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 
 const ONESIGNAL_APP_ID = '8b605bf5-c7ff-424c-ab10-5ef6ce58cebd';
-const ONESIGNAL_REST_API_KEY =
-  'os_v2_app_2ivalelq6ngjxmagac7o2gl6qwd6u4uidlmuxnfyyfdoccpnbwzfwhlu7ew3hvhoz3rjjb2camlxgqssguzfncvvkogeeiaph4xmm5i';
+// REST API key is read from app.json extra to avoid hardcoding secrets in logic files.
+// NOTE: For full security this should be called server-side only.
+const ONESIGNAL_REST_API_KEY: string =
+  Constants.expoConfig?.extra?.oneSignalRestApiKey ?? '';
 const ONESIGNAL_API_URL = 'https://onesignal.com/api/v1/notifications';
 
 // Storage key prefix for sent-notification deduplication

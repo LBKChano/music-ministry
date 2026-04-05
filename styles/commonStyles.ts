@@ -22,6 +22,28 @@ export const colors = {
   headerText: '#FFFFFF', // White header text
 };
 
+export const darkColors = {
+  background: '#1C1C1E',
+  card: '#2C2C2E',
+  text: '#FFFFFF',
+  subText: '#8E8E93',
+  border: '#3A3A3C',
+  primary: colors.primary,
+  secondary: colors.secondary,
+  accent: colors.accent,
+  backgroundAlt: '#2C2C2E',
+  textSecondary: '#8E8E93',
+  textTertiary: '#636366',
+  cardBackground: '#2C2C2E',
+  highlight: colors.highlight,
+  inputBackground: '#3A3A3C',
+  error: colors.error,
+  navyDark: colors.navyDark,
+  navyLight: '#1C3A6E',
+  headerBackground: colors.headerBackground,
+  headerText: colors.headerText,
+};
+
 export const buttonStyles = StyleSheet.create({
   instructionsButton: {
     backgroundColor: colors.primary,

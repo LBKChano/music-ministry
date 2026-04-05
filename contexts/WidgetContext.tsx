@@ -2,10 +2,17 @@ import * as React from "react";
 import { createContext, useCallback, useContext } from "react";
 import { ExtensionStorage } from "@bacons/apple-targets";
 
-// Initialize storage with your group ID
-const storage = new ExtensionStorage(
-  "group.com.<user_name>.<app_name>"
-);
+// App Group ID derived from the iOS bundle identifier in app.json
+const APP_GROUP_ID = "group.com.a500e23ed75d44a5bf0c6baaf4d67839.app";
+
+// Initialize storage with the correct app group ID, wrapped in try/catch
+// so an invalid group ID doesn't crash the app on non-iOS platforms.
+let storage: ExtensionStorage | null = null;
+try {
+  storage = new ExtensionStorage(APP_GROUP_ID);
+} catch (e) {
+  console.warn('[WidgetContext] Failed to initialize ExtensionStorage:', e);
+}
 
 type WidgetContextType = {
   refreshWidget: () => void;
@@ -14,17 +21,21 @@ type WidgetContextType = {
 const WidgetContext = createContext<WidgetContextType | null>(null);
 
 export function WidgetProvider({ children }: { children: React.ReactNode }) {
-  // Update widget state whenever what we want to show changes
+  // Reload widget on mount
   React.useEffect(() => {
-    // set widget_state to null if we want to reset the widget
-    // storage.set("widget_state", null);
-
-    // Refresh widget
-    ExtensionStorage.reloadWidget();
+    try {
+      ExtensionStorage.reloadWidget();
+    } catch (e) {
+      console.warn('[WidgetContext] reloadWidget failed on mount:', e);
+    }
   }, []);
 
   const refreshWidget = useCallback(() => {
-    ExtensionStorage.reloadWidget();
+    try {
+      ExtensionStorage.reloadWidget();
+    } catch (e) {
+      console.warn('[WidgetContext] reloadWidget failed:', e);
+    }
   }, []);
 
   return (
