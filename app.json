@@ -76,8 +76,7 @@
       [
         "onesignal-expo-plugin",
         {
-          "mode": "production",
-          "appId": "d22a0591-70f3-4c9b-b006-00beed197e85"
+          "mode": "production"
         }
       ],
       "expo-font",
