@@ -2235,22 +2235,27 @@ export default function ChurchScreen() {
                     onPress={() => setShowSpecialServiceDatePicker(true)}
                   >
                     <Text style={[styles.dateButtonText, { color: colors.text }]}>
-                      {formatDate(specialServiceDate.toISOString())}
+                      {specialServiceDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </Text>
                   </TouchableOpacity>
                   {showSpecialServiceDatePicker && (
-                    <View style={styles.datePickerWrapper}>
-                    <DateTimePicker
-                      value={specialServiceDate}
-                      mode="date"
-                      display="spinner"
-                      themeVariant="light"
-                      textColor="#000000"
-                      onChange={(event, date) => {
-                        setShowSpecialServiceDatePicker(false);
-                        if (date) setSpecialServiceDate(date);
-                      }}
-                    />
+                    <View style={{
+                      backgroundColor: '#ffffff',
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      marginVertical: 8,
+                    }}>
+                      <DateTimePicker
+                        value={specialServiceDate}
+                        mode="date"
+                        display="spinner"
+                        themeVariant="light"
+                        textColor="#000000"
+                        onChange={(event, date) => {
+                          setShowSpecialServiceDatePicker(false);
+                          if (date) setSpecialServiceDate(date);
+                        }}
+                      />
                     </View>
                   )}
                   <Text style={[styles.label, { color: colors.text }]}>Time</Text>
@@ -2259,21 +2264,27 @@ export default function ChurchScreen() {
                     onPress={() => setShowSpecialServiceTimePicker(true)}
                   >
                     <Text style={[styles.dateButtonText, { color: colors.text }]}>
-                      {formatTime(formatTimeForDatabase(specialServiceTime))}
+                      {specialServiceTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                     </Text>
                   </TouchableOpacity>
                   {showSpecialServiceTimePicker && (
-                    <View style={styles.datePickerWrapper}>
-                    <DateTimePicker
-                      value={specialServiceTime}
-                      mode="time"
-                      display="spinner"
-                      themeVariant="light"
-                      onChange={(event, time) => {
-                        setShowSpecialServiceTimePicker(false);
-                        if (time) setSpecialServiceTime(time);
-                      }}
-                    />
+                    <View style={{
+                      backgroundColor: '#ffffff',
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      marginVertical: 8,
+                    }}>
+                      <DateTimePicker
+                        value={specialServiceTime}
+                        mode="time"
+                        display="spinner"
+                        themeVariant="light"
+                        textColor="#000000"
+                        onChange={(event, time) => {
+                          setShowSpecialServiceTimePicker(false);
+                          if (time) setSpecialServiceTime(time);
+                        }}
+                      />
                     </View>
                   )}
                   <Text style={[styles.label, { color: colors.text }]}>Notes (optional)</Text>
@@ -2536,22 +2547,28 @@ export default function ChurchScreen() {
                 }}
               >
                 <Text style={[styles.dateButtonText, { color: colors.text }]}>
-                  Date: {formatDate(adHocServiceDate.toISOString())}
+                  Date: {adHocServiceDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </Text>
               </TouchableOpacity>
               {showAdHocDatePicker && (
-                <View style={styles.datePickerWrapper}>
-                <DateTimePicker
-                  value={adHocServiceDate}
-                  mode="date"
-                  display="spinner"
-                  themeVariant="light"
-                  onChange={(event, date) => {
-                    console.log('User selected ad-hoc date:', date);
-                    setShowAdHocDatePicker(false);
-                    if (date) setAdHocServiceDate(date);
-                  }}
-                />
+                <View style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                  marginVertical: 8,
+                }}>
+                  <DateTimePicker
+                    value={adHocServiceDate}
+                    mode="date"
+                    display="spinner"
+                    themeVariant="light"
+                    textColor="#000000"
+                    onChange={(event, date) => {
+                      console.log('User selected ad-hoc date:', date);
+                      setShowAdHocDatePicker(false);
+                      if (date) setAdHocServiceDate(date);
+                    }}
+                  />
                 </View>
               )}
 
@@ -2563,22 +2580,28 @@ export default function ChurchScreen() {
                 }}
               >
                 <Text style={[styles.dateButtonText, { color: colors.text }]}>
-                  Time: {formatTimeForDatabase(adHocServiceTime)}
+                  Time: {adHocServiceTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                 </Text>
               </TouchableOpacity>
               {showAdHocTimePicker && (
-                <View style={styles.datePickerWrapper}>
-                <DateTimePicker
-                  value={adHocServiceTime}
-                  mode="time"
-                  display="spinner"
-                  themeVariant="light"
-                  onChange={(event, date) => {
-                    console.log('User selected ad-hoc time:', date);
-                    setShowAdHocTimePicker(false);
-                    if (date) setAdHocServiceTime(date);
-                  }}
-                />
+                <View style={{
+                  backgroundColor: '#ffffff',
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                  marginVertical: 8,
+                }}>
+                  <DateTimePicker
+                    value={adHocServiceTime}
+                    mode="time"
+                    display="spinner"
+                    themeVariant="light"
+                    textColor="#000000"
+                    onChange={(event, date) => {
+                      console.log('User selected ad-hoc time:', date);
+                      setShowAdHocTimePicker(false);
+                      if (date) setAdHocServiceTime(date);
+                    }}
+                  />
                 </View>
               )}
 
