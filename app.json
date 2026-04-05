@@ -84,14 +84,6 @@
       "expo-router",
       "expo-web-browser",
       [
-        "expo-notifications",
-        {
-          "icon": "./assets/notification-icon.png",
-          "color": "#1a2332",
-          "defaultChannel": "default"
-        }
-      ],
-      [
         "expo-image-picker",
         {
           "photosPermission": "The app accesses your photos to let you select images for member profiles.",
