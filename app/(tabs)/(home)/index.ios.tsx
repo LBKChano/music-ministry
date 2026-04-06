@@ -378,6 +378,7 @@ export default function HomeScreen() {
     registerPushToken,
     refreshFillInRequests,
     refreshMembers,
+    user,
   } = useChurch();
 
   // OneSignal notification context — replaces expo-notifications push token logic on iOS
@@ -788,17 +789,23 @@ export default function HomeScreen() {
     }
   };
 
+  const { loading: churchLoading } = useChurch();
+
   const churchName = currentChurch?.name || 'Schedule';
   const upcomingCount = filteredServices.length;
   const upcomingText = `${upcomingCount} upcoming ${upcomingCount === 1 ? 'service' : 'services'}`;
 
-  if (servicesLoading) {
+  if (churchLoading || servicesLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={{ color: colors.text, marginTop: 16 }}>Loading services...</Text>
       </View>
     );
+  }
+
+  if (!currentChurch || !user) {
+    return null;
   }
 
   return (

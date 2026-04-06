@@ -884,6 +884,10 @@ export default function ChurchScreen() {
     );
   }
 
+  if (!user) {
+    return null;
+  }
+
   const noChurchesText = 'No churches yet';
   const createFirstChurchText = 'Create your first church to get started';
   const noMembersText = 'No members yet';

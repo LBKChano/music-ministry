@@ -39,41 +39,29 @@ export function useChurch() {
   const [churchRoles, setChurchRoles] = useState<ChurchRole[]>([]);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings | null>(null);
   const [fillInRequests, setFillInRequests] = useState<FillInRequestWithMemberInfo[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Start loading=false so the tabs layout doesn't see a false "!loading && !user" state
+  // before the async session check completes. loading becomes true only when we actually
+  // start fetching church data for a confirmed user.
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
   const [currentMember, setCurrentMember] = useState<ChurchMemberWithRoles | null>(null);
 
-  // Check authentication status
+  // Check authentication status.
+  // We rely ONLY on onAuthStateChange (which fires INITIAL_SESSION on mount) rather
+  // than calling getSession() independently. This avoids a race condition on Android
+  // where two independent getSession() calls (one here, one in _layout.tsx) resolve
+  // in non-deterministic order and cause a redirect loop.
   useEffect(() => {
-    const checkUser = async () => {
-      try {
-        console.log('[useChurch] Checking initial auth session');
-        const sessionResult = await supabase.auth.getSession();
-        if (sessionResult.error) {
-          console.error('[useChurch] getSession error:', sessionResult.error.message);
-          setUser(null);
-          return;
-        }
-        const currentUser = sessionResult.data.session?.user || null;
-        console.log('[useChurch] Initial session user:', currentUser?.id ?? 'none');
-        setUser(currentUser);
-      } catch (err) {
-        console.error('[useChurch] Unexpected error in checkUser:', err);
-        setUser(null);
-      }
-    };
-
-    checkUser();
-
     const authSubscription = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('[useChurch] Auth state changed:', event);
+      console.log('[useChurch] Auth state changed:', event, session?.user?.id ?? 'no user');
       const currentUser = session?.user || null;
       setUser(currentUser);
 
-      // Clear all church data when user signs out or session expires
-      if (!currentUser && (event === 'SIGNED_OUT' || event === 'USER_DELETED')) {
-        console.log('[useChurch] User signed out — clearing all church state');
+      // Clear all church data when there is no user (covers INITIAL_SESSION with null,
+      // SIGNED_OUT, USER_DELETED — but not TOKEN_REFRESHED which always has a user)
+      if (!currentUser) {
+        console.log('[useChurch] No user — clearing all church state');
         setChurches([]);
         setCurrentChurch(null);
         setMembers([]);

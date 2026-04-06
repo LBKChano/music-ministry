@@ -69,10 +69,12 @@ export default function ProfileScreen() {
     console.log('User tapped Sign Out button');
     try {
       setSigningOut(true);
-      await signOut();
-      console.log('Sign out successful, navigating to onboarding');
       setShowSignOutModal(false);
-      router.replace('/onboarding');
+      await signOut();
+      // Do NOT call router.replace here — the root layout's auth guard detects the
+      // session clearing and redirects to /onboarding automatically. Calling replace
+      // here as well causes a double-navigation crash on Android.
+      console.log('Sign out successful — auth guard will redirect to onboarding');
     } catch (error) {
       console.error('Error signing out:', error);
       setSigningOut(false);

@@ -12,7 +12,9 @@ export interface ServiceWithAssignments extends Service {
 
 export function useServices(churchId: string | null) {
   const [services, setServices] = useState<ServiceWithAssignments[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Start false — if churchId is null we skip the fetch entirely and never set loading=true.
+  // This prevents the home screen from showing a spinner before the church is known.
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Fetch services for a church - OPTIMIZED with single query
