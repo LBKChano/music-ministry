@@ -62,6 +62,7 @@ export type Database = {
           email: string
           id: string
           is_admin: boolean
+          member_id: string | null
           name: string | null
           role: string | null
         }
@@ -71,6 +72,7 @@ export type Database = {
           email: string
           id?: string
           is_admin?: boolean
+          member_id?: string | null
           name?: string | null
           role?: string | null
         }
@@ -80,6 +82,7 @@ export type Database = {
           email?: string
           id?: string
           is_admin?: boolean
+          member_id?: string | null
           name?: string | null
           role?: string | null
         }
@@ -108,7 +111,7 @@ export type Database = {
           id?: string
           name: string
           updated_at?: string
-          invitation_code: string
+          invitation_code?: string
         }
         Update: {
           admin_id?: string
@@ -128,6 +131,7 @@ export type Database = {
           id: string
           notes: string | null
           service_type: string
+          time: string | null
           updated_at: string
         }
         Insert: {
@@ -137,6 +141,7 @@ export type Database = {
           id?: string
           notes?: string | null
           service_type: string
+          time?: string | null
           updated_at?: string
         }
         Update: {
@@ -146,6 +151,7 @@ export type Database = {
           id?: string
           notes?: string | null
           service_type?: string
+          time?: string | null
           updated_at?: string
         }
         Relationships: [

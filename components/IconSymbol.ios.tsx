@@ -1,5 +1,7 @@
+import React from "react";
 import { SymbolView, SymbolViewProps, SymbolWeight } from "expo-symbols";
 import { StyleProp, ViewStyle } from "react-native";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 export function IconSymbol({
   ios_icon_name,
@@ -15,8 +17,8 @@ export function IconSymbol({
   testID,
   accessibilityLabel,
 }: {
-  ios_icon_name: SymbolViewProps["name"];
-  android_material_icon_name: any;
+  ios_icon_name?: SymbolViewProps["name"] | string | undefined;
+  android_material_icon_name: keyof typeof MaterialIcons.glyphMap;
   size?: number;
   color: string;
   style?: StyleProp<ViewStyle>;
@@ -28,6 +30,21 @@ export function IconSymbol({
   testID?: any;
   accessibilityLabel?: any;
 }) {
+  // Fall back to MaterialIcons if no iOS icon name is provided
+  if (!ios_icon_name) {
+    return (
+      <MaterialIcons
+        onPress={onPress}
+        testID={testID}
+        accessibilityLabel={accessibilityLabel}
+        color={color}
+        size={size}
+        name={android_material_icon_name}
+        style={style as any}
+      />
+    );
+  }
+
   return (
     <SymbolView
       onPress={onPress}
@@ -39,7 +56,7 @@ export function IconSymbol({
       weight={weight}
       tintColor={color}
       resizeMode="scaleAspectFit"
-      name={ios_icon_name}
+      name={ios_icon_name as SymbolViewProps["name"]}
       style={[
         {
           width: size,

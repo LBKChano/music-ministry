@@ -1,7 +1,6 @@
 
 import { useChurch } from '@/hooks/useChurch';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { NotificationBell } from "@/components/NotificationBell";
 import { colors } from '@/styles/commonStyles';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Stack } from 'expo-router';
