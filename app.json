@@ -25,7 +25,8 @@
         "NSUserTrackingUsageDescription": "This app does not track you.",
         "UIBackgroundModes": [
           "remote-notification"
-        ]
+        ],
+        "NSLocationWhenInUseUsageDescription": "This app uses your location to help find nearby churches and services."
       },
       "splash": {
         "image": "./assets/images/9b11f806-5921-4e61-9383-a3f7e125c18f.png",
