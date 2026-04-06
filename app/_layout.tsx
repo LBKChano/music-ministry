@@ -1,6 +1,6 @@
 
 import "react-native-reanimated";
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useCallback } from "react";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -25,20 +25,23 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 });
 
 export const unstable_settings = {
-  initialRouteName: "(tabs)",
+  initialRouteName: "onboarding",
 };
 
 function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: boolean) {
   const segments = useSegments();
   const router = useRouter();
-  const [hasNavigated, setHasNavigated] = useState(false);
+  // Use a ref so the navigation lock never causes re-render loops.
+  // Reset it whenever the auth check restarts so a fresh redirect can fire.
+  const isNavigating = React.useRef(false);
   const prevIsCheckingAuth = React.useRef(isCheckingAuth);
 
   useEffect(() => {
-    // When isCheckingAuth transitions from true -> false, reset the navigation flag
+    // When isCheckingAuth transitions true → false, unlock navigation so the
+    // guard below can fire a fresh redirect for the new auth state.
     if (prevIsCheckingAuth.current === true && isCheckingAuth === false) {
-      console.log('🔄 isCheckingAuth flipped to false — resetting hasNavigated');
-      setHasNavigated(false);
+      console.log('🔄 isCheckingAuth flipped to false — unlocking navigation guard');
+      isNavigating.current = false;
     }
     prevIsCheckingAuth.current = isCheckingAuth;
   }, [isCheckingAuth]);
@@ -49,59 +52,33 @@ function useProtectedRoute(user: any, needsOnboarding: boolean, isCheckingAuth: 
       return;
     }
 
+    const inOnboarding = segments[0] === 'onboarding';
+
     console.log('🛡️ Protected route check:', {
       user: !!user,
       needsOnboarding,
+      inOnboarding,
       segments: segments.join('/'),
-      hasNavigated,
+      isNavigating: isNavigating.current,
     });
 
-    const inOnboarding = segments[0] === 'onboarding';
-    const timeoutIds: ReturnType<typeof setTimeout>[] = [];
-
     if (needsOnboarding && !inOnboarding) {
-      console.log('🔀 User needs onboarding, redirecting...');
-      if (!hasNavigated) {
-        setHasNavigated(true);
-        const tid = setTimeout(() => {
-          try {
-            router.replace('/onboarding');
-            console.log('✅ Navigated to onboarding');
-          } catch (error) {
-            console.error('❌ Error navigating to onboarding:', error);
-            setHasNavigated(false);
-          }
-        }, 100);
-        timeoutIds.push(tid);
-      }
+      if (isNavigating.current) return;
+      isNavigating.current = true;
+      console.log('🔀 No session / needs onboarding — redirecting to /onboarding');
+      router.replace('/onboarding');
     } else if (!needsOnboarding && inOnboarding) {
-      console.log('🔀 User has churches, redirecting to app...');
-      if (!hasNavigated) {
-        setHasNavigated(true);
-        const tid = setTimeout(() => {
-          try {
-            router.replace('/(tabs)');
-            console.log('✅ Navigated to app');
-          } catch (error) {
-            console.error('❌ Error navigating to app:', error);
-            setHasNavigated(false);
-          }
-        }, 100);
-        timeoutIds.push(tid);
-      }
+      if (isNavigating.current) return;
+      isNavigating.current = true;
+      console.log('🔀 Authenticated with churches — redirecting to /(tabs)');
+      router.replace('/(tabs)');
     } else {
-      if (hasNavigated) {
-        console.log('✅ On correct screen, resetting navigation flag');
-        setHasNavigated(false);
-      }
+      // Already on the correct screen — clear the lock so future auth changes
+      // can trigger a redirect again.
+      isNavigating.current = false;
+      console.log('✅ Already on correct screen, no redirect needed');
     }
-
-    return () => {
-      timeoutIds.forEach(id => clearTimeout(id));
-    };
-  // hasNavigated is useState (not useRef) so it belongs in deps, but we must
-  // NOT include the ref value — only state values trigger re-runs correctly.
-  }, [user, needsOnboarding, segments, isCheckingAuth, router, hasNavigated]);
+  }, [user, needsOnboarding, segments, isCheckingAuth, router]);
 }
 
 async function checkUserHasChurches(userId: string, userEmail: string | undefined, retryCount = 0): Promise<boolean> {
