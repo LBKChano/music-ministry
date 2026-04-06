@@ -361,8 +361,6 @@ export const setupErrorLogging = () => {
 
 // Auto-initialize logging when this module is imported
 // Only run in development mode - production apps don't need log forwarding
-let errorLoggingSetup = false;
-if (__DEV__ && !errorLoggingSetup) {
-  errorLoggingSetup = true;
+if (__DEV__) {
   setupErrorLogging();
 }
