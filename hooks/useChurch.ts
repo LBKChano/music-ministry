@@ -47,19 +47,51 @@ export function useChurch() {
   // Check authentication status
   useEffect(() => {
     const checkUser = async () => {
-      const sessionResult = await supabase.auth.getSession();
-      const currentUser = sessionResult.data.session?.user || null;
-      setUser(currentUser);
+      try {
+        console.log('[useChurch] Checking initial auth session');
+        const sessionResult = await supabase.auth.getSession();
+        if (sessionResult.error) {
+          console.error('[useChurch] getSession error:', sessionResult.error.message);
+          setUser(null);
+          return;
+        }
+        const currentUser = sessionResult.data.session?.user || null;
+        console.log('[useChurch] Initial session user:', currentUser?.id ?? 'none');
+        setUser(currentUser);
+      } catch (err) {
+        console.error('[useChurch] Unexpected error in checkUser:', err);
+        setUser(null);
+      }
     };
 
     checkUser();
 
     const authSubscription = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user || null);
+      console.log('[useChurch] Auth state changed:', event);
+      const currentUser = session?.user || null;
+      setUser(currentUser);
+
+      // Clear all church data when user signs out or session expires
+      if (!currentUser && (event === 'SIGNED_OUT' || event === 'USER_DELETED')) {
+        console.log('[useChurch] User signed out — clearing all church state');
+        setChurches([]);
+        setCurrentChurch(null);
+        setMembers([]);
+        setRecurringServices([]);
+        setChurchRoles([]);
+        setCurrentMember(null);
+        setNotificationSettings(null);
+        setFillInRequests([]);
+        setLoading(false);
+      }
     });
 
     return () => {
-      authSubscription.data.subscription.unsubscribe();
+      try {
+        authSubscription.data.subscription.unsubscribe();
+      } catch (err) {
+        console.warn('[useChurch] Error unsubscribing auth listener:', err);
+      }
     };
   }, []);
 
@@ -70,7 +102,14 @@ export function useChurch() {
       setLoading(true);
       setError(null);
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const getUserResult = await supabase.auth.getUser();
+      if (getUserResult.error) {
+        console.error('[useChurch] fetchChurches: getUser error:', getUserResult.error.message);
+        setChurches([]);
+        setLoading(false);
+        return;
+      }
+      const user = getUserResult.data?.user ?? null;
       
       if (!user) {
         console.log('No user logged in');
@@ -249,7 +288,12 @@ export function useChurch() {
     try {
       setError(null);
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const getUserResult = await supabase.auth.getUser();
+      if (getUserResult.error) {
+        console.error('[useChurch] createChurch: getUser error:', getUserResult.error.message);
+        throw new Error('Authentication error. Please sign in again.');
+      }
+      const user = getUserResult.data?.user ?? null;
       
       if (!user) {
         throw new Error('You must be logged in to create a church');
@@ -884,7 +928,13 @@ export function useChurch() {
   const fetchCurrentMember = useCallback(async (churchId: string) => {
     console.log('Fetching current member info for church:', churchId);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const getUserResult = await supabase.auth.getUser();
+      if (getUserResult.error) {
+        console.error('[useChurch] fetchCurrentMember: getUser error:', getUserResult.error.message);
+        setCurrentMember(null);
+        return;
+      }
+      const user = getUserResult.data?.user ?? null;
       
       if (!user) {
         console.log('No user logged in');

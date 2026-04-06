@@ -246,6 +246,13 @@ export default function RootLayout() {
         
         if (sessionResult.error) {
           console.error('❌ Error fetching session:', sessionResult.error);
+          // Clear any corrupted/expired session from storage so the next launch is clean
+          try {
+            await supabase.auth.signOut();
+            console.log('🧹 Cleared bad session from storage');
+          } catch (signOutErr) {
+            console.warn('⚠️ Could not clear bad session (safe to ignore):', signOutErr);
+          }
           setUser(null);
           setNeedsOnboarding(true);
           return;
@@ -344,7 +351,11 @@ export default function RootLayout() {
 
     return () => {
       console.log('🧹 Cleaning up auth subscription');
-      authSubscription.data.subscription.unsubscribe();
+      try {
+        authSubscription.data.subscription.unsubscribe();
+      } catch (err) {
+        console.warn('⚠️ Error unsubscribing auth listener (safe to ignore):', err);
+      }
     };
   }, []);
 
