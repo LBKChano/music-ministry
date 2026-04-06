@@ -115,7 +115,13 @@ export default function FloatingTabBar({
     if (!tabs || tabs.length === 0) {
       return { transform: [{ translateX: 0 }] };
     }
-    
+
+    // When there is only one tab the input range [0, 0] is invalid for interpolate,
+    // so just return a static translateX of 0.
+    if (tabs.length === 1) {
+      return { transform: [{ translateX: 0 }] };
+    }
+
     const tabWidth = (resolvedContainerWidth - 8) / tabs.length;
     return {
       transform: [
