@@ -172,11 +172,11 @@ export default function OnboardingScreen() {
       }
 
       console.log('Admin added as member successfully:', memberResult.data);
-      console.log('Church and admin account created successfully — navigating to app');
+      console.log('Church and admin account created successfully — session change will trigger navigation');
 
-      // All DB writes are complete — navigate to the app now.
-      router.replace('/(tabs)');
-      // Keep loading=true; the component will unmount on navigation.
+      // All DB writes are complete. The session change from signUp will trigger
+      // the navigation guard in _layout.tsx to redirect to /(tabs).
+      setLoading(false);
     } catch (err) {
       console.error('Error in onboarding:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -219,9 +219,10 @@ export default function OnboardingScreen() {
       }
 
       console.log('Admin logged in successfully! User ID:', signInResult.data.user?.id);
-      console.log('Navigating to app.');
-      router.replace('/(tabs)');
-      // Keep loading=true; the component will unmount on navigation.
+      console.log('Session change will trigger navigation to app.');
+      // The session change from signInWithPassword will trigger the navigation
+      // guard in _layout.tsx to redirect to /(tabs).
+      setLoading(false);
     } catch (err) {
       console.error('Error in admin login:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -253,9 +254,10 @@ export default function OnboardingScreen() {
         return;
       }
 
-      console.log('Member logged in successfully! Navigating to app.');
-      router.replace('/(tabs)');
-      // Keep loading=true; the component will unmount on navigation.
+      console.log('Member logged in successfully! Session change will trigger navigation.');
+      // The session change from signInWithPassword will trigger the navigation
+      // guard in _layout.tsx to redirect to /(tabs).
+      setLoading(false);
     } catch (err) {
       console.error('Error in member login:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -375,9 +377,10 @@ export default function OnboardingScreen() {
 
       console.log('Member successfully joined church:', churchData.name);
       console.log('Member data:', memberData);
-      console.log('Member account created successfully — navigating to app');
-      router.replace('/(tabs)');
-      // Keep loading=true; the component will unmount on navigation.
+      console.log('Member account created successfully — session change will trigger navigation');
+      // The session change from signUp will trigger the navigation
+      // guard in _layout.tsx to redirect to /(tabs).
+      setLoading(false);
     } catch (err) {
       console.error('Unexpected error in member signup:', err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');

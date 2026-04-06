@@ -106,12 +106,14 @@ export default function RootLayout() {
   // Step 4: Navigation guard — only runs after loading is complete
   useEffect(() => {
     if (isLoading) return;
+    if (segments[0] === undefined) return; // router not yet resolved
 
     const inTabsGroup = segments[0] === "(tabs)";
+    const inOnboarding = segments[0] === "onboarding";
 
     if (!session && inTabsGroup) {
       router.replace("/onboarding");
-    } else if (session && !inTabsGroup && segments[0] !== "+not-found") {
+    } else if (session && inOnboarding) {
       router.replace("/(tabs)");
     }
   }, [session, isLoading, segments, router]);
