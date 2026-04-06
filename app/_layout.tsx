@@ -1,6 +1,6 @@
 
 import "react-native-reanimated";
-import React, { useEffect, useCallback } from "react";
+import React, { useEffect, useCallback, useState } from "react";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -222,14 +222,11 @@ export default function RootLayout() {
         const sessionResult = await getSessionWithTimeout();
         
         if (sessionResult.error) {
-          console.error('❌ Error fetching session:', sessionResult.error);
-          // Clear any corrupted/expired session from storage so the next launch is clean
-          try {
-            await supabase.auth.signOut();
-            console.log('🧹 Cleared bad session from storage');
-          } catch (signOutErr) {
-            console.warn('⚠️ Could not clear bad session (safe to ignore):', signOutErr);
-          }
+          // A getSession error is often transient (token refresh race, brief network
+          // hiccup). Do NOT call signOut() here — that would permanently destroy the
+          // stored session and force the user to log in every time the app opens.
+          // Instead, treat it as "no active session right now" and let the user log in.
+          console.warn('⚠️ getSession returned an error (treating as no session):', sessionResult.error.message);
           setUser(null);
           setNeedsOnboarding(true);
           return;
