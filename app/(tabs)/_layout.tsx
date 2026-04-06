@@ -1,23 +1,29 @@
 
 import { Tabs } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, View } from 'react-native';
-import { IconSymbol } from '@/components/IconSymbol';
+import { ActivityIndicator, View } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
 import { useChurch } from '@/hooks/useChurch';
 
+// Safety timeout: if loading takes longer than this, render tabs anyway
+const LOADING_TIMEOUT_MS = 4000;
+
 export default function TabLayout() {
-  const { currentMember, loading } = useChurch();
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { isAdmin, loading } = useChurch();
+  const [timedOut, setTimedOut] = useState(false);
 
   useEffect(() => {
-    console.log('Current member admin status:', currentMember?.is_admin);
-    setIsAdmin(currentMember?.is_admin || false);
-  }, [currentMember]);
+    const timer = setTimeout(() => {
+      console.warn('[TabLayout] Loading timed out — rendering tabs anyway');
+      setTimedOut(true);
+    }, LOADING_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
-  // Don't render the tab bar until admin status is resolved to prevent flicker
-  if (loading) {
+  // Don't render the tab bar until admin status is resolved to prevent flicker,
+  // but never block longer than LOADING_TIMEOUT_MS.
+  if (loading && !timedOut) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -53,7 +59,7 @@ export default function TabLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
       }}
-      tabBar={(props) => <FloatingTabBar tabs={tabs} />}
+      tabBar={() => <FloatingTabBar tabs={tabs} />}
     >
       <Tabs.Screen
         name="(home)"

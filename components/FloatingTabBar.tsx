@@ -107,34 +107,39 @@ export default function FloatingTabBar({
   }, [router]);
 
   const tabWidthPercent = React.useMemo(() => {
-    if (!tabs || tabs.length === 0) return 50;
-    return ((100 / tabs.length) - 1);
-  }, [tabs]);
+    if (tabCount === 0) return 50;
+    return ((100 / tabCount) - 1);
+  }, [tabCount]);
+
+  // Capture stable numeric values for the worklet — avoid passing the full tabs
+  // array into useAnimatedStyle (arrays are not worklet-safe and change reference
+  // every render, causing infinite re-renders / crashes).
+  const tabCount = tabs?.length ?? 0;
 
   const indicatorStyle = useAnimatedStyle(() => {
-    if (!tabs || tabs.length === 0) {
+    if (tabCount === 0) {
       return { transform: [{ translateX: 0 }] };
     }
 
     // When there is only one tab the input range [0, 0] is invalid for interpolate,
     // so just return a static translateX of 0.
-    if (tabs.length === 1) {
+    if (tabCount === 1) {
       return { transform: [{ translateX: 0 }] };
     }
 
-    const tabWidth = (resolvedContainerWidth - 8) / tabs.length;
+    const tabWidth = (resolvedContainerWidth - 8) / tabCount;
     return {
       transform: [
         {
           translateX: interpolate(
             animatedValue.value,
-            [0, tabs.length - 1],
-            [0, tabWidth * (tabs.length - 1)]
+            [0, tabCount - 1],
+            [0, tabWidth * (tabCount - 1)]
           ),
         },
       ],
     };
-  }, [tabs, containerWidth]);
+  }, [tabCount, resolvedContainerWidth]);
 
   if (!tabs || tabs.length === 0) {
     console.error('FloatingTabBar - No valid tabs to render');

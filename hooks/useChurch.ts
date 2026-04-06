@@ -1604,6 +1604,38 @@ export function useChurch() {
   // Check if current user is admin of current church
   const isAdmin = !!(currentChurch && user && currentChurch.admin_id === user.id);
 
+  // Stable refresh helpers — must be declared as proper useCallback hooks, not inline
+  // in the return object (that would violate Rules of Hooks).
+  const refreshMembers = useCallback(() => {
+    if (!currentChurch) return Promise.resolve(undefined);
+    return fetchMembers(currentChurch.id);
+  }, [currentChurch, fetchMembers]);
+
+  const refreshRecurringServices = useCallback(() => {
+    if (!currentChurch) return Promise.resolve(undefined);
+    return fetchRecurringServices(currentChurch.id);
+  }, [currentChurch, fetchRecurringServices]);
+
+  const refreshChurchRoles = useCallback(() => {
+    if (!currentChurch) return Promise.resolve(undefined);
+    return fetchChurchRoles(currentChurch.id);
+  }, [currentChurch, fetchChurchRoles]);
+
+  const refreshCurrentMember = useCallback(() => {
+    if (!currentChurch) return Promise.resolve(undefined);
+    return fetchCurrentMember(currentChurch.id);
+  }, [currentChurch, fetchCurrentMember]);
+
+  const refreshNotificationSettings = useCallback(() => {
+    if (!currentChurch) return Promise.resolve(undefined);
+    return fetchNotificationSettings(currentChurch.id);
+  }, [currentChurch, fetchNotificationSettings]);
+
+  const refreshFillInRequests = useCallback(() => {
+    if (!currentChurch) return Promise.resolve(undefined);
+    return fetchFillInRequests(currentChurch.id);
+  }, [currentChurch, fetchFillInRequests]);
+
   return {
     churches,
     currentChurch,
@@ -1643,11 +1675,11 @@ export function useChurch() {
     signOut,
     fetchFillInRequests,
     refreshChurches: fetchChurches,
-    refreshMembers: useCallback(() => currentChurch && fetchMembers(currentChurch.id), [currentChurch, fetchMembers]),
-    refreshRecurringServices: useCallback(() => currentChurch && fetchRecurringServices(currentChurch.id), [currentChurch, fetchRecurringServices]),
-    refreshChurchRoles: useCallback(() => currentChurch && fetchChurchRoles(currentChurch.id), [currentChurch, fetchChurchRoles]),
-    refreshCurrentMember: useCallback(() => currentChurch && fetchCurrentMember(currentChurch.id), [currentChurch, fetchCurrentMember]),
-    refreshNotificationSettings: useCallback(() => currentChurch && fetchNotificationSettings(currentChurch.id), [currentChurch, fetchNotificationSettings]),
-    refreshFillInRequests: useCallback(() => currentChurch && fetchFillInRequests(currentChurch.id), [currentChurch, fetchFillInRequests]),
+    refreshMembers,
+    refreshRecurringServices,
+    refreshChurchRoles,
+    refreshCurrentMember,
+    refreshNotificationSettings,
+    refreshFillInRequests,
   };
 }
