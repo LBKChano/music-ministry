@@ -1,15 +1,13 @@
-
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { colors } from '@/styles/commonStyles';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
-import { useChurch } from '@/hooks/useChurch';
 
+// NOTE: Do NOT call useChurch() here — it triggers a Supabase getSession() call
+// that races with AuthContext on cold launch and can cause a crash before the
+// navigator is mounted. Tab visibility based on admin status is handled inside
+// each screen instead.
 export default function TabLayout() {
-  const { isAdmin } = useChurch();
-
-  // Build tabs array based on admin status.
-  // No redirect logic here — navigation is owned exclusively by _layout.tsx.
   const tabs: TabBarItem[] = [
     {
       name: '(home)',
@@ -17,12 +15,12 @@ export default function TabLayout() {
       icon: 'calendar-today',
       label: 'Schedule',
     },
-    ...(isAdmin ? [{
+    {
       name: 'church',
       route: '/(tabs)/church' as any,
       icon: 'home',
       label: 'Church',
-    }] : []),
+    },
     {
       name: 'profile',
       route: '/(tabs)/profile' as any,
@@ -49,7 +47,6 @@ export default function TabLayout() {
         name="church"
         options={{
           title: 'Church',
-          href: isAdmin ? undefined : null,
         }}
       />
       <Tabs.Screen
