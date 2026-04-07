@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import type { Session } from '@supabase/supabase-js';
-import * as SplashScreen from 'expo-splash-screen';
 
 interface AuthContextType {
   session: Session | null;
@@ -18,19 +17,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
-      console.log('🔄 AuthContext onAuthStateChange:', event, newSession ? `user=${newSession.user.id}` : 'no session');
-      setSession(newSession ?? null);
+    // Get initial session first
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('[AuthContext] getSession:', session ? `user=${session.user.id}` : 'no session');
+      setSession(session);
       setInitialized(true);
     });
+
+    // Then listen for changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log('[AuthContext] onAuthStateChange:', _event, session ? `user=${session.user.id}` : 'no session');
+      setSession(session);
+    });
+
     return () => subscription.unsubscribe();
   }, []);
-
-  useEffect(() => {
-    if (initialized) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [initialized]);
 
   return (
     <AuthContext.Provider value={{ session, initialized }}>

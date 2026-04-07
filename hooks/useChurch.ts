@@ -144,45 +144,24 @@ export function useChurch() {
     }
   }, [currentChurch]);
 
-  // Bootstrap: subscribe to auth state changes so the hook re-bootstraps after login.
-  // This fires immediately with the current session on mount, and again on any
-  // sign-in / sign-out event — no race condition with _layout.tsx because they
-  // are independent subscriptions doing different things.
+  // Bootstrap: one-time session check on mount. When the user logs in and gets
+  // redirected to tabs, the tab screens mount fresh and this effect runs again
+  // with the new session — no competing subscriptions with AuthContext.
   useEffect(() => {
     let cancelled = false;
 
-    const bootstrap = async (userId: string) => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
       if (cancelled) return;
-      console.log('[useChurch] Bootstrapping for user:', userId);
-      setLoading(true);
-      await fetchChurches();
-    };
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (cancelled) return;
-      console.log('[useChurch] auth event:', event);
-      if (session?.user) {
-        setUser(session.user);
-        bootstrap(session.user.id);
-      } else {
-        // Clear all state on sign out
-        setUser(null);
-        setChurches([]);
-        setCurrentChurch(null);
-        setMembers([]);
-        setRecurringServices([]);
-        setChurchRoles([]);
-        setCurrentMember(null);
-        setNotificationSettings(null);
-        setFillInRequests([]);
+      console.log('[useChurch] getSession:', session ? `user=${session.user.id}` : 'no session');
+      if (!session?.user) {
         setLoading(false);
+        return;
       }
+      setUser(session.user);
+      fetchChurches();
     });
 
-    return () => {
-      cancelled = true;
-      subscription.unsubscribe();
-    };
+    return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch members for a specific church with their roles
