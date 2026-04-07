@@ -144,22 +144,18 @@ export function useChurch() {
     }
   }, [currentChurch]);
 
-  // Check authentication status.
-  // We rely ONLY on onAuthStateChange (which fires INITIAL_SESSION on mount) rather
-  // than calling getSession() independently. This avoids a race condition on Android
-  // where two independent getSession() calls (one here, one in _layout.tsx) resolve
-  // in non-deterministic order and cause a redirect loop.
-  // fetchChurches is defined above so it can be safely referenced here.
+  // Bootstrap: get the current user once on mount, then fetch churches.
+  // Auth state changes are owned exclusively by _layout.tsx — this hook
+  // does NOT subscribe to onAuthStateChange to avoid competing subscriptions.
   useEffect(() => {
-    const authSubscription = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('[useChurch] Auth state changed:', event, session?.user?.id ?? 'no user');
-      const currentUser = session?.user || null;
-      setUser(currentUser);
+    let cancelled = false;
 
-      if (!currentUser) {
-        // Clear all church data when there is no user (covers INITIAL_SESSION with null,
-        // SIGNED_OUT, USER_DELETED — but not TOKEN_REFRESHED which always has a user)
-        console.log('[useChurch] No user — clearing all church state');
+    supabase.auth.getUser().then(({ data, error }) => {
+      if (cancelled) return;
+
+      if (error || !data.user) {
+        console.log('[useChurch] No authenticated user on mount — clearing state');
+        setUser(null);
         setChurches([]);
         setCurrentChurch(null);
         setMembers([]);
@@ -169,21 +165,19 @@ export function useChurch() {
         setNotificationSettings(null);
         setFillInRequests([]);
         setLoading(false);
-      } else {
-        // Fetch church data when user is confirmed (covers app open with stored session)
-        console.log('[useChurch] User confirmed — fetching churches');
-        fetchChurches();
+        return;
       }
+
+      console.log('[useChurch] User confirmed on mount:', data.user.id);
+      setUser(data.user);
+      fetchChurches();
     });
 
     return () => {
-      try {
-        authSubscription.data.subscription.unsubscribe();
-      } catch (err) {
-        console.warn('[useChurch] Error unsubscribing auth listener:', err);
-      }
+      cancelled = true;
     };
-  }, [fetchChurches]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch members for a specific church with their roles
   const fetchMembers = useCallback(async (churchId: string) => {

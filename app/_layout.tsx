@@ -1,8 +1,8 @@
 
 import "react-native-reanimated";
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { useFonts } from "expo-font";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -25,10 +25,6 @@ SplashScreen.preventAutoHideAsync().catch(() => {
   // Already hidden or not prevented — safe to ignore
 });
 
-export const unstable_settings = {
-  initialRouteName: "onboarding",
-};
-
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const networkState = useNetworkState();
@@ -37,56 +33,28 @@ export default function RootLayout() {
   });
 
   const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
 
-  const segments = useSegments();
   const router = useRouter();
 
-  const hideSplash = useCallback(() => {
-    SplashScreen.hideAsync().catch((err) => {
-      console.warn("⚠️ SplashScreen.hideAsync error (safe to ignore):", err);
-    });
-  }, []);
-
-  // Step 1: Get the initial session once on mount
+  // Single effect: get initial session, then subscribe to changes.
+  // onAuthStateChange fires INITIAL_SESSION synchronously on mount which
+  // sets both session and initialized in one pass — no race condition.
   useEffect(() => {
-    console.log("🔐 RootLayout: fetching initial session");
+    console.log("🔐 RootLayout: subscribing to auth state");
 
-    supabase.auth
-      .getSession()
-      .then(({ data, error }) => {
-        if (error) {
-          console.warn(
-            "⚠️ getSession error (treating as no session):",
-            error.message
-          );
-          setSession(null);
-        } else {
-          const s = data.session ?? null;
-          console.log(
-            "✅ Initial session:",
-            s ? `user=${s.user.id}` : "none"
-          );
-          setSession(s);
-        }
-      })
-      .catch((err) => {
-        console.error("❌ getSession threw unexpectedly:", err);
-        setSession(null);
-      })
-      .finally(() => {
-        console.log("✅ Auth check complete — isLoading → false");
-        setIsLoading(false);
-      });
-
-    // Step 2: Keep session in sync with auth state changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, newSession) => {
-      console.log("🔄 onAuthStateChange:", event, newSession ? `user=${newSession.user.id}` : "no session");
-      // INITIAL_SESSION fires before getSession resolves on some platforms —
-      // we still update state so the guard always has the latest value.
+      console.log(
+        "🔄 onAuthStateChange:",
+        event,
+        newSession ? `user=${newSession.user.id}` : "no session"
+      );
       setSession(newSession ?? null);
+
+      // Mark initialized after the first event (INITIAL_SESSION or SIGNED_IN etc.)
+      setInitialized(true);
     });
 
     return () => {
@@ -95,28 +63,28 @@ export default function RootLayout() {
     };
   }, []);
 
-  // Step 3: Hide splash once both fonts and auth are ready
+  // Hide splash once both fonts and auth are ready
   useEffect(() => {
-    if (fontsLoaded && !isLoading) {
+    if (fontsLoaded && initialized) {
       console.log("✅ Fonts + auth ready — hiding splash");
-      hideSplash();
+      SplashScreen.hideAsync().catch((err) => {
+        console.warn("⚠️ SplashScreen.hideAsync error (safe to ignore):", err);
+      });
     }
-  }, [fontsLoaded, isLoading, hideSplash]);
+  }, [fontsLoaded, initialized]);
 
-  // Step 4: Navigation guard — only runs after loading is complete
+  // Navigation guard — runs once initialized, drives all routing decisions
   useEffect(() => {
-    if (isLoading) return;
-    if (segments[0] === undefined) return; // router not yet resolved
+    if (!initialized || !fontsLoaded) return;
 
-    const inTabsGroup = segments[0] === "(tabs)";
-    const inOnboarding = segments[0] === "onboarding";
-
-    if (!session && inTabsGroup) {
-      router.replace("/onboarding");
-    } else if (session && inOnboarding) {
+    if (session) {
+      console.log("✅ Session present — navigating to tabs");
       router.replace("/(tabs)");
+    } else {
+      console.log("🚫 No session — navigating to onboarding");
+      router.replace("/onboarding");
     }
-  }, [session, isLoading, segments, router]);
+  }, [initialized, session, fontsLoaded, router]);
 
   // Offline alert
   useEffect(() => {
@@ -125,14 +93,14 @@ export default function RootLayout() {
       networkState.isInternetReachable === false
     ) {
       Alert.alert(
-        "🔌 You are offline",
+        "You are offline",
         "You can keep using the app! Your changes will be saved locally and synced when you are back online."
       );
     }
   }, [networkState.isConnected, networkState.isInternetReachable]);
 
-  // While loading, keep the splash screen visible (return null)
-  if (isLoading || !fontsLoaded) {
+  // While loading, keep the splash screen visible
+  if (!initialized || !fontsLoaded) {
     return null;
   }
 
