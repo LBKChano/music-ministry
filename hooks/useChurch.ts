@@ -144,17 +144,28 @@ export function useChurch() {
     }
   }, [currentChurch]);
 
-  // Bootstrap: get the current user once on mount, then fetch churches.
-  // Auth state changes are owned exclusively by _layout.tsx — this hook
-  // does NOT subscribe to onAuthStateChange to avoid competing subscriptions.
+  // Bootstrap: subscribe to auth state changes so the hook re-bootstraps after login.
+  // This fires immediately with the current session on mount, and again on any
+  // sign-in / sign-out event — no race condition with _layout.tsx because they
+  // are independent subscriptions doing different things.
   useEffect(() => {
     let cancelled = false;
 
-    supabase.auth.getUser().then(({ data, error }) => {
+    const bootstrap = async (userId: string) => {
       if (cancelled) return;
+      console.log('[useChurch] Bootstrapping for user:', userId);
+      setLoading(true);
+      await fetchChurches();
+    };
 
-      if (error || !data.user) {
-        console.log('[useChurch] No authenticated user on mount — clearing state');
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (cancelled) return;
+      console.log('[useChurch] auth event:', event);
+      if (session?.user) {
+        setUser(session.user);
+        bootstrap(session.user.id);
+      } else {
+        // Clear all state on sign out
         setUser(null);
         setChurches([]);
         setCurrentChurch(null);
@@ -165,19 +176,14 @@ export function useChurch() {
         setNotificationSettings(null);
         setFillInRequests([]);
         setLoading(false);
-        return;
       }
-
-      console.log('[useChurch] User confirmed on mount:', data.user.id);
-      setUser(data.user);
-      fetchChurches();
     });
 
     return () => {
       cancelled = true;
+      subscription.unsubscribe();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch members for a specific church with their roles
   const fetchMembers = useCallback(async (churchId: string) => {
@@ -1466,6 +1472,7 @@ export function useChurch() {
 
   // Set up realtime subscriptions for live updates
   useEffect(() => {
+    if (!user) return; // Don't set up subscriptions without a user
     if (!currentChurch) {
       console.log('No current church, skipping realtime subscription');
       return;
@@ -1576,6 +1583,7 @@ export function useChurch() {
       console.log('Cleaning up church data realtime subscriptions');
       supabase.removeChannel(churchChannel);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentChurch, fetchMembers, fetchChurchRoles, fetchRecurringServices, fetchFillInRequests, fetchNotificationSettings]);
 
   // Check if current user is admin of current church

@@ -885,7 +885,14 @@ export default function ChurchScreen() {
   }
 
   if (!user) {
-    return null;
+    console.log('[ChurchScreen] No user, rendering loading state');
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
   }
 
   const noChurchesText = 'No churches yet';

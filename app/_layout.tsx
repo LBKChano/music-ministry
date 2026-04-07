@@ -1,13 +1,11 @@
-
 import "react-native-reanimated";
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { useFonts } from "expo-font";
-import { Stack, useRouter } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { useColorScheme, Alert } from "react-native";
-import { useNetworkState } from "expo-network";
+import { useColorScheme } from "react-native";
 import {
   DarkTheme,
   DefaultTheme,
@@ -17,92 +15,15 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
-import { supabase } from "@/lib/supabase/client";
-import type { Session } from "@supabase/supabase-js";
+import { AuthProvider } from "@/contexts/AuthContext";
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync().catch(() => {
-  // Already hidden or not prevented — safe to ignore
-});
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  const networkState = useNetworkState();
   const [fontsLoaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
-
-  const [session, setSession] = useState<Session | null>(null);
-  const [initialized, setInitialized] = useState(false);
-
-  const router = useRouter();
-
-  // Single effect: get initial session, then subscribe to changes.
-  // onAuthStateChange fires INITIAL_SESSION synchronously on mount which
-  // sets both session and initialized in one pass — no race condition.
-  useEffect(() => {
-    console.log("🔐 RootLayout: subscribing to auth state");
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, newSession) => {
-      console.log(
-        "🔄 onAuthStateChange:",
-        event,
-        newSession ? `user=${newSession.user.id}` : "no session"
-      );
-      setSession(newSession ?? null);
-
-      // Mark initialized after the first event (INITIAL_SESSION or SIGNED_IN etc.)
-      setInitialized(true);
-    });
-
-    return () => {
-      console.log("🧹 Cleaning up auth subscription");
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  // Hide splash once both fonts and auth are ready
-  useEffect(() => {
-    if (fontsLoaded && initialized) {
-      console.log("✅ Fonts + auth ready — hiding splash");
-      SplashScreen.hideAsync().catch((err) => {
-        console.warn("⚠️ SplashScreen.hideAsync error (safe to ignore):", err);
-      });
-    }
-  }, [fontsLoaded, initialized]);
-
-  // Navigation guard — runs once initialized, drives all routing decisions
-  useEffect(() => {
-    if (!initialized || !fontsLoaded) return;
-
-    if (session) {
-      console.log("✅ Session present — navigating to tabs");
-      router.replace("/(tabs)");
-    } else {
-      console.log("🚫 No session — navigating to onboarding");
-      router.replace("/onboarding");
-    }
-  }, [initialized, session, fontsLoaded, router]);
-
-  // Offline alert
-  useEffect(() => {
-    if (
-      !networkState.isConnected &&
-      networkState.isInternetReachable === false
-    ) {
-      Alert.alert(
-        "You are offline",
-        "You can keep using the app! Your changes will be saved locally and synced when you are back online."
-      );
-    }
-  }, [networkState.isConnected, networkState.isInternetReachable]);
-
-  // While loading, keep the splash screen visible
-  if (!initialized || !fontsLoaded) {
-    return null;
-  }
 
   const CustomDefaultTheme: Theme = {
     ...DefaultTheme,
@@ -130,24 +51,28 @@ export default function RootLayout() {
   };
 
   return (
-    <NotificationProvider>
-      <>
-        <StatusBar style="auto" animated />
-        <ThemeProvider
-          value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
-        >
-          <WidgetProvider>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="+not-found" />
-              </Stack>
-              <SystemBars style="auto" />
-            </GestureHandlerRootView>
-          </WidgetProvider>
-        </ThemeProvider>
-      </>
-    </NotificationProvider>
+    <AuthProvider>
+      <NotificationProvider>
+        <>
+          <StatusBar style="auto" animated />
+          <ThemeProvider
+            value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
+          >
+            <WidgetProvider>
+              <GestureHandlerRootView style={{ flex: 1 }}>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="index" options={{ headerShown: false }} />
+                  <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  <Stack.Screen name="notification-preferences" options={{ headerShown: true, title: 'Notification Preferences' }} />
+                  <Stack.Screen name="+not-found" />
+                </Stack>
+                <SystemBars style="auto" />
+              </GestureHandlerRootView>
+            </WidgetProvider>
+          </ThemeProvider>
+        </>
+      </NotificationProvider>
+    </AuthProvider>
   );
 }

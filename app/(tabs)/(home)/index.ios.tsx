@@ -372,6 +372,7 @@ export default function HomeScreen() {
     isAdmin,
     currentMember,
     notificationSettings,
+    loading: churchLoading,
     createFillInRequest,
     acceptFillInRequest,
     cancelFillInRequest,
@@ -534,7 +535,7 @@ export default function HomeScreen() {
   }, [services]);
 
   const sortedRoles = useMemo(() => {
-    return [...churchRoles].sort((a, b) => a.display_order - b.display_order);
+    return [...(churchRoles ?? [])].sort((a, b) => a.display_order - b.display_order);
   }, [churchRoles]);
 
   const onRefresh = useCallback(async () => {
@@ -789,8 +790,6 @@ export default function HomeScreen() {
     }
   };
 
-  const { loading: churchLoading } = useChurch();
-
   const churchName = currentChurch?.name || 'Schedule';
   const upcomingCount = filteredServices.length;
   const upcomingText = `${upcomingCount} upcoming ${upcomingCount === 1 ? 'service' : 'services'}`;
@@ -804,8 +803,13 @@ export default function HomeScreen() {
     );
   }
 
-  if (!currentChurch || !user) {
-    return null;
+  if (churchLoading || !currentChurch || !user) {
+    console.log('[HomeScreen] [iOS] Loading or no church/user, rendering loading state');
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
   }
 
   return (
@@ -833,7 +837,7 @@ export default function HomeScreen() {
           <Text style={styles.emptyText}>No upcoming services scheduled</Text>
         ) : (
           filteredServices.map((service) => {
-            const serviceFillInRequests = fillInRequests.filter(
+            const serviceFillInRequests = (fillInRequests ?? []).filter(
               req => req.service_id === service.id && req.status === 'pending'
             );
 

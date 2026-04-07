@@ -106,15 +106,15 @@ export default function FloatingTabBar({
     router.push(route);
   }, [router]);
 
-  const tabWidthPercent = React.useMemo(() => {
-    if (tabCount === 0) return 50;
-    return ((100 / tabCount) - 1);
-  }, [tabCount]);
-
   // Capture stable numeric values for the worklet — avoid passing the full tabs
   // array into useAnimatedStyle (arrays are not worklet-safe and change reference
   // every render, causing infinite re-renders / crashes).
   const tabCount = tabs?.length ?? 0;
+
+  const tabWidthPercent = React.useMemo(() => {
+    if (tabCount === 0) return 50;
+    return ((100 / tabCount) - 1);
+  }, [tabCount]);
 
   const indicatorStyle = useAnimatedStyle(() => {
     if (tabCount === 0) {
