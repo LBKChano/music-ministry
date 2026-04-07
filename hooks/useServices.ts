@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import type { Tables, TablesInsert } from '@/lib/supabase/types';
 
 type Service = Tables<'services'>;
@@ -11,6 +12,7 @@ export interface ServiceWithAssignments extends Service {
 }
 
 export function useServices(churchId: string | null) {
+  const { session, initialized } = useAuth();
   const [services, setServices] = useState<ServiceWithAssignments[]>([]);
   // Start false — if churchId is null we skip the fetch entirely and never set loading=true.
   // This prevents the home screen from showing a spinner before the church is known.
@@ -19,6 +21,13 @@ export function useServices(churchId: string | null) {
 
   // Fetch services for a church - OPTIMIZED with single query
   const fetchServices = useCallback(async () => {
+    if (!initialized || !session?.user?.id) {
+      console.log('[useServices] Auth not ready, skipping service fetch');
+      setServices([]);
+      setLoading(false);
+      return;
+    }
+
     if (!churchId) {
       console.log('No church selected, skipping service fetch');
       setServices([]);
@@ -62,7 +71,7 @@ export function useServices(churchId: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [churchId]);
+  }, [churchId, session?.user?.id, initialized]);
 
   // Create a new service with role slots from recurring service template or special service
   const createServiceFromTemplate = useCallback(async (
@@ -362,14 +371,14 @@ export function useServices(churchId: string | null) {
     }
   }, []);
 
-  // Initial fetch
+  // Initial fetch — re-run when auth becomes ready or churchId changes
   useEffect(() => {
     fetchServices();
-  }, [fetchServices]);
+  }, [fetchServices, session?.user?.id, initialized]);
 
   // Set up realtime subscriptions for live updates
   useEffect(() => {
-    if (!churchId) {
+    if (!initialized || !session?.user?.id || !churchId) {
       console.log('No church ID, skipping realtime subscription');
       return;
     }
@@ -419,7 +428,8 @@ export function useServices(churchId: string | null) {
       console.log('Cleaning up realtime subscriptions');
       supabase.removeChannel(realtimeChannel);
     };
-  }, [churchId, fetchServices]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [churchId, fetchServices, session?.user?.id, initialized]);
 
   return {
     services,

@@ -6,11 +6,13 @@ import type { Session } from '@supabase/supabase-js';
 interface AuthContextType {
   session: Session | null;
   initialized: boolean;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   session: null,
   initialized: false,
+  signOut: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -20,48 +22,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const splashHidden = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
+    let mounted = true;
 
-    // Listen for auth state changes FIRST so we never miss an event
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      console.log('[AuthContext] onAuthStateChange:', _event, newSession ? `user=${newSession.user.id}` : 'no session');
-      if (cancelled) return;
+    // Subscribe FIRST — the INITIAL_SESSION event fires after the Supabase client
+    // has fully hydrated from AsyncStorage/SecureStore. This is the only correct
+    // pattern for Supabase v2 + React Native: do NOT call getSession() in parallel
+    // as it races with storage hydration and can return null before the persisted
+    // session is read.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (!mounted) return;
+
+      console.log('[AuthContext] onAuthStateChange:', event, newSession ? `user=${newSession.user.id}` : 'no session');
+
       setSession(newSession);
-      // Mark initialized on the first auth event too (covers the case where
-      // onAuthStateChange fires before getSession resolves)
-      setInitialized(true);
-    });
 
-    // Then get the initial session (resolves from storage)
-    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
-      if (cancelled) return;
-      console.log('[AuthContext] getSession:', initialSession ? `user=${initialSession.user.id}` : 'no session');
-      setSession(initialSession);
-      setInitialized(true);
-    }).catch((err) => {
-      console.error('[AuthContext] getSession error:', err);
-      if (!cancelled) setInitialized(true);
+      // INITIAL_SESSION fires exactly once after storage is fully hydrated.
+      // This is the authoritative signal that auth state is known.
+      if (event === 'INITIAL_SESSION') {
+        console.log('[AuthContext] INITIAL_SESSION received — marking initialized');
+        setInitialized(true);
+        if (!splashHidden.current) {
+          splashHidden.current = true;
+          console.log('[AuthContext] auth initialized — hiding splash screen');
+          SplashScreen.hideAsync().catch((err) => {
+            console.warn('[AuthContext] SplashScreen.hideAsync error (ignored):', err);
+          });
+        }
+      }
     });
 
     return () => {
-      cancelled = true;
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
 
-  // Hide splash screen exactly once after auth is initialized
-  useEffect(() => {
-    if (initialized && !splashHidden.current) {
-      splashHidden.current = true;
-      console.log('[AuthContext] auth initialized — hiding splash screen');
-      SplashScreen.hideAsync().catch((err) => {
-        console.warn('[AuthContext] SplashScreen.hideAsync error (ignored):', err);
-      });
-    }
-  }, [initialized]);
+  const signOut = async () => {
+    console.log('[AuthContext] signOut called');
+    await supabase.auth.signOut();
+  };
 
   return (
-    <AuthContext.Provider value={{ session, initialized }}>
+    <AuthContext.Provider value={{ session, initialized, signOut }}>
       {children}
     </AuthContext.Provider>
   );

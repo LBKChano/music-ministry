@@ -1,24 +1,27 @@
-import { Redirect } from 'expo-router';
-import { View, ActivityIndicator } from 'react-native';
+import { useEffect } from 'react';
+import { ActivityIndicator, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function Index() {
   const { session, initialized } = useAuth();
+  const router = useRouter();
 
-  // Wait for auth to initialize before redirecting
-  if (!initialized) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
+  useEffect(() => {
+    if (!initialized) return;
+    if (session) {
+      console.log('[Index] session found — navigating to tabs');
+      router.replace('/(tabs)');
+    } else {
+      console.log('[Index] no session — navigating to onboarding');
+      router.replace('/onboarding');
+    }
+  }, [initialized, session]);
 
-  if (session) {
-    console.log('[Index] session found — redirecting to tabs');
-    return <Redirect href="/(tabs)" />;
-  }
-
-  console.log('[Index] no session — redirecting to onboarding');
-  return <Redirect href="/onboarding" />;
+  // Always show loading spinner — navigation happens in useEffect
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
+      <ActivityIndicator size="large" color="#ffffff" />
+    </View>
+  );
 }

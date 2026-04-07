@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import type { Tables, TablesInsert } from '@/lib/supabase/types';
 
 type Church = Tables<'churches'>;
@@ -32,6 +33,7 @@ export interface FillInRequestWithMemberInfo extends FillInRequest {
 }
 
 export function useChurch() {
+  const { session, initialized } = useAuth();
   const [churches, setChurches] = useState<Church[]>([]);
   const [currentChurch, setCurrentChurch] = useState<Church | null>(null);
   const [members, setMembers] = useState<ChurchMemberWithRoles[]>([]);
@@ -44,38 +46,23 @@ export function useChurch() {
   // start fetching church data for a confirmed user.
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [user, setUser] = useState<any>(null);
+  // Derive user directly from the AuthContext session — no separate state needed.
+  const user = session?.user ?? null;
   const [currentMember, setCurrentMember] = useState<ChurchMemberWithRoles | null>(null);
 
   // Fetch churches for the current user - UPDATED TO INCLUDE MEMBER CHURCHES
   // NOTE: defined BEFORE the onAuthStateChange useEffect so it can be called from it.
-  const fetchChurches = useCallback(async () => {
-    console.log('Fetching churches for current user');
+  const fetchChurches = useCallback(async (userId: string) => {
+    console.log('Fetching churches for user:', userId);
     try {
       setLoading(true);
       setError(null);
-
-      const getUserResult = await supabase.auth.getUser();
-      if (getUserResult.error) {
-        console.error('[useChurch] fetchChurches: getUser error:', getUserResult.error.message);
-        setChurches([]);
-        setLoading(false);
-        return;
-      }
-      const user = getUserResult.data?.user ?? null;
-      
-      if (!user) {
-        console.log('No user logged in');
-        setChurches([]);
-        setLoading(false);
-        return;
-      }
 
       // Fetch churches where user is admin
       const { data: adminChurches, error: adminError } = await supabase
         .from('churches')
         .select('*')
-        .eq('admin_id', user.id)
+        .eq('admin_id', userId)
         .order('created_at', { ascending: false });
 
       if (adminError) {
@@ -93,7 +80,7 @@ export function useChurch() {
       const { data: memberChurchIds, error: memberError } = await supabase
         .from('church_members')
         .select('church_id')
-        .eq('member_id', user.id);
+        .eq('member_id', userId);
 
       if (memberError) {
         console.error('Error fetching member churches:', memberError);
@@ -131,38 +118,34 @@ export function useChurch() {
 
       console.log('Fetched churches:', uniqueChurches);
       setChurches(uniqueChurches);
-      
-      // Set first church as current if none selected
-      if (uniqueChurches.length > 0 && !currentChurch) {
-        setCurrentChurch(uniqueChurches[0]);
-      }
+
+      // Use functional update to avoid stale closure on currentChurch —
+      // this prevents fetchChurches from needing currentChurch in its deps,
+      // which would cause an infinite re-fetch loop each time currentChurch changes.
+      setCurrentChurch(prev => prev ?? (uniqueChurches.length > 0 ? uniqueChurches[0] : null));
     } catch (err) {
       console.error('Error in fetchChurches:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [currentChurch]);
+  }, []); // No currentChurch dep — functional setState handles the "set if not already set" logic
 
-  // Bootstrap: one-time session check on mount. When the user logs in and gets
-  // redirected to tabs, the tab screens mount fresh and this effect runs again
-  // with the new session — no competing subscriptions with AuthContext.
+  // Bootstrap: fetch churches whenever the session becomes available.
+  // Using session from AuthContext means we react immediately after login
+  // without a separate getSession() race condition.
   useEffect(() => {
-    let cancelled = false;
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (cancelled) return;
-      console.log('[useChurch] getSession:', session ? `user=${session.user.id}` : 'no session');
-      if (!session?.user) {
-        setLoading(false);
-        return;
-      }
-      setUser(session.user);
-      fetchChurches();
-    });
-
-    return () => { cancelled = true; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!initialized) return; // Wait for auth to finish initializing
+    if (!session?.user) {
+      console.log('[useChurch] no session — clearing church data');
+      setChurches([]);
+      setCurrentChurch(null);
+      setLoading(false);
+      return;
+    }
+    console.log('[useChurch] session available, fetching churches for user:', session.user.id);
+    fetchChurches(session.user.id);
+  }, [session?.user?.id, initialized]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch members for a specific church with their roles
   const fetchMembers = useCallback(async (churchId: string) => {
@@ -261,13 +244,6 @@ export function useChurch() {
     try {
       setError(null);
 
-      const getUserResult = await supabase.auth.getUser();
-      if (getUserResult.error) {
-        console.error('[useChurch] createChurch: getUser error:', getUserResult.error.message);
-        throw new Error('Authentication error. Please sign in again.');
-      }
-      const user = getUserResult.data?.user ?? null;
-      
       if (!user) {
         throw new Error('You must be logged in to create a church');
       }
@@ -290,14 +266,14 @@ export function useChurch() {
       }
 
       console.log('Church created successfully:', data);
-      await fetchChurches();
+      if (user) await fetchChurches(user.id);
       return data;
     } catch (err) {
       console.error('Error in createChurch:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  }, [fetchChurches]);
+  }, [fetchChurches, user]);
 
   // Invite a member to a church - UPDATED TO CHECK IF USER IS REGISTERED
   const inviteMember = useCallback(async (churchId: string, email: string, name?: string, roleIds?: string[]) => {
@@ -890,14 +866,6 @@ export function useChurch() {
   const fetchCurrentMember = useCallback(async (churchId: string) => {
     console.log('Fetching current member info for church:', churchId);
     try {
-      const getUserResult = await supabase.auth.getUser();
-      if (getUserResult.error) {
-        console.error('[useChurch] fetchCurrentMember: getUser error:', getUserResult.error.message);
-        setCurrentMember(null);
-        return;
-      }
-      const user = getUserResult.data?.user ?? null;
-      
       if (!user) {
         console.log('No user logged in');
         setCurrentMember(null);
@@ -980,7 +948,7 @@ export function useChurch() {
       console.error('Error in fetchCurrentMember:', err);
       setCurrentMember(null);
     }
-  }, []);
+  }, [user]);
 
   // Fetch member unavailability dates
   const fetchMemberUnavailability = useCallback(async (memberId: string): Promise<MemberUnavailability[]> => {
@@ -1415,7 +1383,8 @@ export function useChurch() {
       }
       console.log('User signed out successfully');
       
-      // Clear local state
+      // Clear local state (user is derived from session, so it clears automatically
+      // when AuthContext updates session to null after signOut)
       setChurches([]);
       setCurrentChurch(null);
       setMembers([]);
@@ -1424,7 +1393,6 @@ export function useChurch() {
       setCurrentMember(null);
       setNotificationSettings(null);
       setFillInRequests([]);
-      setUser(null);
     } catch (err) {
       console.error('Error in signOut:', err);
       throw err;
@@ -1638,7 +1606,7 @@ export function useChurch() {
     registerPushToken,
     signOut,
     fetchFillInRequests,
-    refreshChurches: fetchChurches,
+    refreshChurches: user ? () => fetchChurches(user.id) : () => Promise.resolve(),
     refreshMembers,
     refreshRecurringServices,
     refreshChurchRoles,

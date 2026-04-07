@@ -131,6 +131,14 @@ export default function ProfileScreen() {
     }
   };
 
+  if (!user) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </SafeAreaView>
+    );
+  }
+
   const displayName = currentMember?.name || user?.email?.split('@')[0] || 'User';
   const displayEmail = currentMember?.email || user?.email || '';
   const isAdmin = currentChurch?.admin_id === user?.id;

@@ -1,10 +1,19 @@
 
-import { Tabs } from 'expo-router';
+import { Tabs, Redirect } from 'expo-router';
 import React from 'react';
+import { View } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function TabLayout() {
+  const { session, initialized } = useAuth();
+
+  if (!initialized) {
+    return <View style={{ flex: 1, backgroundColor: '#000' }} />;
+  }
+  if (!session) return <Redirect href="/onboarding" />;
+
   const tabs: TabBarItem[] = [
     {
       name: '(home)',

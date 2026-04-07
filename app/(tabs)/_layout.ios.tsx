@@ -1,13 +1,22 @@
-import { Tabs } from 'expo-router';
+import { Tabs, Redirect } from 'expo-router';
 import React from 'react';
+import { View } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
+import { useAuth } from '@/contexts/AuthContext';
 
-// NOTE: Do NOT call useChurch() here — it triggers a Supabase getSession() call
-// that races with AuthContext on cold launch and can cause a crash before the
-// navigator is mounted. Tab visibility based on admin status is handled inside
-// each screen instead.
 export default function TabLayout() {
+  const { session, initialized } = useAuth();
+
+  // Wait for auth to finish initializing before rendering tabs
+  if (!initialized) {
+    return <View style={{ flex: 1, backgroundColor: '#000' }} />;
+  }
+
+  // No session — send to onboarding. This is the critical guard that prevents
+  // the tab layout from rendering on a fresh install with no session.
+  if (!session) return <Redirect href="/onboarding" />;
+
   const tabs: TabBarItem[] = [
     {
       name: '(home)',

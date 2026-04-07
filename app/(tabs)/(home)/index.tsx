@@ -23,14 +23,7 @@ import {
   Alert,
 } from 'react-native';
 
-interface SpecialService {
-  id: string;
-  name: string;
-  date: Date;
-  time: string;
-  notes: string;
-  selectedRoleIds: string[];
-}
+
 
 // Helper to create a Date object representing the local date from a "YYYY-MM-DD" or full ISO string
 // This avoids timezone shifts when displaying dates
@@ -621,10 +614,6 @@ export default function HomeScreen() {
     
     setDeleteServiceModalVisible(false);
     setServiceToDelete(null);
-  };
-
-  const handleSaveAssignment = async () => {
-    console.log('User tapped save assignment button');
   };
 
   const handleSelectRecurringService = (recurringService: any) => {

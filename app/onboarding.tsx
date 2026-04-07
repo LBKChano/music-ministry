@@ -124,6 +124,12 @@ export default function OnboardingScreen() {
       console.log('Admin user created:', user.id);
       console.log('Session created:', session ? 'Yes' : 'No');
 
+      // If signUp returned a session immediately (email confirmation disabled),
+      // navigate now. Otherwise onAuthStateChange will fire when confirmed.
+      if (session) {
+        console.log('Session available immediately after signUp — navigating to tabs');
+      }
+
       // Step 2: Generate unique invitation code
       const invitationCode = generateInvitationCode();
       console.log('Generated invitation code:', invitationCode);
@@ -172,11 +178,10 @@ export default function OnboardingScreen() {
       }
 
       console.log('Admin added as member successfully:', memberResult.data);
-      console.log('Church and admin account created successfully — session change will trigger navigation');
+      console.log('Church and admin account created successfully — navigating to tabs');
 
-      // All DB writes are complete. The session change from signUp will trigger
-      // the navigation guard in _layout.tsx to redirect to /(tabs).
       setLoading(false);
+      router.replace('/(tabs)');
     } catch (err) {
       console.error('Error in onboarding:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -219,10 +224,8 @@ export default function OnboardingScreen() {
       }
 
       console.log('Admin logged in successfully! User ID:', signInResult.data.user?.id);
-      console.log('Session change will trigger navigation to app.');
-      // The session change from signInWithPassword will trigger the navigation
-      // guard in _layout.tsx to redirect to /(tabs).
       setLoading(false);
+      router.replace('/(tabs)');
     } catch (err) {
       console.error('Error in admin login:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -254,10 +257,9 @@ export default function OnboardingScreen() {
         return;
       }
 
-      console.log('Member logged in successfully! Session change will trigger navigation.');
-      // The session change from signInWithPassword will trigger the navigation
-      // guard in _layout.tsx to redirect to /(tabs).
+      console.log('Member logged in successfully!');
       setLoading(false);
+      router.replace('/(tabs)');
     } catch (err) {
       console.error('Error in member login:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -377,10 +379,9 @@ export default function OnboardingScreen() {
 
       console.log('Member successfully joined church:', churchData.name);
       console.log('Member data:', memberData);
-      console.log('Member account created successfully — session change will trigger navigation');
-      // The session change from signUp will trigger the navigation
-      // guard in _layout.tsx to redirect to /(tabs).
+      console.log('Member account created successfully — navigating to tabs');
       setLoading(false);
+      router.replace('/(tabs)');
     } catch (err) {
       console.error('Unexpected error in member signup:', err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');

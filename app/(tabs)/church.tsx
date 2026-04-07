@@ -21,7 +21,7 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useChurch } from '@/hooks/useChurch';
 import { useServices } from '@/hooks/useServices';
-import { supabase } from '@/lib/supabase/client';
+import { supabase } from '@/lib/supabase/client'; // used in handleAutoAssign
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Clipboard from 'expo-clipboard';
 
@@ -75,6 +75,7 @@ export default function ChurchScreen() {
     removeMemberRole,
     fetchMemberUnavailability,
     updateNotificationSettings,
+    signOut,
     refreshChurches,
     refreshMembers,
     refreshRecurringServices,
@@ -289,7 +290,7 @@ export default function ChurchScreen() {
     console.log('User confirmed sign out');
     try {
       setSignOutModalVisible(false);
-      await supabase.auth.signOut();
+      await signOut();
       console.log('User signed out successfully — auth state listener will handle navigation');
     } catch (err) {
       console.error('Error signing out:', err);
