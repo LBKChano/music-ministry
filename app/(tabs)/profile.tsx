@@ -5,7 +5,7 @@ import { colors } from "@/styles/commonStyles";
 import React, { useState, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity, Modal, ActivityIndicator, Animated } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
-import { Stack, useRouter } from "expo-router";
+import { Stack } from "expo-router";
 import { useChurch } from "@/hooks/useChurch";
 import { Calendar, DateData } from "react-native-calendars";
 import type { Tables } from "@/lib/supabase/types";
@@ -16,7 +16,6 @@ type ToastType = 'success' | 'error';
 
 export default function ProfileScreen() {
   const theme = useTheme();
-  const router = useRouter();
   const { user, currentMember, currentChurch, signOut, fetchMemberUnavailability, saveUnavailableDates } = useChurch();
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [signingOut, setSigningOut] = useState(false);

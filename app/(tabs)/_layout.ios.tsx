@@ -22,18 +22,21 @@ export default function TabLayout() {
       name: '(home)',
       route: '/(tabs)/(home)' as any,
       icon: 'calendar-today',
+      iosIcon: 'calendar',
       label: 'Schedule',
     },
     {
       name: 'church',
       route: '/(tabs)/church' as any,
       icon: 'home',
+      iosIcon: 'building.2',
       label: 'Church',
     },
     {
       name: 'profile',
       route: '/(tabs)/profile' as any,
       icon: 'person',
+      iosIcon: 'person.fill',
       label: 'Profile',
     },
   ];

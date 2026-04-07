@@ -83,7 +83,7 @@ export default function ChurchScreen() {
     refreshNotificationSettings,
   } = useChurch();
 
-  const { services, batchUpdateAssignments, createServiceFromTemplate, refreshServices } = useServices(currentChurch?.id || null);
+  const { services, batchUpdateAssignments, createServiceFromTemplate, refreshServices: refreshServicesHook } = useServices(currentChurch?.id || null);
 
   const [activeTab, setActiveTab] = useState<'members' | 'services' | 'roles' | 'notifications'>('members');
   const [isCreateChurchModalVisible, setCreateChurchModalVisible] = useState(false);
@@ -174,7 +174,7 @@ export default function ChurchScreen() {
         currentChurch ? refreshRecurringServices() : Promise.resolve(),
         currentChurch ? refreshChurchRoles() : Promise.resolve(),
         currentChurch ? refreshNotificationSettings() : Promise.resolve(),
-        currentChurch ? refreshServices() : Promise.resolve(),
+        currentChurch ? refreshServicesHook() : Promise.resolve(),
       ]);
       console.log('Church Management data refreshed successfully');
     } catch (err) {
@@ -182,7 +182,7 @@ export default function ChurchScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [refreshChurches, refreshMembers, refreshRecurringServices, refreshChurchRoles, refreshNotificationSettings, refreshServices, currentChurch]);
+  }, [refreshChurches, refreshMembers, refreshRecurringServices, refreshChurchRoles, refreshNotificationSettings, refreshServicesHook, currentChurch]);
 
   const handleCreateChurch = async () => {
     console.log('User tapped Create Church button');
@@ -207,7 +207,7 @@ export default function ChurchScreen() {
 
   const openEditMemberModal = (memberId: string) => {
     console.log('User tapped edit member:', memberId);
-    const member = members.find(m => m.id === memberId);
+    const member = (members ?? []).find(m => m.id === memberId);
     if (!member) {
       return;
     }
@@ -243,14 +243,15 @@ export default function ChurchScreen() {
       console.log('Current roles:', currentRoleNames);
       console.log('New roles:', editMemberRoles);
       
-      const rolesToRemove = currentRoleNames.filter(roleName => !editMemberRoles.includes(roleName));
-      const rolesToAdd = editMemberRoles.filter(roleName => !currentRoleNames.includes(roleName));
+      const safeEditRoles = editMemberRoles ?? [];
+      const rolesToRemove = currentRoleNames.filter(roleName => !safeEditRoles.includes(roleName));
+      const rolesToAdd = safeEditRoles.filter(roleName => !currentRoleNames.includes(roleName));
       
       console.log('Roles to remove:', rolesToRemove);
       console.log('Roles to add:', rolesToAdd);
       
       for (const roleNameToRemove of rolesToRemove) {
-        const role = churchRoles.find(r => r.name === roleNameToRemove);
+        const role = (churchRoles ?? []).find(r => r.name === roleNameToRemove);
         if (role) {
           console.log('Removing role:', roleNameToRemove);
           await removeMemberRole(memberToEdit, role.id, currentChurch.id);
@@ -258,7 +259,7 @@ export default function ChurchScreen() {
       }
       
       for (const roleNameToAdd of rolesToAdd) {
-        const role = churchRoles.find(r => r.name === roleNameToAdd);
+        const role = (churchRoles ?? []).find(r => r.name === roleNameToAdd);
         if (role) {
           console.log('Adding role:', roleNameToAdd);
           await addMemberRole(memberToEdit, role.id, currentChurch.id);
@@ -387,9 +388,9 @@ export default function ChurchScreen() {
 
   const moveRoleUp = async (index: number) => {
     if (index === 0 || !currentChurch) return;
-    
-    console.log('User moved role up:', churchRoles[index].name);
-    const newRoles = [...churchRoles];
+    const safeRoles = churchRoles ?? [];
+    console.log('User moved role up:', safeRoles[index]?.name);
+    const newRoles = [...safeRoles];
     const temp = newRoles[index];
     newRoles[index] = newRoles[index - 1];
     newRoles[index - 1] = temp;
@@ -399,10 +400,11 @@ export default function ChurchScreen() {
   };
 
   const moveRoleDown = async (index: number) => {
-    if (index === churchRoles.length - 1 || !currentChurch) return;
+    const safeRolesDown = churchRoles ?? [];
+    if (index === safeRolesDown.length - 1 || !currentChurch) return;
     
-    console.log('User moved role down:', churchRoles[index].name);
-    const newRoles = [...churchRoles];
+    console.log('User moved role down:', safeRolesDown[index]?.name);
+    const newRoles = [...safeRolesDown];
     const temp = newRoles[index];
     newRoles[index] = newRoles[index + 1];
     newRoles[index + 1] = temp;
@@ -413,19 +415,21 @@ export default function ChurchScreen() {
 
   const toggleServiceRole = (roleName: string) => {
     console.log('User toggled service role:', roleName);
-    if (selectedServiceRoles.includes(roleName)) {
-      setSelectedServiceRoles(selectedServiceRoles.filter(r => r !== roleName));
+    const safeServiceRoles = selectedServiceRoles ?? [];
+    if (safeServiceRoles.includes(roleName)) {
+      setSelectedServiceRoles(safeServiceRoles.filter(r => r !== roleName));
     } else {
-      setSelectedServiceRoles([...selectedServiceRoles, roleName]);
+      setSelectedServiceRoles([...safeServiceRoles, roleName]);
     }
   };
 
   const toggleNotificationHour = (hour: number) => {
     console.log('User toggled notification hour:', hour);
-    if (selectedNotificationHours.includes(hour)) {
-      setSelectedNotificationHours(selectedNotificationHours.filter(h => h !== hour));
+    const safeHours = selectedNotificationHours ?? [];
+    if (safeHours.includes(hour)) {
+      setSelectedNotificationHours(safeHours.filter(h => h !== hour));
     } else {
-      setSelectedNotificationHours([...selectedNotificationHours, hour].sort((a, b) => b - a));
+      setSelectedNotificationHours([...safeHours, hour].sort((a, b) => b - a));
     }
   };
 
@@ -435,20 +439,20 @@ export default function ChurchScreen() {
       Alert.alert('Invalid Input', 'Please enter a number between 1 and 168 hours');
       return;
     }
-    
-    if (selectedNotificationHours.includes(hour)) {
+    const safeHoursCustom = selectedNotificationHours ?? [];
+    if (safeHoursCustom.includes(hour)) {
       Alert.alert('Already Added', 'This notification time is already in the list');
       return;
     }
 
     console.log('User added custom notification hour:', hour);
-    setSelectedNotificationHours([...selectedNotificationHours, hour].sort((a, b) => b - a));
+    setSelectedNotificationHours([...safeHoursCustom, hour].sort((a, b) => b - a));
     setCustomHourInput('');
   };
 
   const removeNotificationHour = (hour: number) => {
     console.log('User removed notification hour:', hour);
-    setSelectedNotificationHours(selectedNotificationHours.filter(h => h !== hour));
+    setSelectedNotificationHours((selectedNotificationHours ?? []).filter(h => h !== hour));
   };
 
   const handleSaveNotificationSettings = async () => {
@@ -523,7 +527,7 @@ export default function ChurchScreen() {
     while (currentDate <= endDate) {
       const dayOfWeek = currentDate.getDay();
 
-      recurringServices.forEach(template => {
+      (recurringServices ?? []).forEach(template => {
         if (template.day_of_week === dayOfWeek) {
           const serviceKey = `${template.id}-${currentDate.toISOString().split('T')[0]}`;
           if (!blockedServices.has(serviceKey)) {
@@ -576,8 +580,8 @@ export default function ChurchScreen() {
 
     for (const special of specialServices) {
       const dateString = formatDateForDatabase(special.date);
-      const roleNames = special.selectedRoleIds
-        .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
+      const roleNames = (special.selectedRoleIds ?? [])
+        .map(roleId => (churchRoles ?? []).find(r => r.id === roleId)?.name)
         .filter((name): name is string => name !== undefined);
 
       console.log('Creating special service with roles:', { name: special.name, roleNames, time: special.time });
@@ -622,7 +626,7 @@ export default function ChurchScreen() {
     try {
       // OPTIMIZATION 1: Build member-by-role map once
       const membersByRole: { [role: string]: any[] } = {};
-      members.forEach(member => {
+      (members ?? []).forEach(member => {
         if (member.memberRoles && member.memberRoles.length > 0) {
           member.memberRoles.forEach(memberRole => {
             if (!membersByRole[memberRole.role_name]) {
@@ -635,7 +639,7 @@ export default function ChurchScreen() {
 
       // OPTIMIZATION 2: Fetch ALL unavailability in a single query
       // Include all member IDs; guard against empty array to avoid Supabase .in() error
-      const memberIds = members.map(m => m.id);
+      const memberIds = (members ?? []).map(m => m.id);
       console.log('Fetching all member unavailability in one query for', memberIds.length, 'members...');
 
       const memberUnavailability: { [memberId: string]: Set<string> } = {};
@@ -670,13 +674,13 @@ export default function ChurchScreen() {
 
       // OPTIMIZATION 3: Track assignment counts
       const assignmentCounts: { [memberId: string]: number } = {};
-      members.forEach(member => {
+      (members ?? []).forEach(member => {
         assignmentCounts[member.id] = 0;
       });
 
       // OPTIMIZATION 4: Collect all updates for batch processing
       const assignmentUpdates: { id: string; member_id: string; person_name: string }[] = [];
-      const filteredServices = services.filter(s => s.church_id === currentChurch.id);
+      const filteredServices = (services ?? []).filter(s => s.church_id === currentChurch.id);
 
       let skippedCount = 0;
 
@@ -826,8 +830,8 @@ export default function ChurchScreen() {
       console.log('Formatted date string for database:', dateString);
       console.log('Formatted time string for database:', timeString);
       
-      const roleNames = adHocServiceRoles
-        .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
+      const roleNames = (adHocServiceRoles ?? [])
+        .map(roleId => (churchRoles ?? []).find(r => r.id === roleId)?.name)
         .filter((name): name is string => name !== undefined);
       
       console.log('Creating ad-hoc service:', { 
@@ -959,7 +963,7 @@ export default function ChurchScreen() {
             </TouchableOpacity>
           </View>
 
-          {churches.length === 0 ? (
+          {(churches ?? []).length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
                 {noChurchesText}
@@ -970,7 +974,7 @@ export default function ChurchScreen() {
             </View>
           ) : (
             <View style={styles.churchList}>
-              {churches.map((church) => {
+              {(churches ?? []).map((church) => {
                 const isSelected = currentChurch?.id === church.id;
                 return (
                   <TouchableOpacity
@@ -1197,7 +1201,7 @@ export default function ChurchScreen() {
                   <Text style={[styles.sectionTitle, { color: colors.text }]}>Members</Text>
                 </View>
 
-                {members.length === 0 ? (
+                {(members ?? []).length === 0 ? (
                   <View style={styles.emptyState}>
                     <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
                       {noMembersText}
@@ -1208,7 +1212,7 @@ export default function ChurchScreen() {
                   </View>
                 ) : (
                   <View style={styles.membersList}>
-                    {members.map((member) => {
+                    {(members ?? []).map((member) => {
                       const displayName = member.name || member.email;
                       const displayRoles = member.memberRoles && member.memberRoles.length > 0
                         ? member.memberRoles.map(r => r.role_name).join(', ')
@@ -1290,7 +1294,7 @@ export default function ChurchScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {recurringServices.length === 0 ? (
+                {(recurringServices ?? []).length === 0 ? (
                   <View style={styles.emptyState}>
                     <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
                       No recurring services
@@ -1301,7 +1305,7 @@ export default function ChurchScreen() {
                   </View>
                 ) : (
                   <View style={styles.servicesList}>
-                    {recurringServices.map((service) => {
+                    {(recurringServices ?? []).map((service) => {
                       const dayName = getDayName(service.day_of_week);
                       const timeDisplay = formatTime(service.time);
                       const rolesDisplay = service.roles && service.roles.length > 0 
@@ -1385,7 +1389,7 @@ export default function ChurchScreen() {
                   Drag roles to reorder how they appear in services
                 </Text>
 
-                {churchRoles.length === 0 ? (
+                {(churchRoles ?? []).length === 0 ? (
                   <View style={styles.emptyState}>
                     <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
                       No roles defined
@@ -1396,7 +1400,7 @@ export default function ChurchScreen() {
                   </View>
                 ) : (
                   <View style={styles.rolesList}>
-                    {churchRoles.map((role, index) => {
+                    {(churchRoles ?? []).map((role, index) => {
                       return (
                         <View
                           key={role.id}
@@ -1418,14 +1422,14 @@ export default function ChurchScreen() {
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => moveRoleDown(index)}
-                                disabled={index === churchRoles.length - 1}
-                                style={[styles.orderButton, index === churchRoles.length - 1 && styles.orderButtonDisabled]}
+                                disabled={index === (churchRoles ?? []).length - 1}
+                                style={[styles.orderButton, index === (churchRoles ?? []).length - 1 && styles.orderButtonDisabled]}
                               >
                                 <IconSymbol
                                   ios_icon_name="chevron.down"
                                   android_material_icon_name="arrow-downward"
                                   size={20}
-                                  color={index === churchRoles.length - 1 ? colors.textSecondary : colors.primary}
+                                  color={index === (churchRoles ?? []).length - 1 ? colors.textSecondary : colors.primary}
                                 />
                               </TouchableOpacity>
                             </View>
@@ -1546,7 +1550,7 @@ export default function ChurchScreen() {
                   {/* Quick Select Options */}
                   <View style={styles.quickSelectContainer}>
                     {[1, 2, 6, 12, 24, 48, 72, 168].map((hour) => {
-                      const isSelected = selectedNotificationHours.includes(hour);
+                      const isSelected = (selectedNotificationHours ?? []).includes(hour);
                       const hourLabel = hour === 1 ? '1 hour' : hour < 24 ? `${hour} hours` : hour === 24 ? '1 day' : hour === 48 ? '2 days' : hour === 72 ? '3 days' : '1 week';
                       return (
                         <TouchableOpacity
@@ -1595,12 +1599,12 @@ export default function ChurchScreen() {
                   </View>
 
                   {/* Selected Times List */}
-                  {selectedNotificationHours.length > 0 && (
+                  {(selectedNotificationHours ?? []).length > 0 && (
                     <View style={styles.selectedTimesContainer}>
                       <Text style={[styles.selectedTimesLabel, { color: colors.text }]}>
                         Selected reminder times:
                       </Text>
-                      {selectedNotificationHours.map((hour) => {
+                      {(selectedNotificationHours ?? []).map((hour) => {
                         const hourLabel = hour === 1 ? '1 hour before' : hour < 24 ? `${hour} hours before` : hour === 24 ? '1 day before' : hour === 48 ? '2 days before' : hour === 72 ? '3 days before' : hour === 168 ? '1 week before' : `${hour} hours before`;
                         return (
                           <View key={hour} style={[styles.selectedTimeChip, { backgroundColor: colors.inputBackground }]}>
@@ -1754,10 +1758,10 @@ export default function ChurchScreen() {
 
               <View style={styles.pickerContainer}>
                 <Text style={[styles.label, { color: colors.text }]}>Roles (select multiple)</Text>
-                {churchRoles.length > 0 ? (
+                {(churchRoles ?? []).length > 0 ? (
                   <View style={styles.roleCheckboxContainer}>
-                    {churchRoles.map((role) => {
-                      const isSelected = editMemberRoles.includes(role.name);
+                    {(churchRoles ?? []).map((role) => {
+                      const isSelected = (editMemberRoles ?? []).includes(role.name);
                       return (
                         <TouchableOpacity
                           key={role.id}
@@ -1915,10 +1919,10 @@ export default function ChurchScreen() {
 
               <View style={styles.pickerContainer}>
                 <Text style={[styles.label, { color: colors.text }]}>Roles for this service</Text>
-                {churchRoles.length > 0 ? (
+                {(churchRoles ?? []).length > 0 ? (
                   <View style={styles.roleCheckboxContainer}>
-                    {churchRoles.map((role) => {
-                      const isSelected = selectedServiceRoles.includes(role.name);
+                    {(churchRoles ?? []).map((role) => {
+                      const isSelected = (selectedServiceRoles ?? []).includes(role.name);
                       return (
                         <TouchableOpacity
                           key={role.id}
@@ -2196,7 +2200,7 @@ export default function ChurchScreen() {
                     Select dates to skip for recurring services
                   </Text>
                   <ScrollView style={{ maxHeight: 200 }}>
-                    {recurringServices.map(template => {
+                    {(recurringServices ?? []).map(template => {
                       const { startDate, endDate } = getQuarterDates(selectedQuarter, selectedYear);
                       const currentDate = new Date(startDate);
                       const serviceDates: Date[] = [];
@@ -2342,8 +2346,8 @@ export default function ChurchScreen() {
                   />
                   <Text style={[styles.label, { color: colors.text }]}>Roles</Text>
                   <View style={styles.roleCheckboxContainer}>
-                    {churchRoles.map(role => {
-                      const isSelected = specialServiceRoles.includes(role.id);
+                    {(churchRoles ?? []).map(role => {
+                      const isSelected = (specialServiceRoles ?? []).includes(role.id);
                       return (
                         <TouchableOpacity
                           key={role.id}
@@ -2527,8 +2531,8 @@ export default function ChurchScreen() {
 
               <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>Select Roles</Text>
               <ScrollView style={{ maxHeight: 200, marginBottom: 16 }}>
-                {churchRoles.map(role => {
-                  const isSelected = specialServiceRoles.includes(role.id);
+                {(churchRoles ?? []).map(role => {
+                  const isSelected = (specialServiceRoles ?? []).includes(role.id);
                   return (
                     <TouchableOpacity
                       key={role.id}
@@ -2656,8 +2660,8 @@ export default function ChurchScreen() {
 
               <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>Select Roles</Text>
               <ScrollView style={{ maxHeight: 200, marginBottom: 16 }}>
-                {churchRoles.map(role => {
-                  const isSelected = adHocServiceRoles.includes(role.id);
+                {(churchRoles ?? []).map(role => {
+                  const isSelected = (adHocServiceRoles ?? []).includes(role.id);
                   return (
                     <TouchableOpacity
                       key={role.id}
@@ -2723,9 +2727,6 @@ export default function ChurchScreen() {
 
 const styles = StyleSheet.create({
   datePickerWrapper: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    overflow: 'hidden',
     backgroundColor: '#ffffff',
     borderRadius: 12,
     overflow: 'hidden',
