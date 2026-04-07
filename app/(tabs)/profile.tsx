@@ -16,7 +16,7 @@ type ToastType = 'success' | 'error';
 
 export default function ProfileScreen() {
   const theme = useTheme();
-  const { user, currentMember, currentChurch, signOut, fetchMemberUnavailability, saveUnavailableDates } = useChurch();
+  const { user, loading, currentMember, currentChurch, signOut, fetchMemberUnavailability, saveUnavailableDates } = useChurch();
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [savedDates, setSavedDates] = useState<MemberUnavailability[]>([]);
@@ -130,10 +130,21 @@ export default function ProfileScreen() {
     }
   };
 
-  if (!user) {
+  if (loading || !user) {
+    console.log('[ProfileScreen] Showing loading state — loading:', loading, 'user:', !!user);
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background, alignItems: 'center', justifyContent: 'center' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Profile',
+            headerStyle: { backgroundColor: colors.primary },
+            headerTintColor: '#FFFFFF',
+            headerTitleStyle: { fontWeight: 'bold' },
+          }}
+        />
         <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ marginTop: 12, fontSize: 16, color: colors.textSecondary }}>Loading…</Text>
       </SafeAreaView>
     );
   }

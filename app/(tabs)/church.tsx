@@ -872,7 +872,11 @@ export default function ChurchScreen() {
     }
   };
 
-  if (loading && churches.length === 0) {
+  // Show spinner while auth is initializing OR while the first church fetch is in flight.
+  // loading starts true and only becomes false once fetchChurches (or the no-session branch)
+  // completes, so this guard reliably prevents a blank/empty flash on Android.
+  if (loading || !user) {
+    console.log('[ChurchScreen] Showing loading state — loading:', loading, 'user:', !!user);
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <Stack.Screen
@@ -884,17 +888,40 @@ export default function ChurchScreen() {
         />
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading…</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (!user) {
-    console.log('[ChurchScreen] No user, rendering loading state');
+  if (error && churches.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <Stack.Screen
+          options={{
+            title: 'Church Management',
+            headerStyle: { backgroundColor: colors.primary },
+            headerTintColor: '#fff',
+          }}
+        />
         <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="error-outline"
+            size={48}
+            color={colors.error}
+          />
+          <Text style={[styles.errorHeading, { color: colors.text }]}>Unable to load</Text>
+          <Text style={[styles.errorSubtext, { color: colors.textSecondary }]}>{error}</Text>
+          <TouchableOpacity
+            style={[styles.retryButton, { backgroundColor: colors.primary }]}
+            onPress={() => {
+              console.log('User tapped Retry on Church error screen');
+              if (user) refreshChurches();
+            }}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -2741,6 +2768,33 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 24,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+  },
+  errorHeading: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  errorSubtext: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  retryButton: {
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   scrollView: {
     flex: 1,

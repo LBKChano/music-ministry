@@ -41,10 +41,9 @@ export function useChurch() {
   const [churchRoles, setChurchRoles] = useState<ChurchRole[]>([]);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings | null>(null);
   const [fillInRequests, setFillInRequests] = useState<FillInRequestWithMemberInfo[]>([]);
-  // Start loading=false so the tabs layout doesn't see a false "!loading && !user" state
-  // before the async session check completes. loading becomes true only when we actually
-  // start fetching church data for a confirmed user.
-  const [loading, setLoading] = useState(false);
+  // Start loading=true so screens show a spinner immediately while auth initializes.
+  // It is set to false once we either confirm no session or finish fetching church data.
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Derive user directly from the AuthContext session — no separate state needed.
   const user = session?.user ?? null;
@@ -135,11 +134,20 @@ export function useChurch() {
   // Using session from AuthContext means we react immediately after login
   // without a separate getSession() race condition.
   useEffect(() => {
-    if (!initialized) return; // Wait for auth to finish initializing
+    if (!initialized) {
+      // Auth not yet hydrated — keep loading=true so screens show a spinner
+      return;
+    }
     if (!session?.user) {
       console.log('[useChurch] no session — clearing church data');
       setChurches([]);
       setCurrentChurch(null);
+      setMembers([]);
+      setRecurringServices([]);
+      setChurchRoles([]);
+      setCurrentMember(null);
+      setNotificationSettings(null);
+      setFillInRequests([]);
       setLoading(false);
       return;
     }
@@ -1568,6 +1576,11 @@ export function useChurch() {
     return fetchFillInRequests(currentChurch.id);
   }, [currentChurch, fetchFillInRequests]);
 
+  const refreshChurches = useCallback(() => {
+    if (!user) return Promise.resolve();
+    return fetchChurches(user.id);
+  }, [user, fetchChurches]);
+
   return {
     churches,
     currentChurch,
@@ -1606,7 +1619,7 @@ export function useChurch() {
     registerPushToken,
     signOut,
     fetchFillInRequests,
-    refreshChurches: user ? () => fetchChurches(user.id) : () => Promise.resolve(),
+    refreshChurches,
     refreshMembers,
     refreshRecurringServices,
     refreshChurchRoles,
