@@ -3,7 +3,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@react-navigation/native";
 import { colors } from "@/styles/commonStyles";
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity, Modal, ActivityIndicator, Animated } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, ActivityIndicator, Animated } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { Stack } from "expo-router";
 import { useChurch } from "@/hooks/useChurch";

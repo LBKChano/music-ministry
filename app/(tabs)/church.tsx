@@ -237,7 +237,7 @@ export default function ChurchScreen() {
     const success = await updateMember(memberToEdit, currentChurch.id, updates);
     
     if (success) {
-      const member = members.find(m => m.id === memberToEdit);
+      const member = (members ?? []).find(m => m.id === memberToEdit);
       const currentRoleNames = member?.memberRoles?.map(r => r.role_name) || [];
       
       console.log('Current roles:', currentRoleNames);
@@ -643,7 +643,7 @@ export default function ChurchScreen() {
       console.log('Fetching all member unavailability in one query for', memberIds.length, 'members...');
 
       const memberUnavailability: { [memberId: string]: Set<string> } = {};
-      members.forEach(member => {
+      (members ?? []).forEach(member => {
         memberUnavailability[member.id] = new Set();
       });
 
@@ -894,7 +894,7 @@ export default function ChurchScreen() {
     );
   }
 
-  if (error && churches.length === 0) {
+  if (error && (churches ?? []).length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <Stack.Screen
