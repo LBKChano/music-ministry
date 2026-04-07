@@ -196,7 +196,7 @@ export default function ProfileScreen() {
             <View style={styles.cardHeader}>
               <IconSymbol
                 ios_icon_name="calendar.badge.minus"
-                android_material_icon_name="event-busy"
+                android_material_icon_name="event-available"
                 size={24}
                 color={colors.primary}
               />

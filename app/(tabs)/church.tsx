@@ -1020,7 +1020,7 @@ export default function ChurchScreen() {
               <View style={styles.invitationCodeContent}>
                 <IconSymbol
                   ios_icon_name="ticket"
-                  android_material_icon_name="confirmation-number"
+                  android_material_icon_name="local-activity"
                   size={32}
                   color={colors.primary}
                 />
@@ -1102,7 +1102,7 @@ export default function ChurchScreen() {
             >
               <IconSymbol
                 ios_icon_name="plus.circle.fill"
-                android_material_icon_name="add-circle"
+                android_material_icon_name="add-circle-outline"
                 size={24}
                 color="#fff"
               />
@@ -1225,10 +1225,11 @@ export default function ChurchScreen() {
                           <View style={styles.memberInfo}>
                             <IconSymbol
                               ios_icon_name="person.circle"
-                              android_material_icon_name="account-circle"
+                              android_material_icon_name="person"
                               size={40}
                               color={colors.primary}
                             />
+
                             <View style={styles.memberDetails}>
                               <Text style={[styles.memberName, { color: colors.text }]}>
                                 {displayName}
@@ -1415,7 +1416,7 @@ export default function ChurchScreen() {
                               >
                                 <IconSymbol
                                   ios_icon_name="chevron.up"
-                                  android_material_icon_name="arrow-upward"
+                                  android_material_icon_name="keyboard-arrow-up"
                                   size={20}
                                   color={index === 0 ? colors.textSecondary : colors.primary}
                                 />
@@ -1427,7 +1428,7 @@ export default function ChurchScreen() {
                               >
                                 <IconSymbol
                                   ios_icon_name="chevron.down"
-                                  android_material_icon_name="arrow-downward"
+                                  android_material_icon_name="keyboard-arrow-down"
                                   size={20}
                                   color={index === (churchRoles ?? []).length - 1 ? colors.textSecondary : colors.primary}
                                 />
@@ -1435,7 +1436,7 @@ export default function ChurchScreen() {
                             </View>
                             <IconSymbol
                               ios_icon_name="person.badge.shield.checkmark"
-                              android_material_icon_name="badge"
+                              android_material_icon_name="verified-user"
                               size={40}
                               color={colors.primary}
                             />
