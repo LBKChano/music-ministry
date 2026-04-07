@@ -157,8 +157,8 @@ export default function ChurchScreen() {
   // Update notification states when settings change
   React.useEffect(() => {
     if (notificationSettings) {
-      setNotificationsEnabled(notificationSettings.enabled);
-      setSelectedNotificationHours(notificationSettings.notification_hours);
+      setNotificationsEnabled(notificationSettings.enabled ?? true);
+      setSelectedNotificationHours(notificationSettings.notification_hours ?? [24, 6]);
     }
   }, [notificationSettings]);
 
@@ -461,7 +461,7 @@ export default function ChurchScreen() {
       return;
     }
 
-    if (selectedNotificationHours.length === 0) {
+    if ((selectedNotificationHours ?? []).length === 0) {
       Alert.alert('Error', 'Please select at least one notification time');
       return;
     }

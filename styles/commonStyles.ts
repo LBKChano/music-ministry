@@ -3,7 +3,7 @@ import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
 
 export const colors = {
   primary: '#1E3A8A',    // Navy Blue - spiritual/worship theme
-  secondary: '#2563EB',  // Bright Blue
+  secondary: '#2563EB',  // Bright Blue - also exported as a named key for badge/role use
   accent: '#60A5FA',     // Light Blue
   background: '#FFFFFF', // Clean white background
   backgroundAlt: '#F0F9FF', // Very light blue background
