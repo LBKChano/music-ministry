@@ -366,6 +366,7 @@ const styles = StyleSheet.create({
 });
 
 export default function HomeScreen() {
+  // ── ALL hooks must be called unconditionally at the top ──────────────────
   const {
     currentChurch,
     members,
@@ -388,8 +389,36 @@ export default function HomeScreen() {
   // OneSignal notification context — replaces expo-notifications push token logic
   const { requestPermission, oneSignalPlayerId, hasPermission } = useNotifications();
 
+  const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate } = useServices(currentChurch?.id ?? null);
+
+  const insets = useSafeAreaInsets();
+
   // Track if we've already registered the OneSignal player ID for this member
   const hasRegisteredThisSession = useRef(false);
+
+  const [addServiceModalVisible, setAddServiceModalVisible] = useState(false);
+  const [assignMemberModalVisible, setAssignMemberModalVisible] = useState(false);
+  const [deleteServiceModalVisible, setDeleteServiceModalVisible] = useState(false);
+  const [deleteAssignmentModalVisible, setDeleteAssignmentModalVisible] = useState(false);
+  const [fillInRequestModalVisible, setFillInRequestModalVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [isCreatingFillInRequest, setIsCreatingFillInRequest] = useState(false);
+
+  const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
+  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
+  const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
+  const [assignmentToDelete, setAssignmentToDelete] = useState<{ serviceId: string; assignmentId: string } | null>(null);
+
+  const [newServiceDate, setNewServiceDate] = useState(new Date());
+  const [newServiceType, setNewServiceType] = useState('');
+  const [newServiceNotes, setNewServiceNotes] = useState('');
+
+  const [fillInReason, setFillInReason] = useState('');
+  const [fillInAssignmentId, setFillInAssignmentId] = useState('');
+  const [fillInServiceId, setFillInServiceId] = useState('');
+  const [fillInRoleName, setFillInRoleName] = useState('');
+
+  // ── useEffect hooks (after all useState/useRef/other hooks) ──────────────
 
   // Register OneSignal player ID with Supabase push_tokens table
   useEffect(() => {
@@ -447,8 +476,6 @@ export default function HomeScreen() {
     registerOneSignalToken();
   }, [currentMember, oneSignalPlayerId, hasPermission, requestPermission, registerPushToken]);
 
-  const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate } = useServices(currentChurch?.id || null);
-
   // Refresh services when church changes
   useEffect(() => {
     if (currentChurch?.id) {
@@ -497,30 +524,6 @@ export default function HomeScreen() {
       console.error('[ServiceReminders] Error checking reminders:', err);
     });
   }, [oneSignalPlayerId, currentChurch, currentMember, notificationSettings, services, servicesLoading]);
-
-  const [addServiceModalVisible, setAddServiceModalVisible] = useState(false);
-  const [assignMemberModalVisible, setAssignMemberModalVisible] = useState(false);
-  const [deleteServiceModalVisible, setDeleteServiceModalVisible] = useState(false);
-  const [deleteAssignmentModalVisible, setDeleteAssignmentModalVisible] = useState(false);
-  const [fillInRequestModalVisible, setFillInRequestModalVisible] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [isCreatingFillInRequest, setIsCreatingFillInRequest] = useState(false);
-
-  const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
-  const [selectedMemberId, setSelectedMemberId] = useState<string>('');
-  const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
-  const [assignmentToDelete, setAssignmentToDelete] = useState<{ serviceId: string; assignmentId: string } | null>(null);
-
-  const [newServiceDate, setNewServiceDate] = useState(new Date());
-  const [newServiceType, setNewServiceType] = useState('');
-  const [newServiceNotes, setNewServiceNotes] = useState('');
-
-  const [fillInReason, setFillInReason] = useState('');
-  const [fillInAssignmentId, setFillInAssignmentId] = useState('');
-  const [fillInServiceId, setFillInServiceId] = useState('');
-  const [fillInRoleName, setFillInRoleName] = useState('');
-
-  const insets = useSafeAreaInsets();
 
   // OPTIMIZATION: Memoize filtered services to avoid recalculating on every render
   const filteredServices = useMemo(() => {

@@ -1,12 +1,7 @@
 import 'react-native-reanimated';
-import React from 'react';
-
-// Force expo-router to always start at index, never restore cached navigation state
-export const unstable_settings = {
-  initialRouteName: 'index',
-};
+import React, { useEffect, useRef } from 'react';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { SystemBars } from 'react-native-edge-to-edge';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -20,8 +15,13 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { WidgetProvider } from '@/contexts/WidgetContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+
+// Force expo-router to always start at index, never restore cached navigation state
+export const unstable_settings = {
+  initialRouteName: 'index',
+};
 
 // Prevent the splash screen from auto-hiding before auth is ready.
 // AuthContext.tsx calls SplashScreen.hideAsync() once initialized.
@@ -57,10 +57,48 @@ function RootLayoutNav() {
   const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
+  const { session, initialized } = useAuth();
+  const router = useRouter();
+  const segments = useSegments();
+  // Track last auth state to avoid firing navigation on every render
+  const lastAuthState = useRef<boolean | null>(null);
+  // Keep a stable ref to segments so the effect can read current value
+  // without segments being in the dependency array (useSegments() returns a
+  // new array reference every render, which would re-trigger the effect on
+  // every render and cause a navigation storm on Android).
+  const segmentsRef = useRef(segments);
+  segmentsRef.current = segments;
+  // Keep a stable ref to router — useRouter() may return a new object
+  // reference on every render in some expo-router versions, which would
+  // cause the effect to re-run on every render if router is in the deps.
+  const routerRef = useRef(router);
+  routerRef.current = router;
+
+  useEffect(() => {
+    if (!initialized) return;
+
+    const currentSegments = segmentsRef.current;
+    const inTabs = currentSegments[0] === '(tabs)';
+    const inOnboarding = currentSegments[0] === 'onboarding';
+    const isLoggedIn = !!session;
+
+    // Only act when auth state actually changes to avoid re-entrancy crashes
+    if (lastAuthState.current === isLoggedIn) return;
+    lastAuthState.current = isLoggedIn;
+
+    if (isLoggedIn && !inTabs) {
+      console.log('[RootLayout] session detected — navigating to /(tabs)');
+      routerRef.current.replace('/(tabs)');
+    } else if (!isLoggedIn && !inOnboarding) {
+      console.log('[RootLayout] no session — navigating to /onboarding');
+      routerRef.current.replace('/onboarding');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, initialized]);
 
   // Fonts are loaded asynchronously but we don't block rendering on them —
   // the splash screen is controlled solely by AuthContext (INITIAL_SESSION).
-  // Once auth is initialized the splash hides and the index route redirects.
+  void fontsLoaded;
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? CustomDarkTheme : CustomDefaultTheme}>

@@ -17,7 +17,6 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  interpolate,
 } from 'react-native-reanimated';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Href } from 'expo-router';
@@ -44,7 +43,7 @@ export default function FloatingTabBar({
   bottomMargin
 }: FloatingTabBarProps) {
   const { width: screenWidth } = useWindowDimensions();
-  const resolvedContainerWidth = containerWidth ?? screenWidth / 2.5;
+  const resolvedContainerWidth = Math.max(1, containerWidth ?? screenWidth / 2.5);
   const router = useRouter();
   const pathname = usePathname();
   const theme = useTheme();
@@ -117,28 +116,23 @@ export default function FloatingTabBar({
   }, [tabCount]);
 
   const indicatorStyle = useAnimatedStyle(() => {
-    if (tabCount === 0) {
+    'worklet';
+    try {
+      if (tabCount <= 1 || resolvedContainerWidth <= 0) {
+        return { transform: [{ translateX: 0 }] };
+      }
+      const tabWidth = (resolvedContainerWidth - 8) / tabCount;
+      const clampedValue = Math.max(0, Math.min(animatedValue.value, tabCount - 1));
+      return {
+        transform: [
+          {
+            translateX: clampedValue * tabWidth,
+          },
+        ],
+      };
+    } catch {
       return { transform: [{ translateX: 0 }] };
     }
-
-    // When there is only one tab the input range [0, 0] is invalid for interpolate,
-    // so just return a static translateX of 0.
-    if (tabCount === 1) {
-      return { transform: [{ translateX: 0 }] };
-    }
-
-    const tabWidth = (resolvedContainerWidth - 8) / tabCount;
-    return {
-      transform: [
-        {
-          translateX: interpolate(
-            animatedValue.value,
-            [0, tabCount - 1],
-            [0, tabWidth * (tabCount - 1)]
-          ),
-        },
-      ],
-    };
   }, [tabCount, resolvedContainerWidth]);
 
   if (!tabs || tabs.length === 0) {

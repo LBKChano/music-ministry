@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@react-navigation/native';
 import { colors } from '@/styles/commonStyles';
@@ -21,7 +21,6 @@ import { supabase } from '@/lib/supabase/client';
 
 export default function OnboardingScreen() {
   const { colors: themeColors } = useTheme();
-  const router = useRouter();
 
   const [step, setStep] = useState<'welcome' | 'church' | 'admin' | 'adminLogin' | 'member' | 'memberSignup'>('welcome');
   const [loading, setLoading] = useState(false);
@@ -178,10 +177,10 @@ export default function OnboardingScreen() {
       }
 
       console.log('Admin added as member successfully:', memberResult.data);
-      console.log('Church and admin account created successfully — navigating to tabs');
+      console.log('Church and admin account created successfully — auth state change will navigate to tabs');
 
       setLoading(false);
-      router.replace('/(tabs)');
+      // Navigation is handled centrally by _layout.tsx watching session changes
     } catch (err) {
       console.error('Error in onboarding:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -225,7 +224,7 @@ export default function OnboardingScreen() {
 
       console.log('Admin logged in successfully! User ID:', signInResult.data.user?.id);
       setLoading(false);
-      router.replace('/(tabs)');
+      // Navigation is handled centrally by _layout.tsx watching session changes
     } catch (err) {
       console.error('Error in admin login:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -259,7 +258,7 @@ export default function OnboardingScreen() {
 
       console.log('Member logged in successfully!');
       setLoading(false);
-      router.replace('/(tabs)');
+      // Navigation is handled centrally by _layout.tsx watching session changes
     } catch (err) {
       console.error('Error in member login:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -379,9 +378,9 @@ export default function OnboardingScreen() {
 
       console.log('Member successfully joined church:', churchData.name);
       console.log('Member data:', memberData);
-      console.log('Member account created successfully — navigating to tabs');
+      console.log('Member account created successfully — auth state change will navigate to tabs');
       setLoading(false);
-      router.replace('/(tabs)');
+      // Navigation is handled centrally by _layout.tsx watching session changes
     } catch (err) {
       console.error('Unexpected error in member signup:', err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');

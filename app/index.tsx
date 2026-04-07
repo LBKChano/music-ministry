@@ -1,24 +1,12 @@
-import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function Index() {
-  const { session, initialized } = useAuth();
-  const router = useRouter();
+  const { initialized } = useAuth();
 
-  useEffect(() => {
-    if (!initialized) return;
-    if (session) {
-      console.log('[Index] session found — navigating to tabs');
-      router.replace('/(tabs)');
-    } else {
-      console.log('[Index] no session — navigating to onboarding');
-      router.replace('/onboarding');
-    }
-  }, [initialized, session]);
-
-  // Always show loading spinner — navigation happens in useEffect
+  // Navigation is handled centrally in app/_layout.tsx's RootLayoutNav.
+  // This screen just shows a loading indicator while auth initializes.
+  void initialized;
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
       <ActivityIndicator size="large" color="#ffffff" />
