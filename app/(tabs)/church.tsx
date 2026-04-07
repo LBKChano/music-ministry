@@ -687,7 +687,7 @@ export default function ChurchScreen() {
       for (const service of filteredServices) {
         const serviceDate = service.date;
         
-        for (const assignment of service.assignments) {
+        for (const assignment of (service.assignments ?? [])) {
           if (!assignment.member_id && assignment.role) {
             const availableMembers = (membersByRole[assignment.role] || []).filter(member => {
               const isUnavailable = memberUnavailability[member.id]?.has(serviceDate);
@@ -2384,8 +2384,8 @@ export default function ChurchScreen() {
                   </Text>
                   {specialServices.map((special) => {
                     const dateText = formatDate(special.date.toISOString());
-                    const roleNames = special.selectedRoleIds
-                      .map(roleId => churchRoles.find(r => r.id === roleId)?.name)
+                    const roleNames = (special.selectedRoleIds ?? [])
+                      .map(roleId => (churchRoles ?? []).find(r => r.id === roleId)?.name)
                       .filter(Boolean)
                       .join(', ');
                     return (

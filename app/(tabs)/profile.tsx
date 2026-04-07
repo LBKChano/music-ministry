@@ -229,9 +229,9 @@ export default function ProfileScreen() {
                   textDisabledColor: colors.textSecondary,
                   monthTextColor: colors.text,
                   arrowColor: colors.primary,
-                  textDayFontWeight: '400',
-                  textMonthFontWeight: 'bold',
-                  textDayHeaderFontWeight: '600',
+                  textDayFontWeight: '400' as any,
+                  textMonthFontWeight: 'bold' as any,
+                  textDayHeaderFontWeight: '600' as any,
                 }}
               />
             )}
