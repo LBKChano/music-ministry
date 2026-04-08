@@ -55,7 +55,6 @@
     "react-leaflet": "^4.2.1",
     "react-native": "0.76.9",
     "react-native-calendars": "^1.1314.0",
-    "react-native-css-interop": "^0.1.22",
     "react-native-edge-to-edge": "^1.8.1",
     "react-native-gesture-handler": "^2.21.2",
     "react-native-onesignal": "^5.4.0",
