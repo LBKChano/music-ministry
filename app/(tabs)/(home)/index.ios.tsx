@@ -22,8 +22,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-
-
 // Helper to create a Date object representing the local date from a "YYYY-MM-DD" or full ISO string
 // This avoids timezone shifts when displaying dates
 const createLocalDate = (dateString: string): Date => {
@@ -34,7 +32,7 @@ const createLocalDate = (dateString: string): Date => {
 
   const datePart = dateString.split('T')[0];
   const parts = datePart.split('-');
-  
+
   if (parts.length !== 3) {
     console.error('createLocalDate: Invalid date format:', dateString);
     return new Date(NaN);
@@ -252,18 +250,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  pickerButton: {
-    backgroundColor: colors.inputBackground,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  pickerButtonText: {
-    fontSize: 16,
-    color: colors.text,
-  },
   recurringServiceItem: {
     backgroundColor: colors.inputBackground,
     borderRadius: 8,
@@ -444,7 +430,7 @@ export default function HomeScreen() {
         }
 
         // Wait for player ID to become available (may take a moment after permission grant)
-        let playerId = oneSignalPlayerId;
+        const playerId = oneSignalPlayerId;
         if (!playerId) {
           console.log('[OneSignal] [iOS] Player ID not yet available, waiting for subscription change event...');
           // The effect will re-run when oneSignalPlayerId updates in context
@@ -520,7 +506,7 @@ export default function HomeScreen() {
   const filteredServices = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     return services.filter(service => {
       const serviceDate = createLocalDate(service.date);
       if (isNaN(serviceDate.getTime())) {
@@ -559,35 +545,38 @@ export default function HomeScreen() {
       return;
     }
 
-    // Format date as YYYY-MM-DD
     const year = newServiceDate.getFullYear();
     const month = String(newServiceDate.getMonth() + 1).padStart(2, '0');
     const day = String(newServiceDate.getDate()).padStart(2, '0');
     const dateString = `${year}-${month}-${day}`;
 
-    // Find the matching recurring service to get its role slots
     const matchingRecurring = recurringServices.find(rs => rs.name === newServiceType.trim());
     const roleSlots = matchingRecurring?.roles ?? [];
 
     console.log('Creating service:', { date: dateString, type: newServiceType, roles: roleSlots });
 
-    const result = await createServiceFromTemplate(
-      currentChurch.id,
-      dateString,
-      newServiceType.trim(),
-      newServiceNotes.trim() || undefined,
-      roleSlots,
-    );
+    try {
+      const result = await createServiceFromTemplate(
+        currentChurch.id,
+        dateString,
+        newServiceType.trim(),
+        newServiceNotes.trim() || undefined,
+        roleSlots,
+      );
 
-    if (result) {
-      console.log('Service created successfully:', result.id);
-      Alert.alert('Success', 'Service added successfully');
-      setAddServiceModalVisible(false);
-      setNewServiceType('');
-      setNewServiceNotes('');
-      setNewServiceDate(new Date());
-    } else {
-      console.error('Failed to create service');
+      if (result) {
+        console.log('Service created successfully:', result.id);
+        Alert.alert('Success', 'Service added successfully');
+        setAddServiceModalVisible(false);
+        setNewServiceType('');
+        setNewServiceNotes('');
+        setNewServiceDate(new Date());
+      } else {
+        console.error('Failed to create service');
+        Alert.alert('Error', 'Failed to add service. Please try again.');
+      }
+    } catch (err) {
+      console.error('[HomeScreen.ios] handleSaveService error:', err);
       Alert.alert('Error', 'Failed to add service. Please try again.');
     }
   };
@@ -595,10 +584,15 @@ export default function HomeScreen() {
   const handleDeleteService = async () => {
     console.log('User confirmed delete service');
     if (!serviceToDelete) return;
-    const success = await deleteService(serviceToDelete);
-    if (success) {
-      Alert.alert('Success', 'Service deleted successfully');
-    } else {
+    try {
+      const success = await deleteService(serviceToDelete);
+      if (success) {
+        Alert.alert('Success', 'Service deleted successfully');
+      } else {
+        Alert.alert('Error', 'Failed to delete service');
+      }
+    } catch (err) {
+      console.error('[HomeScreen.ios] handleDeleteService error:', err);
       Alert.alert('Error', 'Failed to delete service');
     }
     setDeleteServiceModalVisible(false);
@@ -622,13 +616,18 @@ export default function HomeScreen() {
       return;
     }
     const personName = member.name || member.email;
-    const success = await updateAssignment(selectedAssignment, selectedMemberId, personName);
-    if (success) {
-      Alert.alert('Success', 'Member assigned successfully');
-      setAssignMemberModalVisible(false);
-      setSelectedAssignment(null);
-      setSelectedMemberId('');
-    } else {
+    try {
+      const success = await updateAssignment(selectedAssignment, selectedMemberId, personName);
+      if (success) {
+        Alert.alert('Success', 'Member assigned successfully');
+        setAssignMemberModalVisible(false);
+        setSelectedAssignment(null);
+        setSelectedMemberId('');
+      } else {
+        Alert.alert('Error', 'Failed to assign member');
+      }
+    } catch (err) {
+      console.error('[HomeScreen.ios] handleAssignMember error:', err);
       Alert.alert('Error', 'Failed to assign member');
     }
   };
@@ -636,10 +635,15 @@ export default function HomeScreen() {
   const handleDeleteAssignment = async () => {
     console.log('User confirmed delete assignment');
     if (!assignmentToDelete) return;
-    const success = await updateAssignment(assignmentToDelete.assignmentId, '', '');
-    if (success) {
-      Alert.alert('Success', 'Assignment cleared successfully');
-    } else {
+    try {
+      const success = await updateAssignment(assignmentToDelete.assignmentId, '', '');
+      if (success) {
+        Alert.alert('Success', 'Assignment cleared successfully');
+      } else {
+        Alert.alert('Error', 'Failed to clear assignment');
+      }
+    } catch (err) {
+      console.error('[HomeScreen.ios] handleDeleteAssignment error:', err);
       Alert.alert('Error', 'Failed to clear assignment');
     }
     setDeleteAssignmentModalVisible(false);
@@ -649,8 +653,8 @@ export default function HomeScreen() {
   const formatDate = useCallback((dateString: string) => {
     const date = createLocalDate(dateString);
     if (isNaN(date.getTime())) return 'Invalid Date';
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' 
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
     });
   }, []);
 
@@ -733,7 +737,7 @@ export default function HomeScreen() {
       if (result) {
         console.log('Fill-in request created successfully');
         Alert.alert(
-          'Success', 
+          'Success',
           'Fill-in request created successfully. Members with the same role will be notified.',
           [{ text: 'OK' }]
         );
@@ -742,7 +746,9 @@ export default function HomeScreen() {
         setFillInAssignmentId('');
         setFillInServiceId('');
         setFillInRoleName('');
-        if (refreshFillInRequests) await refreshFillInRequests();
+        if (refreshFillInRequests) {
+          await refreshFillInRequests();
+        }
       } else {
         console.error('Fill-in request creation returned false');
         Alert.alert('Error', 'Failed to create fill-in request. Please check your connection and try again.', [{ text: 'OK' }]);
@@ -759,11 +765,16 @@ export default function HomeScreen() {
   const handleAcceptFillInRequest = async (requestId: string, assignmentId: string) => {
     console.log('User accepted fill-in request');
     if (!currentChurch || !currentMember) return;
-    const success = await acceptFillInRequest(requestId, currentMember.id, currentChurch.id);
-    if (success) {
-      Alert.alert('Success', 'You have accepted the fill-in request and been assigned to this role');
-      refreshServices();
-    } else {
+    try {
+      const success = await acceptFillInRequest(requestId, currentMember.id, currentChurch.id);
+      if (success) {
+        Alert.alert('Success', 'You have accepted the fill-in request and been assigned to this role');
+        refreshServices().catch(err => console.error('[HomeScreen.ios] refreshServices error after accept:', err));
+      } else {
+        Alert.alert('Error', 'Failed to accept fill-in request');
+      }
+    } catch (err) {
+      console.error('[HomeScreen.ios] handleAcceptFillInRequest error:', err);
       Alert.alert('Error', 'Failed to accept fill-in request');
     }
   };
@@ -771,15 +782,20 @@ export default function HomeScreen() {
   const handleCancelFillInRequest = async (requestId: string) => {
     console.log('User cancelled fill-in request');
     if (!currentChurch) return;
-    const success = await cancelFillInRequest(requestId, currentChurch.id);
-    if (success) {
-      Alert.alert('Success', 'Fill-in request cancelled');
-    } else {
+    try {
+      const success = await cancelFillInRequest(requestId, currentChurch.id);
+      if (success) {
+        Alert.alert('Success', 'Fill-in request cancelled');
+      } else {
+        Alert.alert('Error', 'Failed to cancel fill-in request');
+      }
+    } catch (err) {
+      console.error('[HomeScreen.ios] handleCancelFillInRequest error:', err);
       Alert.alert('Error', 'Failed to cancel fill-in request');
     }
   };
 
-  const churchName = currentChurch?.name || 'Schedule';
+  const churchName = currentChurch?.name ?? 'Schedule';
   const upcomingCount = filteredServices.length;
   const upcomingText = `${upcomingCount} upcoming ${upcomingCount === 1 ? 'service' : 'services'}`;
 
@@ -792,8 +808,8 @@ export default function HomeScreen() {
     );
   }
 
-  if (churchLoading || !currentChurch || !user) {
-    console.log('[HomeScreen] [iOS] Loading or no church/user, rendering loading state');
+  if (!currentChurch || !user) {
+    console.log('[HomeScreen] [iOS] No church or user, rendering loading state');
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -810,8 +826,8 @@ export default function HomeScreen() {
         <Text style={styles.headerSubtitle}>{upcomingText}</Text>
       </View>
 
-      <ScrollView 
-        style={styles.container} 
+      <ScrollView
+        style={styles.container}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
@@ -853,12 +869,12 @@ export default function HomeScreen() {
                   )}
                 </View>
                 <Text style={styles.serviceDateTime}>{dateTimeDisplay}</Text>
-                {service.notes && <Text style={styles.serviceNotes}>{service.notes}</Text>}
+                {service.notes ? <Text style={styles.serviceNotes}>{service.notes}</Text> : null}
 
                 {serviceFillInRequests.map(request => {
                   const requestingMemberDisplayName = request.requesting_member_name || request.requesting_member_email;
                   const isMyRequest = currentMember?.id === request.requesting_member_id;
-                  const canAccept = currentMember?.memberRoles.some(r => r.role_name === request.role_name);
+                  const canAccept = currentMember?.memberRoles?.some(r => r.role_name === request.role_name) ?? false;
 
                   return (
                     <View key={request.id} style={styles.fillInRequestCard}>
@@ -868,9 +884,9 @@ export default function HomeScreen() {
                       <Text style={styles.fillInRequestText}>
                         requested a fill-in for {request.role_name}
                       </Text>
-                      {request.reason && (
+                      {request.reason ? (
                         <Text style={styles.fillInRequestText}>Reason: {request.reason}</Text>
-                      )}
+                      ) : null}
                       <View style={styles.fillInRequestButtons}>
                         {!isMyRequest && canAccept && (
                           <TouchableOpacity
@@ -930,7 +946,7 @@ export default function HomeScreen() {
                               color={colors.primary}
                             />
                           </TouchableOpacity>
-                          {assignment.member_id && (
+                          {assignment.member_id ? (
                             <TouchableOpacity
                               onPress={() => openDeleteAssignmentModal(service.id, assignment.id)}
                               style={styles.deleteButton}
@@ -942,7 +958,7 @@ export default function HomeScreen() {
                                 color={colors.error}
                               />
                             </TouchableOpacity>
-                          )}
+                          ) : null}
                         </>
                       )}
                     </View>

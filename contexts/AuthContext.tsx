@@ -26,9 +26,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!splashHidden.current) {
       splashHidden.current = true;
       console.log('[AuthContext] hiding splash screen');
-      SplashScreen.hideAsync().catch((err) => {
-        console.warn('[AuthContext] SplashScreen.hideAsync error (ignored):', err);
-      });
+      try {
+        SplashScreen.hideAsync().catch((err) => {
+          console.warn('[AuthContext] SplashScreen.hideAsync error (ignored):', err);
+        });
+      } catch (err) {
+        console.warn('[AuthContext] SplashScreen.hideAsync threw (ignored):', err);
+      }
     }
   };
 
@@ -36,16 +40,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
     let subscription: any = null;
 
-    // Safety timeout: if INITIAL_SESSION never fires within 5s (network issue,
+    // Safety timeout: if INITIAL_SESSION never fires within 4s (network issue,
     // cold start delay, Supabase misconfiguration), force initialized=true so
     // the app doesn't hang forever on a black screen.
     const timeout = setTimeout(() => {
       if (mounted && !initializedRef.current) {
         console.warn('[AuthContext] INITIAL_SESSION timeout — forcing initialized=true');
-        setInitialized(true);
-        hideSplash();
+        if (mounted) {
+          initializedRef.current = true;
+          setInitialized(true);
+          hideSplash();
+        }
       }
-    }, 5000);
+    }, 4000);
 
     try {
       const { data } = supabase.auth.onAuthStateChange((event: string, newSession: Session | null) => {
@@ -75,6 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('[AuthContext] Error setting up auth listener:', err);
       if (mounted) {
         clearTimeout(timeout);
+        initializedRef.current = true;
         setSession(null);
         setInitialized(true);
         hideSplash();
@@ -87,7 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         subscription?.unsubscribe();
       } catch (e) {
-        // ignore
+        // ignore cleanup errors
       }
     };
   }, []);
