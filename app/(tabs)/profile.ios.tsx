@@ -1,6 +1,5 @@
 
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useTheme } from "@react-navigation/native";
 import { colors } from "@/styles/commonStyles";
 import React, { useState, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, ActivityIndicator, Animated } from "react-native";
@@ -15,7 +14,6 @@ type MemberUnavailability = Tables<'member_unavailability'>;
 type ToastType = 'success' | 'error';
 
 export default function ProfileScreen() {
-  const theme = useTheme();
   const { user, loading, currentMember, currentChurch, signOut, fetchMemberUnavailability, saveUnavailableDates } = useChurch();
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
