@@ -27,6 +27,11 @@ export default function OnboardingScreen() {
   const [error, setError] = useState<string | null>(null);
   const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Always reset to welcome step on mount so sign-out → re-open starts fresh
+  useEffect(() => {
+    setStep('welcome');
+  }, []);
+
   // Safety timeout: if loading stays true for 8s (e.g. navigation fails), reset it
   useEffect(() => {
     if (loading) {

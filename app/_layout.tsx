@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
@@ -61,34 +61,22 @@ function RootLayoutNav() {
   const router = useRouter();
   const segments = useSegments();
 
-  // Track last auth state to avoid firing navigation on every render
-  const lastAuthState = useRef<boolean | null>(null);
-  // Keep stable refs to avoid stale closures / infinite effect loops
-  const segmentsRef = useRef(segments);
-  segmentsRef.current = segments;
-  const routerRef = useRef(router);
-  routerRef.current = router;
-
   useEffect(() => {
-    // CRITICAL: Do NOT redirect while auth is still loading.
-    // Redirecting before initialized=true causes a navigation storm and crashes.
     if (!initialized) return;
 
-    const currentSegments = segmentsRef.current;
-    const inTabs = currentSegments[0] === '(tabs)';
-    const inOnboarding = currentSegments[0] === 'onboarding';
-    const isLoggedIn = !!session;
+    const inTabs = segments[0] === '(tabs)';
+    const inOnboarding = segments[0] === 'onboarding';
 
-    // Only act when auth state actually changes to avoid re-entrancy crashes
-    if (lastAuthState.current === isLoggedIn) return;
-    lastAuthState.current = isLoggedIn;
-
-    if (isLoggedIn && !inTabs) {
-      console.log('[RootLayout] session detected — navigating to /(tabs)');
-      routerRef.current.replace('/(tabs)');
-    } else if (!isLoggedIn && !inOnboarding) {
-      console.log('[RootLayout] no session — navigating to /onboarding');
-      routerRef.current.replace('/onboarding');
+    if (session) {
+      if (!inTabs) {
+        console.log('[RootLayout] session detected — navigating to /(tabs)');
+        router.replace('/(tabs)');
+      }
+    } else {
+      if (!inOnboarding) {
+        console.log('[RootLayout] no session — navigating to /onboarding');
+        router.replace('/onboarding');
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, initialized]);

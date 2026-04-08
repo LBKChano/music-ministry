@@ -53,7 +53,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         console.log('[AuthContext] onAuthStateChange:', event, newSession ? `user=${newSession.user?.id}` : 'no session');
 
-        setSession(newSession ?? null);
+        if (event === 'SIGNED_OUT') {
+          console.log('[AuthContext] SIGNED_OUT — clearing session');
+          setSession(null);
+        } else {
+          setSession(newSession ?? null);
+        }
 
         // INITIAL_SESSION fires exactly once after storage is fully hydrated.
         if (event === 'INITIAL_SESSION') {
