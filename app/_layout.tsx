@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import { useFonts } from 'expo-font';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { SystemBars } from 'react-native-edge-to-edge';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -60,9 +60,14 @@ function RootLayoutNav() {
   const { session, initialized } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+  // useRootNavigationState tells us when the expo-router navigator is fully mounted
+  // and ready to accept router.replace/push calls. Without this guard, calling
+  // router.replace before the navigator is ready causes a crash/blank screen.
+  const navigationState = useRootNavigationState();
 
   useEffect(() => {
-    if (!initialized) return;
+    // Wait for auth to initialize AND for the navigator to be mounted.
+    if (!initialized || !navigationState?.key) return;
 
     const inTabs = segments[0] === '(tabs)';
     const inOnboarding = segments[0] === 'onboarding';
@@ -78,8 +83,7 @@ function RootLayoutNav() {
         router.replace('/onboarding');
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, initialized]);
+  }, [session, initialized, segments, navigationState?.key, router]);
 
   // Fonts are loaded asynchronously but we don't block rendering on them —
   // the splash screen is controlled solely by AuthContext (INITIAL_SESSION).

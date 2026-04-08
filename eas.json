@@ -4,7 +4,9 @@
   },
   "build": {
     "development": {
-      "cache": { "disabled": true },
+      "cache": {
+        "disabled": true
+      },
       "developmentClient": true,
       "distribution": "internal",
       "env": {
@@ -21,7 +23,9 @@
       }
     },
     "preview": {
-      "cache": { "disabled": true },
+      "cache": {
+        "disabled": true
+      },
       "distribution": "internal",
       "env": {
         "EAS_BUILD_NO_EXPO_GO_WARNING": "true"
@@ -37,7 +41,9 @@
       }
     },
     "production": {
-      "cache": { "disabled": true },
+      "cache": {
+        "disabled": true
+      },
       "env": {
         "EAS_BUILD_NO_EXPO_GO_WARNING": "true"
       },
