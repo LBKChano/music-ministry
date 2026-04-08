@@ -6,6 +6,12 @@
 
 set -euo pipefail
 
+# Force clean install to ensure lockfile-pinned versions are used
+echo "[eas-build-pre-install] Clearing node_modules for clean install..."
+rm -rf node_modules || true
+# Clear pnpm store to prevent cached package versions
+pnpm store prune || true
+
 echo "[eas-build-pre-install] Starting codegen safety cleanup..."
 
 # ─── react-native-onesignal 5.4.x ────────────────────────────────────────────

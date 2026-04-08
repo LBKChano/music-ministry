@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.a500e23ed75d44a5bf0c6baaf4d67839.app",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "This app uses the camera to take photos for member profiles.",
@@ -46,7 +46,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.lbkchano.musicministry",
-      "versionCode": 10,
+      "versionCode": 11,
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "READ_EXTERNAL_STORAGE",
@@ -80,6 +80,19 @@
           "mode": "production"
         }
       ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          },
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "buildToolsVersion": "35.0.0"
+          }
+        }
+      ],
       "expo-font",
       "expo-router",
       "expo-web-browser",
@@ -89,7 +102,8 @@
           "photosPermission": "The app accesses your photos to let you select images for member profiles.",
           "cameraPermission": "The app accesses your camera to let you take photos for member profiles."
         }
-      ]
+      ],
+      "./plugins/withCxxStandard"
     ],
     "scheme": "musicministry",
     "experiments": {
