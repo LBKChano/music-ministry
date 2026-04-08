@@ -3,6 +3,7 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 import { colors } from '@/styles/commonStyles';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
+import { ChurchProvider } from '@/contexts/ChurchContext';
 
 const tabs: TabBarItem[] = [
   {
@@ -30,16 +31,18 @@ const tabs: TabBarItem[] = [
 
 export default function TabLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.primary,
-      }}
-      tabBar={() => <FloatingTabBar tabs={tabs} />}
-    >
-      <Tabs.Screen name="(home)" options={{ title: 'Schedule' }} />
-      <Tabs.Screen name="church" options={{ title: 'Church' }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
-    </Tabs>
+    <ChurchProvider>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: colors.primary,
+        }}
+        tabBar={() => <FloatingTabBar tabs={tabs} />}
+      >
+        <Tabs.Screen name="(home)" options={{ title: 'Schedule' }} />
+        <Tabs.Screen name="church" options={{ title: 'Church' }} />
+        <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
+      </Tabs>
+    </ChurchProvider>
   );
 }
