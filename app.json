@@ -26,7 +26,7 @@
         "UIBackgroundModes": [
           "remote-notification"
         ],
-        "NSLocationWhenInUseUsageDescription": "This app uses your location to help find nearby churches."
+        "NSLocationWhenInUseUsageDescription": "This app uses your location to show nearby church services and events."
       },
       "splash": {
         "image": "./assets/images/9b11f806-5921-4e61-9383-a3f7e125c18f.png",
