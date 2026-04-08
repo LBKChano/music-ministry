@@ -9,14 +9,12 @@ import {
   TextInput,
   Modal,
   ActivityIndicator,
-  Platform,
   Alert,
   Switch,
   RefreshControl,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '@react-navigation/native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useChurch } from '@/hooks/useChurch';
@@ -50,8 +48,7 @@ function formatTimeForDatabase(date: Date): string {
 }
 
 export default function ChurchScreen() {
-  const { colors: themeColors } = useTheme();
-  const router = useRouter();
+
   const {
     churches,
     currentChurch,
@@ -73,7 +70,6 @@ export default function ChurchScreen() {
     updateRoleOrder,
     addMemberRole,
     removeMemberRole,
-    fetchMemberUnavailability,
     updateNotificationSettings,
     signOut,
     refreshChurches,
@@ -907,7 +903,7 @@ export default function ChurchScreen() {
         <View style={styles.centerContainer}>
           <IconSymbol
             ios_icon_name="exclamationmark.triangle"
-            android_material_icon_name="error-outline"
+            android_material_icon_name="warning"
             size={48}
             color={colors.error}
           />
@@ -1047,7 +1043,7 @@ export default function ChurchScreen() {
               <View style={styles.invitationCodeContent}>
                 <IconSymbol
                   ios_icon_name="ticket"
-                  android_material_icon_name="local-activity"
+                  android_material_icon_name="local-offer"
                   size={32}
                   color={colors.primary}
                 />
@@ -1066,7 +1062,7 @@ export default function ChurchScreen() {
               >
                 <IconSymbol
                   ios_icon_name="doc.on.doc"
-                  android_material_icon_name="content-copy"
+                  android_material_icon_name="file-copy"
                   size={20}
                   color="#fff"
                 />
@@ -1129,7 +1125,7 @@ export default function ChurchScreen() {
             >
               <IconSymbol
                 ios_icon_name="plus.circle.fill"
-                android_material_icon_name="add-circle-outline"
+                android_material_icon_name="add-circle"
                 size={24}
                 color="#fff"
               />
@@ -1443,7 +1439,7 @@ export default function ChurchScreen() {
                               >
                                 <IconSymbol
                                   ios_icon_name="chevron.up"
-                                  android_material_icon_name="keyboard-arrow-up"
+                                  android_material_icon_name="expand-less"
                                   size={20}
                                   color={index === 0 ? colors.textSecondary : colors.primary}
                                 />
@@ -1455,7 +1451,7 @@ export default function ChurchScreen() {
                               >
                                 <IconSymbol
                                   ios_icon_name="chevron.down"
-                                  android_material_icon_name="keyboard-arrow-down"
+                                  android_material_icon_name="expand-more"
                                   size={20}
                                   color={index === (churchRoles ?? []).length - 1 ? colors.textSecondary : colors.primary}
                                 />
@@ -1463,7 +1459,7 @@ export default function ChurchScreen() {
                             </View>
                             <IconSymbol
                               ios_icon_name="person.badge.shield.checkmark"
-                              android_material_icon_name="verified-user"
+                              android_material_icon_name="person"
                               size={40}
                               color={colors.primary}
                             />
@@ -1509,7 +1505,7 @@ export default function ChurchScreen() {
                   <View style={styles.automationBannerContent}>
                     <IconSymbol
                       ios_icon_name="checkmark.circle.fill"
-                      android_material_icon_name="check-circle"
+                      android_material_icon_name="notifications"
                       size={32}
                       color="#4CAF50"
                     />
@@ -1642,7 +1638,7 @@ export default function ChurchScreen() {
                             <TouchableOpacity onPress={() => removeNotificationHour(hour)}>
                               <IconSymbol
                                 ios_icon_name="xmark.circle.fill"
-                                android_material_icon_name="cancel"
+                                android_material_icon_name="close"
                                 size={20}
                                 color={colors.textSecondary}
                               />
@@ -1666,7 +1662,7 @@ export default function ChurchScreen() {
                     <>
                       <IconSymbol
                         ios_icon_name="checkmark.circle"
-                        android_material_icon_name="check-circle"
+                        android_material_icon_name="notifications"
                         size={24}
                         color="#fff"
                       />
@@ -2264,7 +2260,7 @@ export default function ChurchScreen() {
                               isBlocked && { backgroundColor: colors.primary },
                             ]}>
                               {isBlocked && (
-                                <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                                <IconSymbol ios_icon_name="checkmark" android_material_icon_name="done" size={16} color="#fff" />
                               )}
                             </View>
                           </TouchableOpacity>
@@ -2434,7 +2430,7 @@ export default function ChurchScreen() {
                           const newSpecial = specialServices.filter(s => s.id !== special.id);
                           setSpecialServices(newSpecial);
                         }}>
-                          <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="cancel" size={24} color="#ff3b30" />
+                          <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={24} color="#ff3b30" />
                         </TouchableOpacity>
                       </View>
                     );
@@ -2574,7 +2570,7 @@ export default function ChurchScreen() {
                         isSelected && { backgroundColor: colors.primary },
                       ]}>
                         {isSelected && (
-                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="done" size={16} color="#fff" />
                         )}
                       </View>
                     </TouchableOpacity>
@@ -2703,7 +2699,7 @@ export default function ChurchScreen() {
                         isSelected && { backgroundColor: colors.primary },
                       ]}>
                         {isSelected && (
-                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="check" size={16} color="#fff" />
+                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="done" size={16} color="#fff" />
                         )}
                       </View>
                     </TouchableOpacity>

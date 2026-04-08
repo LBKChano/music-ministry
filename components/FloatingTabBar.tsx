@@ -42,20 +42,28 @@ export default function FloatingTabBar({
   tabs,
   containerWidth,
   borderRadius = 35,
-  bottomMargin
+  bottomMargin,
 }: FloatingTabBarProps) {
   const { width: screenWidth } = useWindowDimensions();
   const resolvedContainerWidth = Math.max(1, containerWidth ?? screenWidth / 2.5);
   const router = useRouter();
   const pathname = usePathname();
   const theme = useTheme();
+
+  // ALL shared values must be declared unconditionally at the top — never inside
+  // conditionals, loops, or after early returns. Reanimated crashes if hook order changes.
   const animatedValue = useSharedValue(0);
+  const tabCountSV = useSharedValue(tabs?.length ?? 0);
+  const containerWidthSV = useSharedValue(resolvedContainerWidth);
+
+  // Memoize safeTabs so it has a stable reference for useMemo deps below
+  const safeTabs = React.useMemo(() => tabs ?? [], [tabs]);
+  const tabCount = safeTabs.length;
 
   const activeTabIndex = React.useMemo(() => {
     console.log('FloatingTabBar - Current pathname:', pathname);
-    console.log('FloatingTabBar - Available tabs:', tabs.map(t => ({ name: t.name, route: t.route })));
 
-    if (!tabs || tabs.length === 0) {
+    if (tabCount === 0) {
       console.warn('FloatingTabBar - No tabs provided');
       return 0;
     }
@@ -63,7 +71,7 @@ export default function FloatingTabBar({
     let bestMatch = -1;
     let bestMatchScore = 0;
 
-    tabs.forEach((tab, index) => {
+    safeTabs.forEach((tab, index) => {
       if (!tab || !tab.route) {
         console.warn('FloatingTabBar - Invalid tab at index', index, tab);
         return;
@@ -88,9 +96,19 @@ export default function FloatingTabBar({
       }
     });
 
-    console.log('FloatingTabBar - Active tab index:', bestMatch >= 0 ? bestMatch : 0);
-    return bestMatch >= 0 ? bestMatch : 0;
-  }, [pathname, tabs]);
+    const result = bestMatch >= 0 ? bestMatch : 0;
+    console.log('FloatingTabBar - Active tab index:', result);
+    return result;
+  }, [pathname, safeTabs, tabCount]);
+
+  // Keep shared values in sync — always run, never conditional
+  React.useEffect(() => {
+    tabCountSV.value = tabCount;
+  }, [tabCount, tabCountSV]);
+
+  React.useEffect(() => {
+    containerWidthSV.value = resolvedContainerWidth;
+  }, [resolvedContainerWidth, containerWidthSV]);
 
   React.useEffect(() => {
     if (activeTabIndex >= 0) {
@@ -102,105 +120,100 @@ export default function FloatingTabBar({
     }
   }, [activeTabIndex, animatedValue]);
 
-  const handleTabPress = React.useCallback((route: Href) => {
-    console.log('FloatingTabBar - Navigating to:', route);
-    router.push(route);
-  }, [router]);
-
-  // Capture stable numeric values for the worklet — avoid passing the full tabs
-  // array into useAnimatedStyle (arrays are not worklet-safe and change reference
-  // every render, causing infinite re-renders / crashes).
-  const tabCount = tabs?.length ?? 0;
+  const handleTabPress = React.useCallback(
+    (route: Href) => {
+      console.log('FloatingTabBar - Navigating to:', route);
+      router.push(route);
+    },
+    [router],
+  );
 
   const tabWidthPercent = React.useMemo(() => {
     if (tabCount === 0) return 50;
-    return ((100 / tabCount) - 1);
+    return (100 / tabCount) - 1;
   }, [tabCount]);
 
+  // useAnimatedStyle — Reanimated v4 automatically treats this as a worklet.
+  // Do NOT add the 'worklet' directive — v4 crashes if it is present.
   const indicatorStyle = useAnimatedStyle(() => {
-    'worklet';
-    try {
-      if (tabCount <= 1 || resolvedContainerWidth <= 0) {
-        return { transform: [{ translateX: 0 }] };
-      }
-      const tabWidth = (resolvedContainerWidth - 8) / tabCount;
-      const clampedValue = Math.max(0, Math.min(animatedValue.value, tabCount - 1));
-      return {
-        transform: [
-          {
-            translateX: clampedValue * tabWidth,
-          },
-        ],
-      };
-    } catch {
+    const tc = tabCountSV.value;
+    const cw = containerWidthSV.value;
+    if (tc <= 1 || cw <= 0) {
       return { transform: [{ translateX: 0 }] };
     }
-  }, [tabCount, resolvedContainerWidth]);
+    const tabWidth = (cw - 8) / tc;
+    const clampedValue = Math.max(0, Math.min(animatedValue.value, tc - 1));
+    return {
+      transform: [{ translateX: clampedValue * tabWidth }],
+    };
+  });
 
-  if (!tabs || tabs.length === 0) {
+  if (tabCount === 0) {
     console.error('FloatingTabBar - No valid tabs to render');
     return null;
   }
 
-  const dynamicStyles = {
-    blurContainer: {
-      ...styles.blurContainer,
-      borderWidth: 1.2,
-      borderColor: colors.primary,
-      ...Platform.select({
-        ios: {
-          backgroundColor: theme.dark
-            ? 'rgba(15, 23, 42, 0.8)'
-            : 'rgba(255, 255, 255, 0.6)',
-        },
-        android: {
-          backgroundColor: theme.dark
-            ? 'rgba(15, 23, 42, 0.95)'
-            : 'rgba(255, 255, 255, 0.6)',
-        },
-        web: {
-          backgroundColor: theme.dark
-            ? 'rgba(15, 23, 42, 0.95)'
-            : 'rgba(255, 255, 255, 0.6)',
-          backdropFilter: 'blur(10px)',
-        },
-      }),
-    },
-    background: {
-      ...styles.background,
-    },
-    indicator: {
-      ...styles.indicator,
-      backgroundColor: theme.dark
-        ? 'rgba(96, 165, 250, 0.15)'
-        : 'rgba(30, 58, 138, 0.08)',
-      width: `${tabWidthPercent}%` as `${number}%`,
-    },
+  const blurContainerStyle = {
+    ...styles.blurContainer,
+    borderWidth: 1.2,
+    borderColor: colors.primary,
+    ...Platform.select({
+      ios: {
+        backgroundColor: theme.dark
+          ? 'rgba(15, 23, 42, 0.8)'
+          : 'rgba(255, 255, 255, 0.6)',
+      },
+      android: {
+        backgroundColor: theme.dark
+          ? 'rgba(15, 23, 42, 0.95)'
+          : 'rgba(255, 255, 255, 0.6)',
+      },
+      web: {
+        backgroundColor: theme.dark
+          ? 'rgba(15, 23, 42, 0.95)'
+          : 'rgba(255, 255, 255, 0.6)',
+        backdropFilter: 'blur(10px)',
+      },
+    }),
+  };
+
+  const indicatorBaseStyle = {
+    ...styles.indicator,
+    backgroundColor: theme.dark
+      ? 'rgba(96, 165, 250, 0.15)'
+      : 'rgba(30, 58, 138, 0.08)',
+    width: `${tabWidthPercent}%` as `${number}%`,
   };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-      <View style={[
-        styles.container,
-        {
-          width: resolvedContainerWidth,
-          marginBottom: bottomMargin ?? 20
-        }
-      ]}>
-        <BlurView
-          intensity={80}
-          style={[dynamicStyles.blurContainer, { borderRadius }]}
-        >
-          <View style={dynamicStyles.background} />
-          <Animated.View style={[dynamicStyles.indicator, indicatorStyle]} />
+      <View
+        style={[
+          styles.container,
+          {
+            width: resolvedContainerWidth,
+            marginBottom: bottomMargin ?? 20,
+          },
+        ]}
+      >
+        <BlurView intensity={80} style={[blurContainerStyle, { borderRadius }]}>
+          <View style={styles.background} />
+          <Animated.View style={[indicatorBaseStyle, indicatorStyle]} />
           <View style={styles.tabsContainer}>
-            {tabs.map((tab, index) => {
+            {safeTabs.map((tab, index) => {
               if (!tab) {
                 console.warn('FloatingTabBar - Skipping invalid tab at index', index);
                 return null;
               }
 
               const isActive = activeTabIndex === index;
+              const iconColor = isActive
+                ? colors.primary
+                : theme.dark
+                ? '#98989D'
+                : '#64748B';
+              const labelColor = isActive ? colors.primary : theme.dark ? '#98989D' : '#64748B';
+              const labelWeight = isActive ? ('600' as const) : ('500' as const);
 
               return (
                 <React.Fragment key={tab.name}>
@@ -214,13 +227,12 @@ export default function FloatingTabBar({
                         android_material_icon_name={tab.icon}
                         ios_icon_name={tab.iosIcon ?? tab.icon}
                         size={24}
-                        color={isActive ? colors.primary : (theme.dark ? '#98989D' : '#64748B')}
+                        color={iconColor}
                       />
                       <Text
                         style={[
                           styles.tabLabel,
-                          { color: theme.dark ? '#98989D' : '#64748B' },
-                          isActive && { color: colors.primary, fontWeight: '600' },
+                          { color: labelColor, fontWeight: labelWeight },
                         ]}
                       >
                         {tab.label}
@@ -262,7 +274,7 @@ const styles = StyleSheet.create({
     left: 2,
     bottom: 4,
     borderRadius: 27,
-    width: `${(100 / 2) - 1}%`,
+    width: '49%',
   },
   tabsContainer: {
     flexDirection: 'row',
@@ -283,7 +295,6 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 9,
-    fontWeight: '500',
     marginTop: 2,
   },
 });

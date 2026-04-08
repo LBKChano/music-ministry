@@ -111,7 +111,10 @@ export const commonStyles = StyleSheet.create({
     padding: 10,
     marginVertical: 8,
     width: '100%',
-    boxShadow: '0px 2px 3px rgba(30, 58, 138, 0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
     elevation: 2,
   },
   icon: {

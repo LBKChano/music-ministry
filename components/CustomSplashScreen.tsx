@@ -10,13 +10,13 @@ export function CustomSplashScreen() {
       <View style={styles.iconContainer}>
         <IconSymbol 
           ios_icon_name="building.2.fill" 
-          android_material_icon_name="church" 
+          android_material_icon_name="account-balance"
           size={80} 
           color="#FFFFFF" 
         />
         <IconSymbol 
           ios_icon_name="music.note" 
-          android_material_icon_name="music-note" 
+          android_material_icon_name="music-note"
           size={60} 
           color="#60A5FA" 
           style={styles.musicNote}

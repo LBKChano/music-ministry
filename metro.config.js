@@ -7,6 +7,23 @@ const config = getDefaultConfig(__dirname);
 
 config.resolver.unstable_enablePackageExports = true;
 
+// Block Metro from watching pnpm _tmp_ directories that appear/disappear during installs.
+// Without this, Metro crashes with ENOENT when a temp dir is removed mid-watch.
+const blockListPatterns = [
+  /node_modules\/.*_tmp_\d+\/.*/,
+  /node_modules\/\.pnpm\/.+_tmp_\d+\/.*/,
+];
+const existingBlockList = config.resolver.blockList;
+if (existingBlockList) {
+  // Merge with existing blockList (may be a RegExp or array)
+  const existing = Array.isArray(existingBlockList)
+    ? existingBlockList
+    : [existingBlockList];
+  config.resolver.blockList = [...existing, ...blockListPatterns];
+} else {
+  config.resolver.blockList = blockListPatterns;
+}
+
 // Use turborepo to restore the cache when possible
 config.cacheStores = [
     new FileStore({ root: path.join(__dirname, 'node_modules', '.cache', 'metro') }),

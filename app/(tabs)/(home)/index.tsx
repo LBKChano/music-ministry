@@ -480,7 +480,7 @@ export default function HomeScreen() {
   useEffect(() => {
     if (currentChurch?.id) {
       console.log('Church changed, refreshing services');
-      refreshServices();
+      refreshServices().catch(err => console.error('[HomeScreen] refreshServices error:', err));
     }
   }, [currentChurch?.id, refreshServices]);
 
@@ -696,12 +696,6 @@ export default function HomeScreen() {
     }
   }, []);
 
-  const onDateChange = (_event: any, selectedDate?: Date) => {
-    if (selectedDate) {
-      setNewServiceDate(selectedDate);
-    }
-  };
-
   const openDeleteServiceModal = (serviceId: string) => {
     console.log('User tapped delete service button');
     setServiceToDelete(serviceId);
@@ -815,7 +809,7 @@ export default function HomeScreen() {
     
     if (success) {
       Alert.alert('Success', 'You have accepted the fill-in request and been assigned to this role');
-      refreshServices();
+      refreshServices().catch(err => console.error('[HomeScreen] refreshServices error after accept:', err));
     } else {
       Alert.alert('Error', 'Failed to accept fill-in request');
     }
@@ -838,20 +832,12 @@ export default function HomeScreen() {
   const upcomingCount = filteredServices.length;
   const upcomingText = `${upcomingCount} upcoming ${upcomingCount === 1 ? 'service' : 'services'}`;
 
-  if (churchLoading || servicesLoading) {
+  if (churchLoading || servicesLoading || !currentChurch || !user) {
+    console.log('[HomeScreen] Loading or no church/user — churchLoading:', churchLoading, 'servicesLoading:', servicesLoading, 'hasChurch:', !!currentChurch, 'hasUser:', !!user);
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={{ color: colors.text, marginTop: 16 }}>Loading services...</Text>
-      </View>
-    );
-  }
-
-  if (churchLoading || !currentChurch || !user) {
-    console.log('[HomeScreen] Loading or no church/user, rendering loading state');
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -924,7 +910,7 @@ export default function HomeScreen() {
                 {serviceFillInRequests.map(request => {
                   const requestingMemberDisplayName = request.requesting_member_name || request.requesting_member_email;
                   const isMyRequest = currentMember?.id === request.requesting_member_id;
-                  const canAccept = currentMember?.memberRoles.some(r => r.role_name === request.role_name);
+                  const canAccept = currentMember?.memberRoles?.some(r => r.role_name === request.role_name);
 
                   return (
                     <View key={request.id} style={styles.fillInRequestCard}>
@@ -999,7 +985,7 @@ export default function HomeScreen() {
                               >
                                 <IconSymbol
                                   ios_icon_name="person.badge.plus"
-                                  android_material_icon_name="person-add"
+                                  android_material_icon_name="person-add-alt"
                                   size={20}
                                   color={colors.primary}
                                 />
@@ -1038,6 +1024,55 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
       </ScrollView>
+
+      {/* Add Service Modal */}
+      <Modal
+        visible={addServiceModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddServiceModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add Service</Text>
+            <Text style={{ color: colors.text, marginBottom: 8 }}>Select a service type:</Text>
+            <ScrollView style={{ maxHeight: 200 }}>
+              {(recurringServices ?? []).map(rs => (
+                <TouchableOpacity
+                  key={rs.id}
+                  style={[
+                    styles.recurringServiceItem,
+                    newServiceType === rs.name && { backgroundColor: colors.primary + '30', borderColor: colors.primary },
+                  ]}
+                  onPress={() => handleSelectRecurringService(rs)}
+                >
+                  <Text style={styles.recurringServiceText}>{rs.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  console.log('User cancelled add service modal');
+                  setAddServiceModalVisible(false);
+                  setNewServiceType('');
+                  setNewServiceNotes('');
+                  setNewServiceDate(new Date());
+                }}
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={handleSaveService}
+              >
+                <Text style={styles.buttonText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Fill-In Request Modal */}
       <Modal

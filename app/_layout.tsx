@@ -1,5 +1,5 @@
-import 'react-native-reanimated';
 import React, { useEffect, useRef } from 'react';
+import { View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -60,21 +60,18 @@ function RootLayoutNav() {
   const { session, initialized } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+
   // Track last auth state to avoid firing navigation on every render
   const lastAuthState = useRef<boolean | null>(null);
-  // Keep a stable ref to segments so the effect can read current value
-  // without segments being in the dependency array (useSegments() returns a
-  // new array reference every render, which would re-trigger the effect on
-  // every render and cause a navigation storm on Android).
+  // Keep stable refs to avoid stale closures / infinite effect loops
   const segmentsRef = useRef(segments);
   segmentsRef.current = segments;
-  // Keep a stable ref to router — useRouter() may return a new object
-  // reference on every render in some expo-router versions, which would
-  // cause the effect to re-run on every render if router is in the deps.
   const routerRef = useRef(router);
   routerRef.current = router;
 
   useEffect(() => {
+    // CRITICAL: Do NOT redirect while auth is still loading.
+    // Redirecting before initialized=true causes a navigation storm and crashes.
     if (!initialized) return;
 
     const currentSegments = segmentsRef.current;
@@ -100,6 +97,11 @@ function RootLayoutNav() {
   // the splash screen is controlled solely by AuthContext (INITIAL_SESSION).
   void fontsLoaded;
 
+  // While auth is initializing, show a blank view — never redirect during this phase
+  if (!initialized) {
+    return <View style={{ flex: 1, backgroundColor: '#000' }} />;
+  }
+
   return (
     <ThemeProvider value={colorScheme === 'dark' ? CustomDarkTheme : CustomDefaultTheme}>
       <WidgetProvider>
@@ -108,7 +110,10 @@ function RootLayoutNav() {
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="onboarding" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="notification-preferences" options={{ headerShown: true, title: 'Notification Preferences' }} />
+            <Stack.Screen
+              name="notification-preferences"
+              options={{ headerShown: true, title: 'Notification Preferences' }}
+            />
             <Stack.Screen name="+not-found" />
           </Stack>
           <SystemBars style="auto" />

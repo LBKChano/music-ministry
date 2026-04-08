@@ -61,7 +61,7 @@ export default function ProfileScreen() {
       }
     };
 
-    loadUnavailability();
+    loadUnavailability().catch(err => console.error('[ProfileScreen.ios] loadUnavailability error:', err));
   }, [currentMember?.id, fetchMemberUnavailability]);
 
   const handleSignOut = async () => {
@@ -207,7 +207,7 @@ export default function ProfileScreen() {
             <View style={styles.cardHeader}>
               <IconSymbol
                 ios_icon_name="calendar.badge.exclamationmark"
-                android_material_icon_name="event-available"
+                android_material_icon_name="event"
                 size={24}
                 color={colors.primary}
               />
@@ -277,7 +277,7 @@ export default function ProfileScreen() {
                 ) : (
                   <IconSymbol
                     ios_icon_name="checkmark.circle.fill"
-                    android_material_icon_name="save"
+                    android_material_icon_name="save-alt"
                     size={18}
                     color="#FFFFFF"
                   />

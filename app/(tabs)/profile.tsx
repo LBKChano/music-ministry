@@ -1,6 +1,5 @@
 
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useTheme } from "@react-navigation/native";
 import { colors } from "@/styles/commonStyles";
 import React, { useState, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, ActivityIndicator, Animated } from "react-native";
@@ -15,7 +14,6 @@ type MemberUnavailability = Tables<'member_unavailability'>;
 type ToastType = 'success' | 'error';
 
 export default function ProfileScreen() {
-  const theme = useTheme();
   const { user, loading, currentMember, currentChurch, signOut, fetchMemberUnavailability, saveUnavailableDates } = useChurch();
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -61,7 +59,7 @@ export default function ProfileScreen() {
       }
     };
 
-    loadUnavailability();
+    loadUnavailability().catch(err => console.error('[ProfileScreen] loadUnavailability error:', err));
   }, [currentMember?.id, fetchMemberUnavailability]);
 
   const handleSignOut = async () => {
@@ -207,7 +205,7 @@ export default function ProfileScreen() {
             <View style={styles.cardHeader}>
               <IconSymbol
                 ios_icon_name="calendar.badge.minus"
-                android_material_icon_name="event-available"
+                android_material_icon_name="event"
                 size={24}
                 color={colors.primary}
               />
@@ -277,7 +275,7 @@ export default function ProfileScreen() {
                 ) : (
                   <IconSymbol
                     ios_icon_name="checkmark.circle.fill"
-                    android_material_icon_name="save"
+                    android_material_icon_name="save-alt"
                     size={18}
                     color="#FFFFFF"
                   />

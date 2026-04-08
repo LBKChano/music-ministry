@@ -3,45 +3,49 @@ import * as Haptics from "expo-haptics";
 import { Pressable, StyleSheet, useColorScheme, View, Text } from "react-native";
 import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import Animated, {
-  configureReanimatedLogger,
   FadeIn,
-  SharedValue,
   useAnimatedStyle,
 } from "react-native-reanimated";
+import type { SharedValue } from "react-native-reanimated";
 import Reanimated from "react-native-reanimated";
 import { appleRed, borderColor } from "@/constants/Colors";
 import { IconCircle } from "./IconCircle";
 import { IconSymbol } from "./IconSymbol";
 
-configureReanimatedLogger({ strict: false });
+// RightAction must be a proper React component so that useAnimatedStyle
+// (a hook) is called at the top level of a component, not inside a callback.
+// Reanimated v4 enforces this strictly and crashes if hooks are called in
+// non-component functions.
+function RightAction({
+  prog,
+  drag,
+}: {
+  prog: SharedValue<number>;
+  drag: SharedValue<number>;
+}) {
+  const styleAnimation = useAnimatedStyle(() => ({
+    transform: [{ translateX: drag.value + 200 }],
+  }));
+
+  return (
+    <Pressable
+      onPress={() => {
+        console.log("User tapped delete swipe action");
+        if (process.env.EXPO_OS === "ios") {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        }
+      }}
+    >
+      <Reanimated.View style={[styleAnimation, styles.rightAction]}>
+        <IconSymbol ios_icon_name="trash.fill" android_material_icon_name="delete" size={24} color="white" />
+      </Reanimated.View>
+    </Pressable>
+  );
+}
 
 export default function ListItem({ listId }: { listId: string }) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
-
-  const RightAction = (
-    prog: SharedValue<number>,
-    drag: SharedValue<number>
-  ) => {
-    const styleAnimation = useAnimatedStyle(() => ({
-      transform: [{ translateX: drag.value + 200 }],
-    }));
-
-    return (
-      <Pressable
-        onPress={() => {
-          if (process.env.EXPO_OS === "ios") {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          }
-          console.log("delete");
-        }}
-      >
-        <Reanimated.View style={[styleAnimation, styles.rightAction]}>
-          <IconSymbol ios_icon_name="trash.fill" android_material_icon_name="delete" size={24} color="white" />
-        </Reanimated.View>
-      </Pressable>
-    );
-  };
 
   return (
     <Animated.View entering={FadeIn}>

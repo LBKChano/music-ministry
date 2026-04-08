@@ -472,7 +472,7 @@ export default function HomeScreen() {
   useEffect(() => {
     if (currentChurch?.id) {
       console.log('Church changed, refreshing services');
-      refreshServices();
+      refreshServices().catch(err => console.error('[HomeScreen.ios] refreshServices error:', err));
     }
   }, [currentChurch?.id, refreshServices]);
 
@@ -666,10 +666,6 @@ export default function HomeScreen() {
       return timeString;
     }
   }, []);
-
-  const onDateChange = (_event: any, selectedDate?: Date) => {
-    if (selectedDate) setNewServiceDate(selectedDate);
-  };
 
   const openDeleteServiceModal = (serviceId: string) => {
     console.log('User tapped delete service button');
@@ -929,7 +925,7 @@ export default function HomeScreen() {
                           >
                             <IconSymbol
                               ios_icon_name="person.badge.plus"
-                              android_material_icon_name="person-add"
+                              android_material_icon_name="person-add-alt"
                               size={20}
                               color={colors.primary}
                             />
@@ -966,6 +962,55 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
       </ScrollView>
+
+      {/* Add Service Modal */}
+      <Modal
+        visible={addServiceModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddServiceModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add Service</Text>
+            <Text style={{ color: colors.text, marginBottom: 8 }}>Select a service type:</Text>
+            <ScrollView style={{ maxHeight: 200 }}>
+              {(recurringServices ?? []).map(rs => (
+                <TouchableOpacity
+                  key={rs.id}
+                  style={[
+                    styles.recurringServiceItem,
+                    newServiceType === rs.name && { backgroundColor: colors.primary + '30', borderColor: colors.primary },
+                  ]}
+                  onPress={() => handleSelectRecurringService(rs)}
+                >
+                  <Text style={styles.recurringServiceText}>{rs.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  console.log('User cancelled add service modal');
+                  setAddServiceModalVisible(false);
+                  setNewServiceType('');
+                  setNewServiceNotes('');
+                  setNewServiceDate(new Date());
+                }}
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={handleSaveService}
+              >
+                <Text style={styles.buttonText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Fill-In Request Modal */}
       <Modal

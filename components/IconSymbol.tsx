@@ -1,7 +1,8 @@
 // This file is a fallback for using MaterialIcons on Android and web.
+// NOTE: Do NOT import expo-symbols here — it is an iOS-only native module
+// and importing it on Android/web will crash the app.
 
 import React from "react";
-import { SymbolWeight } from "expo-symbols";
 import {
   OpaqueColorValue,
   StyleProp,
@@ -9,6 +10,9 @@ import {
   ViewStyle,
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+
+// Stub type so the prop signature matches IconSymbol.ios.tsx without importing expo-symbols
+type SymbolWeight = string;
 
 // Safe wrapper that catches render errors from invalid icon names.
 class SafeMaterialIcon extends React.Component<{

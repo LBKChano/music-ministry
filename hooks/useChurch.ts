@@ -42,22 +42,18 @@ export function useChurch() {
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings | null>(null);
   const [fillInRequests, setFillInRequests] = useState<FillInRequestWithMemberInfo[]>([]);
   // Start loading=true so screens show a spinner immediately while auth initializes.
-  // It is set to false once we either confirm no session or finish fetching church data.
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Derive user directly from the AuthContext session — no separate state needed.
   const user = session?.user ?? null;
   const [currentMember, setCurrentMember] = useState<ChurchMemberWithRoles | null>(null);
 
-  // Fetch churches for the current user - UPDATED TO INCLUDE MEMBER CHURCHES
-  // NOTE: defined BEFORE the onAuthStateChange useEffect so it can be called from it.
   const fetchChurches = useCallback(async (userId: string) => {
     console.log('Fetching churches for user:', userId);
     try {
       setLoading(true);
       setError(null);
 
-      // Fetch churches where user is admin
       const { data: adminChurches, error: adminError } = await supabase
         .from('churches')
         .select('*')
@@ -66,16 +62,13 @@ export function useChurch() {
 
       if (adminError) {
         console.error('Error fetching admin churches:', adminError);
-        // Check for infinite recursion error
         if (adminError.code === '42P17') {
-          console.error('RLS policy infinite recursion detected - this is a database configuration issue');
+          console.error('RLS policy infinite recursion detected');
           setError('Database configuration error. Please contact support.');
-          setLoading(false);
           return;
         }
       }
 
-      // Fetch churches where user is a member (by member_id)
       const { data: memberChurchIds, error: memberError } = await supabase
         .from('church_members')
         .select('church_id')
@@ -83,44 +76,35 @@ export function useChurch() {
 
       if (memberError) {
         console.error('Error fetching member churches:', memberError);
-        // Check for infinite recursion error
         if (memberError.code === '42P17') {
-          console.error('RLS policy infinite recursion detected - this is a database configuration issue');
           setError('Database configuration error. Please contact support.');
-          setLoading(false);
           return;
         }
       }
 
-      // Fetch the actual church data for member churches
       let memberChurches: Church[] = [];
-      if (memberChurchIds && memberChurchIds.length > 0) {
-        const churchIds = memberChurchIds.map(m => m.church_id);
+      const safeChurchIds = (memberChurchIds ?? []).map(m => m.church_id);
+      if (safeChurchIds.length > 0) {
         const { data: memberChurchesData, error: memberChurchesError } = await supabase
           .from('churches')
           .select('*')
-          .in('id', churchIds)
+          .in('id', safeChurchIds)
           .order('created_at', { ascending: false });
 
         if (memberChurchesError) {
           console.error('Error fetching member church details:', memberChurchesError);
         } else {
-          memberChurches = memberChurchesData || [];
+          memberChurches = memberChurchesData ?? [];
         }
       }
 
-      // Combine and deduplicate churches
-      const allChurches = [...(adminChurches || []), ...memberChurches];
+      const allChurches = [...(adminChurches ?? []), ...memberChurches];
       const uniqueChurches = Array.from(
-        new Map(allChurches.map(church => [church.id, church])).values()
+        new Map(allChurches.map(church => [church.id, church])).values(),
       );
 
-      console.log('Fetched churches:', uniqueChurches);
+      console.log('Fetched churches:', uniqueChurches.length);
       setChurches(uniqueChurches);
-
-      // Use functional update to avoid stale closure on currentChurch —
-      // this prevents fetchChurches from needing currentChurch in its deps,
-      // which would cause an infinite re-fetch loop each time currentChurch changes.
       setCurrentChurch(prev => prev ?? (uniqueChurches.length > 0 ? uniqueChurches[0] : null));
     } catch (err) {
       console.error('Error in fetchChurches:', err);
@@ -128,11 +112,8 @@ export function useChurch() {
     } finally {
       setLoading(false);
     }
-  }, []); // No currentChurch dep — functional setState handles the "set if not already set" logic
+  }, []);
 
-  // Bootstrap: fetch churches whenever the session becomes available.
-  // Using session from AuthContext means we react immediately after login
-  // without a separate getSession() race condition.
   useEffect(() => {
     if (!initialized) {
       // Auth not yet hydrated — keep loading=true so screens show a spinner
@@ -155,13 +136,11 @@ export function useChurch() {
     fetchChurches(session.user.id);
   }, [session?.user?.id, initialized]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch members for a specific church with their roles
   const fetchMembers = useCallback(async (churchId: string) => {
     console.log('Fetching members for church:', churchId);
     try {
       setError(null);
 
-      // First, fetch all members
       const { data: membersData, error: fetchError } = await supabase
         .from('church_members')
         .select('*')
@@ -174,17 +153,13 @@ export function useChurch() {
         return;
       }
 
-      console.log('Fetched members:', membersData);
+      const memberIds = (membersData ?? []).map(m => m.id);
 
-      // Fetch all member roles for this church in separate queries to avoid permission issues
-      const memberIds = membersData?.map(m => m.id) || [];
-      
       if (memberIds.length === 0) {
         setMembers([]);
         return;
       }
 
-      // Fetch member_roles without joining to avoid permission issues
       const { data: memberRolesData, error: rolesError } = await supabase
         .from('member_roles')
         .select('member_id, role_id')
@@ -192,19 +167,11 @@ export function useChurch() {
 
       if (rolesError) {
         console.error('Error fetching member roles:', rolesError);
-        // Continue even if roles fetch fails
-        const membersWithoutRoles: ChurchMemberWithRoles[] = (membersData || []).map(member => ({
-          ...member,
-          memberRoles: [],
-        }));
-        setMembers(membersWithoutRoles);
+        setMembers((membersData ?? []).map(member => ({ ...member, memberRoles: [] })));
         return;
       }
 
-      console.log('Fetched member roles data:', memberRolesData);
-
-      // Fetch all church roles separately (ordered by display_order)
-      const roleIds = [...new Set((memberRolesData || []).map(mr => mr.role_id))];
+      const roleIds = [...new Set((memberRolesData ?? []).map(mr => mr.role_id))];
       const { data: rolesData, error: rolesDataError } = await supabase
         .from('church_roles')
         .select('id, name')
@@ -215,30 +182,17 @@ export function useChurch() {
         console.error('Error fetching church roles:', rolesDataError);
       }
 
-      console.log('Fetched church roles:', rolesData);
-
-      // Create a map of role_id to role_name
       const roleMap = new Map<string, string>();
-      (rolesData || []).forEach(role => {
-        roleMap.set(role.id, role.name);
-      });
+      (rolesData ?? []).forEach(role => roleMap.set(role.id, role.name));
 
-      // Build the members with roles array
-      const membersWithRoles: ChurchMemberWithRoles[] = (membersData || []).map(member => {
-        const roles = (memberRolesData || [])
+      const membersWithRoles: ChurchMemberWithRoles[] = (membersData ?? []).map(member => {
+        const roles = (memberRolesData ?? [])
           .filter(mr => mr.member_id === member.id)
-          .map(mr => ({
-            role_id: mr.role_id,
-            role_name: roleMap.get(mr.role_id) || 'Unknown Role'
-          }));
-
-        return {
-          ...member,
-          memberRoles: roles,
-        };
+          .map(mr => ({ role_id: mr.role_id, role_name: roleMap.get(mr.role_id) ?? 'Unknown Role' }));
+        return { ...member, memberRoles: roles };
       });
 
-      console.log('Members with roles:', membersWithRoles);
+      console.log('Members with roles:', membersWithRoles.length);
       setMembers(membersWithRoles);
     } catch (err) {
       console.error('Error in fetchMembers:', err);
@@ -246,21 +200,13 @@ export function useChurch() {
     }
   }, []);
 
-  // Create a new church
   const createChurch = useCallback(async (name: string) => {
     console.log('Creating church:', name);
     try {
       setError(null);
+      if (!user) throw new Error('You must be logged in to create a church');
 
-      if (!user) {
-        throw new Error('You must be logged in to create a church');
-      }
-
-      const newChurch: TablesInsert<'churches'> = {
-        name,
-        admin_id: user.id,
-      };
-
+      const newChurch: TablesInsert<'churches'> = { name, admin_id: user.id };
       const { data, error: insertError } = await supabase
         .from('churches')
         .insert(newChurch)
@@ -283,17 +229,11 @@ export function useChurch() {
     }
   }, [fetchChurches, user]);
 
-  // Invite a member to a church - UPDATED TO CHECK IF USER IS REGISTERED
   const inviteMember = useCallback(async (churchId: string, email: string, name?: string, roleIds?: string[]) => {
-    console.log('Inviting member to church:', { churchId, email, name, roleIds });
+    console.log('Inviting member to church:', { churchId, email, name });
     try {
       setError(null);
 
-      // First, check if a user with this email exists in auth.users
-      // We'll do this by checking if they can be found in church_members with this email
-      // or by attempting to query the auth schema (if we have permission)
-      
-      // Check if member already exists in this church
       const { data: existingMember, error: checkError } = await supabase
         .from('church_members')
         .select('id')
@@ -312,15 +252,11 @@ export function useChurch() {
         return null;
       }
 
-      // Check if user is registered by querying auth.users via RPC or by checking if they exist
-      // Since we can't directly query auth.users, we'll create the member and let the database
-      // handle validation through triggers or constraints
-      
       const newMember: TablesInsert<'church_members'> = {
         church_id: churchId,
         email,
-        name: name || null,
-        role: null, // We'll use member_roles table instead
+        name: name ?? null,
+        role: null,
       };
 
       const { data, error: insertError } = await supabase
@@ -339,23 +275,11 @@ export function useChurch() {
         return null;
       }
 
-      console.log('Member invited successfully:', data);
-
-      // Add roles if provided
       if (roleIds && roleIds.length > 0 && data) {
         for (const roleId of roleIds) {
-          const roleInsert: TablesInsert<'member_roles'> = {
-            member_id: data.id,
-            role_id: roleId,
-          };
-
-          const { error: roleError } = await supabase
-            .from('member_roles')
-            .insert(roleInsert);
-
-          if (roleError) {
-            console.error('Error adding member role:', roleError);
-          }
+          const roleInsert: TablesInsert<'member_roles'> = { member_id: data.id, role_id: roleId };
+          const { error: roleError } = await supabase.from('member_roles').insert(roleInsert);
+          if (roleError) console.error('Error adding member role:', roleError);
         }
       }
 
@@ -368,30 +292,21 @@ export function useChurch() {
     }
   }, [fetchMembers]);
 
-  // Add a member to a church (legacy function - now calls inviteMember)
   const addMember = useCallback(async (churchId: string, email: string, name?: string, role?: string) => {
-    console.log('Adding member to church (legacy):', { churchId, email, name, role });
+    console.log('Adding member to church (legacy):', { churchId, email, name });
     return inviteMember(churchId, email, name, undefined);
   }, [inviteMember]);
 
-  // Delete a member
   const deleteMember = useCallback(async (memberId: string, churchId: string) => {
     console.log('Deleting member:', memberId);
     try {
       setError(null);
-
-      const { error: deleteError } = await supabase
-        .from('church_members')
-        .delete()
-        .eq('id', memberId);
-
+      const { error: deleteError } = await supabase.from('church_members').delete().eq('id', memberId);
       if (deleteError) {
         console.error('Error deleting member:', deleteError);
         setError(deleteError.message);
         return false;
       }
-
-      console.log('Member deleted successfully');
       await fetchMembers(churchId);
       return true;
     } catch (err) {
@@ -401,24 +316,16 @@ export function useChurch() {
     }
   }, [fetchMembers]);
 
-  // Update a member
   const updateMember = useCallback(async (memberId: string, churchId: string, updates: { name?: string; role?: string; email?: string }) => {
     console.log('Updating member:', memberId, updates);
     try {
       setError(null);
-
-      const { error: updateError } = await supabase
-        .from('church_members')
-        .update(updates)
-        .eq('id', memberId);
-
+      const { error: updateError } = await supabase.from('church_members').update(updates).eq('id', memberId);
       if (updateError) {
         console.error('Error updating member:', updateError);
         setError(updateError.message);
         return false;
       }
-
-      console.log('Member updated successfully');
       await fetchMembers(churchId);
       return true;
     } catch (err) {
@@ -428,7 +335,6 @@ export function useChurch() {
     }
   }, [fetchMembers]);
 
-  // Fetch recurring services for a specific church
   const fetchRecurringServices = useCallback(async (churchId: string) => {
     console.log('Fetching recurring services for church:', churchId);
     try {
@@ -447,30 +353,22 @@ export function useChurch() {
         return;
       }
 
-      console.log('Fetched recurring services:', data);
-
-      // Batch-fetch all recurring_service_roles and church_roles in two queries
-      const allServices = data || [];
+      const allServices = data ?? [];
       const servicesWithRoles: RecurringServiceWithRoles[] = [];
 
       if (allServices.length > 0) {
         const serviceIds = allServices.map(s => s.id);
 
-        // Single batch query for all service roles
         const { data: allServiceRoles, error: rolesError } = await supabase
           .from('recurring_service_roles')
           .select('recurring_service_id, role_name')
           .in('recurring_service_id', serviceIds);
 
-        if (rolesError) {
-          console.error('Error fetching service roles:', rolesError);
-        }
+        if (rolesError) console.error('Error fetching service roles:', rolesError);
 
-        // Collect all unique role names to look up display order
-        const allRoleNames = [...new Set((allServiceRoles || []).map(r => r.role_name))];
-
-        // Single batch query for display order of all roles
+        const allRoleNames = [...new Set((allServiceRoles ?? []).map(r => r.role_name))];
         let roleOrderMap = new Map<string, number>();
+
         if (allRoleNames.length > 0) {
           const { data: orderedRoles } = await supabase
             .from('church_roles')
@@ -478,14 +376,12 @@ export function useChurch() {
             .eq('church_id', churchId)
             .in('name', allRoleNames)
             .order('display_order', { ascending: true });
-
-          (orderedRoles || []).forEach(r => roleOrderMap.set(r.name, r.display_order));
+          (orderedRoles ?? []).forEach(r => roleOrderMap.set(r.name, r.display_order));
         }
 
-        // Build a map of serviceId -> sorted role names
         const serviceRolesMap = new Map<string, string[]>();
         for (const serviceId of serviceIds) {
-          const roleNames = (allServiceRoles || [])
+          const roleNames = (allServiceRoles ?? [])
             .filter(r => r.recurring_service_id === serviceId)
             .map(r => r.role_name)
             .sort((a, b) => (roleOrderMap.get(a) ?? 999) - (roleOrderMap.get(b) ?? 999));
@@ -493,14 +389,10 @@ export function useChurch() {
         }
 
         for (const service of allServices) {
-          servicesWithRoles.push({
-            ...service,
-            roles: serviceRolesMap.get(service.id) || [],
-          });
+          servicesWithRoles.push({ ...service, roles: serviceRolesMap.get(service.id) ?? [] });
         }
       }
 
-      console.log('Services with roles:', servicesWithRoles);
       setRecurringServices(servicesWithRoles);
     } catch (err) {
       console.error('Error in fetchRecurringServices:', err);
@@ -508,12 +400,10 @@ export function useChurch() {
     }
   }, []);
 
-  // Fetch roles for a specific church (ordered by display_order)
   const fetchChurchRoles = useCallback(async (churchId: string) => {
     console.log('Fetching roles for church:', churchId);
     try {
       setError(null);
-
       const { data, error: fetchError } = await supabase
         .from('church_roles')
         .select('*')
@@ -524,8 +414,7 @@ export function useChurch() {
         console.error('Error fetching church roles:', fetchError);
         setError(fetchError.message);
       } else {
-        console.log('Fetched church roles:', data);
-        setChurchRoles(data || []);
+        setChurchRoles(data ?? []);
       }
     } catch (err) {
       console.error('Error in fetchChurchRoles:', err);
@@ -533,12 +422,10 @@ export function useChurch() {
     }
   }, []);
 
-  // Fetch notification settings for a specific church
   const fetchNotificationSettings = useCallback(async (churchId: string) => {
     console.log('Fetching notification settings for church:', churchId);
     try {
       setError(null);
-
       const { data, error: fetchError } = await supabase
         .from('notification_settings')
         .select('*')
@@ -551,8 +438,6 @@ export function useChurch() {
         setNotificationSettings(null);
         return;
       }
-
-      console.log('Fetched notification settings:', data);
       setNotificationSettings(data);
     } catch (err) {
       console.error('Error in fetchNotificationSettings:', err);
@@ -561,13 +446,10 @@ export function useChurch() {
     }
   }, []);
 
-  // Update or create notification settings
   const updateNotificationSettings = useCallback(async (churchId: string, notificationHours: number[], enabled: boolean) => {
     console.log('Updating notification settings:', { churchId, notificationHours, enabled });
     try {
       setError(null);
-
-      // Check if settings already exist
       const { data: existing } = await supabase
         .from('notification_settings')
         .select('id')
@@ -575,33 +457,22 @@ export function useChurch() {
         .maybeSingle();
 
       if (existing) {
-        // Update existing settings
         const { error: updateError } = await supabase
           .from('notification_settings')
-          .update({
-            notification_hours: notificationHours,
-            enabled,
-            updated_at: new Date().toISOString(),
-          })
+          .update({ notification_hours: notificationHours, enabled, updated_at: new Date().toISOString() })
           .eq('church_id', churchId);
-
         if (updateError) {
           console.error('Error updating notification settings:', updateError);
           setError(updateError.message);
           return false;
         }
       } else {
-        // Create new settings
         const newSettings: TablesInsert<'notification_settings'> = {
           church_id: churchId,
           notification_hours: notificationHours,
           enabled,
         };
-
-        const { error: insertError } = await supabase
-          .from('notification_settings')
-          .insert(newSettings);
-
+        const { error: insertError } = await supabase.from('notification_settings').insert(newSettings);
         if (insertError) {
           console.error('Error creating notification settings:', insertError);
           setError(insertError.message);
@@ -609,7 +480,6 @@ export function useChurch() {
         }
       }
 
-      console.log('Notification settings updated successfully');
       await fetchNotificationSettings(churchId);
       return true;
     } catch (err) {
@@ -619,50 +489,26 @@ export function useChurch() {
     }
   }, [fetchNotificationSettings]);
 
-  // Add a recurring service
   const addRecurringService = useCallback(async (churchId: string, name: string, dayOfWeek: number, time: string, notes?: string, roles?: string[]) => {
-    console.log('Adding recurring service:', { churchId, name, dayOfWeek, time, notes, roles });
+    console.log('Adding recurring service:', { churchId, name, dayOfWeek, time });
     try {
       setError(null);
-
       const newService: TablesInsert<'recurring_services'> = {
-        church_id: churchId,
-        name,
-        day_of_week: dayOfWeek,
-        time,
-        notes: notes || null,
+        church_id: churchId, name, day_of_week: dayOfWeek, time, notes: notes ?? null,
       };
-
-      const { data, error: insertError } = await supabase
-        .from('recurring_services')
-        .insert(newService)
-        .select()
-        .single();
-
+      const { data, error: insertError } = await supabase.from('recurring_services').insert(newService).select().single();
       if (insertError) {
         console.error('Error adding recurring service:', insertError);
         setError(insertError.message);
         return null;
       }
-
-      console.log('Recurring service added successfully:', data);
-
-      // Add roles if provided
       if (roles && roles.length > 0 && data) {
         const roleInserts: TablesInsert<'recurring_service_roles'>[] = roles.map(roleName => ({
-          recurring_service_id: data.id,
-          role_name: roleName,
+          recurring_service_id: data.id, role_name: roleName,
         }));
-
-        const { error: rolesError } = await supabase
-          .from('recurring_service_roles')
-          .insert(roleInserts);
-
-        if (rolesError) {
-          console.error('Error adding service roles:', rolesError);
-        }
+        const { error: rolesError } = await supabase.from('recurring_service_roles').insert(roleInserts);
+        if (rolesError) console.error('Error adding service roles:', rolesError);
       }
-
       await fetchRecurringServices(churchId);
       return data;
     } catch (err) {
@@ -672,24 +518,16 @@ export function useChurch() {
     }
   }, [fetchRecurringServices]);
 
-  // Delete a recurring service
   const deleteRecurringService = useCallback(async (serviceId: string, churchId: string) => {
     console.log('Deleting recurring service:', serviceId);
     try {
       setError(null);
-
-      const { error: deleteError } = await supabase
-        .from('recurring_services')
-        .delete()
-        .eq('id', serviceId);
-
+      const { error: deleteError } = await supabase.from('recurring_services').delete().eq('id', serviceId);
       if (deleteError) {
         console.error('Error deleting recurring service:', deleteError);
         setError(deleteError.message);
         return false;
       }
-
-      console.log('Recurring service deleted successfully');
       await fetchRecurringServices(churchId);
       return true;
     } catch (err) {
@@ -699,42 +537,26 @@ export function useChurch() {
     }
   }, [fetchRecurringServices]);
 
-  // Add a church role
   const addChurchRole = useCallback(async (churchId: string, name: string, description?: string) => {
-    console.log('Adding church role:', { churchId, name, description });
+    console.log('Adding church role:', { churchId, name });
     try {
       setError(null);
-
-      // Get the max display_order for this church
       const { data: existingRoles } = await supabase
         .from('church_roles')
         .select('display_order')
         .eq('church_id', churchId)
         .order('display_order', { ascending: false })
         .limit(1);
-
       const maxOrder = existingRoles && existingRoles.length > 0 ? existingRoles[0].display_order : -1;
-
       const newRole: TablesInsert<'church_roles'> = {
-        church_id: churchId,
-        name,
-        description: description || null,
-        display_order: maxOrder + 1,
+        church_id: churchId, name, description: description ?? null, display_order: maxOrder + 1,
       };
-
-      const { data, error: insertError } = await supabase
-        .from('church_roles')
-        .insert(newRole)
-        .select()
-        .single();
-
+      const { data, error: insertError } = await supabase.from('church_roles').insert(newRole).select().single();
       if (insertError) {
         console.error('Error adding church role:', insertError);
         setError(insertError.message);
         return null;
       }
-
-      console.log('Church role added successfully:', data);
       await fetchChurchRoles(churchId);
       return data;
     } catch (err) {
@@ -744,24 +566,16 @@ export function useChurch() {
     }
   }, [fetchChurchRoles]);
 
-  // Delete a church role
   const deleteChurchRole = useCallback(async (roleId: string, churchId: string) => {
     console.log('Deleting church role:', roleId);
     try {
       setError(null);
-
-      const { error: deleteError } = await supabase
-        .from('church_roles')
-        .delete()
-        .eq('id', roleId);
-
+      const { error: deleteError } = await supabase.from('church_roles').delete().eq('id', roleId);
       if (deleteError) {
         console.error('Error deleting church role:', deleteError);
         setError(deleteError.message);
         return false;
       }
-
-      console.log('Church role deleted successfully');
       await fetchChurchRoles(churchId);
       return true;
     } catch (err) {
@@ -771,31 +585,20 @@ export function useChurch() {
     }
   }, [fetchChurchRoles]);
 
-  // Update role order
   const updateRoleOrder = useCallback(async (churchId: string, roleIds: string[]) => {
-    console.log('Updating role order:', roleIds);
+    console.log('Updating role order:', roleIds.length, 'roles');
     try {
       setError(null);
-
-      // Update each role's display_order
-      const updates = roleIds.map((roleId, index) => 
-        supabase
-          .from('church_roles')
-          .update({ display_order: index })
-          .eq('id', roleId)
-          .eq('church_id', churchId)
+      const updates = roleIds.map((roleId, index) =>
+        supabase.from('church_roles').update({ display_order: index }).eq('id', roleId).eq('church_id', churchId),
       );
-
       const results = await Promise.all(updates);
-      
       const hasError = results.some(result => result.error);
       if (hasError) {
         console.error('Error updating role order');
         setError('Failed to update role order');
         return false;
       }
-
-      console.log('Role order updated successfully');
       await fetchChurchRoles(churchId);
       await fetchRecurringServices(churchId);
       return true;
@@ -806,23 +609,13 @@ export function useChurch() {
     }
   }, [fetchChurchRoles, fetchRecurringServices]);
 
-  // Add role to member - FIXED VERSION
   const addMemberRole = useCallback(async (memberId: string, roleId: string, churchId: string) => {
     console.log('Adding role to member:', { memberId, roleId });
     try {
       setError(null);
-
-      const newMemberRole: TablesInsert<'member_roles'> = {
-        member_id: memberId,
-        role_id: roleId,
-      };
-
-      const { error: insertError } = await supabase
-        .from('member_roles')
-        .insert(newMemberRole);
-
+      const newMemberRole: TablesInsert<'member_roles'> = { member_id: memberId, role_id: roleId };
+      const { error: insertError } = await supabase.from('member_roles').insert(newMemberRole);
       if (insertError) {
-        // Handle duplicate key error gracefully
         if (insertError.code === '23505') {
           console.log('Role already assigned to member, skipping');
           return true;
@@ -831,8 +624,6 @@ export function useChurch() {
         setError(insertError.message);
         return false;
       }
-
-      console.log('Member role added successfully');
       await fetchMembers(churchId);
       return true;
     } catch (err) {
@@ -842,25 +633,16 @@ export function useChurch() {
     }
   }, [fetchMembers]);
 
-  // Remove role from member
   const removeMemberRole = useCallback(async (memberId: string, roleId: string, churchId: string) => {
     console.log('Removing role from member:', { memberId, roleId });
     try {
       setError(null);
-
-      const { error: deleteError } = await supabase
-        .from('member_roles')
-        .delete()
-        .eq('member_id', memberId)
-        .eq('role_id', roleId);
-
+      const { error: deleteError } = await supabase.from('member_roles').delete().eq('member_id', memberId).eq('role_id', roleId);
       if (deleteError) {
         console.error('Error removing member role:', deleteError);
         setError(deleteError.message);
         return false;
       }
-
-      console.log('Member role removed successfully');
       await fetchMembers(churchId);
       return true;
     } catch (err) {
@@ -870,17 +652,14 @@ export function useChurch() {
     }
   }, [fetchMembers]);
 
-  // Fetch current member info (for profile display) - UPDATED TO USE member_id
   const fetchCurrentMember = useCallback(async (churchId: string) => {
     console.log('Fetching current member info for church:', churchId);
     try {
       if (!user) {
-        console.log('No user logged in');
         setCurrentMember(null);
         return;
       }
 
-      // Query by member_id (which links to auth.users.id)
       const { data, error: fetchError } = await supabase
         .from('church_members')
         .select('*')
@@ -895,14 +674,10 @@ export function useChurch() {
       }
 
       if (!data) {
-        console.log('Current user is not a member of this church');
         setCurrentMember(null);
         return;
       }
 
-      console.log('Found current member:', data);
-
-      // Fetch roles for this member without joining to avoid permission issues
       const { data: memberRolesData, error: rolesError } = await supabase
         .from('member_roles')
         .select('role_id')
@@ -910,20 +685,13 @@ export function useChurch() {
 
       if (rolesError) {
         console.error('Error fetching member roles:', rolesError);
-        setCurrentMember({
-          ...data,
-          memberRoles: [],
-        });
+        setCurrentMember({ ...data, memberRoles: [] });
         return;
       }
 
-      // Fetch church roles separately (ordered by display_order)
-      const roleIds = (memberRolesData || []).map(mr => mr.role_id);
+      const roleIds = (memberRolesData ?? []).map(mr => mr.role_id);
       if (roleIds.length === 0) {
-        setCurrentMember({
-          ...data,
-          memberRoles: [],
-        });
+        setCurrentMember({ ...data, memberRoles: [] });
         return;
       }
 
@@ -933,32 +701,23 @@ export function useChurch() {
         .in('id', roleIds)
         .order('display_order', { ascending: true });
 
-      if (rolesDataError) {
-        console.error('Error fetching church roles:', rolesDataError);
-      }
+      if (rolesDataError) console.error('Error fetching church roles:', rolesDataError);
 
       const roleMap = new Map<string, string>();
-      (rolesData || []).forEach(role => {
-        roleMap.set(role.id, role.name);
-      });
+      (rolesData ?? []).forEach(role => roleMap.set(role.id, role.name));
 
-      const roles = (memberRolesData || []).map(mr => ({
+      const roles = (memberRolesData ?? []).map(mr => ({
         role_id: mr.role_id,
-        role_name: roleMap.get(mr.role_id) || 'Unknown Role'
+        role_name: roleMap.get(mr.role_id) ?? 'Unknown Role',
       }));
 
-      console.log('Current member with roles:', { ...data, memberRoles: roles });
-      setCurrentMember({
-        ...data,
-        memberRoles: roles,
-      });
+      setCurrentMember({ ...data, memberRoles: roles });
     } catch (err) {
       console.error('Error in fetchCurrentMember:', err);
       setCurrentMember(null);
     }
   }, [user]);
 
-  // Fetch member unavailability dates
   const fetchMemberUnavailability = useCallback(async (memberId: string): Promise<MemberUnavailability[]> => {
     console.log('Fetching unavailability for member:', memberId);
     try {
@@ -972,38 +731,26 @@ export function useChurch() {
         console.error('Error fetching member unavailability:', fetchError);
         return [];
       }
-
-      console.log('Fetched unavailability dates:', data);
-      return data || [];
+      return data ?? [];
     } catch (err) {
       console.error('Error in fetchMemberUnavailability:', err);
       return [];
     }
   }, []);
 
-  // Add unavailability dates for a member
   const addMemberUnavailability = useCallback(async (memberId: string, dates: string[], reason?: string) => {
-    console.log('Adding unavailability dates for member:', { memberId, dates, reason });
+    console.log('Adding unavailability dates for member:', { memberId, count: dates.length });
     try {
       setError(null);
-
       const inserts: TablesInsert<'member_unavailability'>[] = dates.map(date => ({
-        member_id: memberId,
-        unavailable_date: date,
-        reason: reason || null,
+        member_id: memberId, unavailable_date: date, reason: reason ?? null,
       }));
-
-      const { error: insertError } = await supabase
-        .from('member_unavailability')
-        .insert(inserts);
-
+      const { error: insertError } = await supabase.from('member_unavailability').insert(inserts);
       if (insertError) {
         console.error('Error adding unavailability:', insertError);
         setError(insertError.message);
         return false;
       }
-
-      console.log('Unavailability dates added successfully');
       return true;
     } catch (err) {
       console.error('Error in addMemberUnavailability:', err);
@@ -1012,44 +759,27 @@ export function useChurch() {
     }
   }, []);
 
-  // Save (sync) all unavailability dates for a member — deletes removed, inserts new
   const saveUnavailableDates = useCallback(async (memberId: string, dates: string[]): Promise<boolean> => {
-    console.log('Saving unavailable dates for member:', memberId, 'dates:', dates);
+    console.log('Saving unavailable dates for member:', memberId, 'count:', dates.length);
     try {
       setError(null);
-
-      // Delete all existing unavailability rows for this member
-      const { error: deleteError } = await supabase
-        .from('member_unavailability')
-        .delete()
-        .eq('member_id', memberId);
-
+      const { error: deleteError } = await supabase.from('member_unavailability').delete().eq('member_id', memberId);
       if (deleteError) {
         console.error('Error clearing existing unavailability:', deleteError);
         setError(deleteError.message);
         return false;
       }
-
-      // Insert the new set (skip if empty)
       if (dates.length > 0) {
         const inserts = dates.map(date => ({
-          member_id: memberId,
-          unavailable_date: date,
-          reason: null as string | null,
+          member_id: memberId, unavailable_date: date, reason: null as string | null,
         }));
-
-        const { error: insertError } = await supabase
-          .from('member_unavailability')
-          .insert(inserts);
-
+        const { error: insertError } = await supabase.from('member_unavailability').insert(inserts);
         if (insertError) {
           console.error('Error inserting unavailability dates:', insertError);
           setError(insertError.message);
           return false;
         }
       }
-
-      console.log('Unavailable dates saved successfully:', dates.length, 'dates');
       return true;
     } catch (err) {
       console.error('Error in saveUnavailableDates:', err);
@@ -1058,24 +788,16 @@ export function useChurch() {
     }
   }, []);
 
-  // Remove unavailability date
   const removeMemberUnavailability = useCallback(async (unavailabilityId: string) => {
     console.log('Removing unavailability:', unavailabilityId);
     try {
       setError(null);
-
-      const { error: deleteError } = await supabase
-        .from('member_unavailability')
-        .delete()
-        .eq('id', unavailabilityId);
-
+      const { error: deleteError } = await supabase.from('member_unavailability').delete().eq('id', unavailabilityId);
       if (deleteError) {
         console.error('Error removing unavailability:', deleteError);
         setError(deleteError.message);
         return false;
       }
-
-      console.log('Unavailability removed successfully');
       return true;
     } catch (err) {
       console.error('Error in removeMemberUnavailability:', err);
@@ -1084,12 +806,10 @@ export function useChurch() {
     }
   }, []);
 
-  // Fetch fill-in requests for a church WITH MEMBER INFO
   const fetchFillInRequests = useCallback(async (churchId: string) => {
     console.log('Fetching fill-in requests for church:', churchId);
     try {
       setError(null);
-
       const { data, error: fetchError } = await supabase
         .from('fill_in_requests')
         .select('*')
@@ -1102,42 +822,35 @@ export function useChurch() {
         return;
       }
 
-      console.log('Fetched fill-in requests:', data);
-
-      // Batch-fetch all member info needed for these requests
+      const allRequests = data ?? [];
       const requestsWithMemberInfo: FillInRequestWithMemberInfo[] = [];
-      const allRequests = data || [];
 
       if (allRequests.length > 0) {
-        // Collect all unique member IDs needed
         const requestingIds = [...new Set(allRequests.map(r => r.requesting_member_id).filter(Boolean))] as string[];
         const filledByIds = [...new Set(allRequests.map(r => r.filled_by_member_id).filter(Boolean))] as string[];
         const allMemberIds = [...new Set([...requestingIds, ...filledByIds])];
 
-        // Single batch query for all members
         const { data: membersData } = await supabase
           .from('church_members')
           .select('id, name, email')
           .in('id', allMemberIds);
 
         const memberMap = new Map<string, { name: string | null; email: string }>();
-        (membersData || []).forEach(m => memberMap.set(m.id, { name: m.name, email: m.email }));
+        (membersData ?? []).forEach(m => memberMap.set(m.id, { name: m.name, email: m.email }));
 
         for (const request of allRequests) {
           const requestingMember = memberMap.get(request.requesting_member_id);
           const filledByMember = request.filled_by_member_id ? memberMap.get(request.filled_by_member_id) : undefined;
-
           requestsWithMemberInfo.push({
             ...request,
-            requesting_member_name: requestingMember?.name || '',
-            requesting_member_email: requestingMember?.email || '',
-            filled_by_member_name: filledByMember?.name || undefined,
+            requesting_member_name: requestingMember?.name ?? '',
+            requesting_member_email: requestingMember?.email ?? '',
+            filled_by_member_name: filledByMember?.name ?? undefined,
             filled_by_member_email: filledByMember?.email,
           });
         }
       }
 
-      console.log('Fill-in requests with member info:', requestsWithMemberInfo);
       setFillInRequests(requestsWithMemberInfo);
     } catch (err) {
       console.error('Error in fetchFillInRequests:', err);
@@ -1145,61 +858,42 @@ export function useChurch() {
     }
   }, []);
 
-  // Create a fill-in request
   const createFillInRequest = useCallback(async (
     assignmentId: string,
     serviceId: string,
     churchId: string,
     requestingMemberId: string,
     roleName: string,
-    reason?: string
+    reason?: string,
   ) => {
     console.log('Creating fill-in request:', { assignmentId, serviceId, roleName });
     try {
       setError(null);
-
       const newRequest: TablesInsert<'fill_in_requests'> = {
         assignment_id: assignmentId,
         service_id: serviceId,
         church_id: churchId,
         requesting_member_id: requestingMemberId,
         role_name: roleName,
-        reason: reason || null,
+        reason: reason ?? null,
         status: 'pending',
       };
-
-      const { data, error: insertError } = await supabase
-        .from('fill_in_requests')
-        .insert(newRequest)
-        .select()
-        .single();
-
+      const { data, error: insertError } = await supabase.from('fill_in_requests').insert(newRequest).select().single();
       if (insertError) {
         console.error('Error creating fill-in request:', insertError);
         setError(insertError.message);
         return null;
       }
 
-      console.log('Fill-in request created successfully:', data);
-
       // Call Edge Function to send notifications
       try {
-        // Use the shared supabase client to get the URL and anon key
-        const supabaseUrl = (supabase as any).supabaseUrl as string;
-        const supabaseKey = (supabase as any).supabaseKey as string;
-
-        const response = await fetch(
-          `${supabaseUrl}/functions/v1/send-fill-in-notifications`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': supabaseKey,
-            },
-            body: JSON.stringify({ fillInRequestId: data.id }),
-          }
-        );
-
+        const SUPABASE_URL = "https://cvgdxmmtrukahyvkgazj.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2Z2R4bW10cnVrYWh5dmtnYXpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NTc1MzYsImV4cCI6MjA4ODIzMzUzNn0.ssx8t1fCmlvq-3K1EdpTnNyT14HSy6kAZ_-G7KZkHBs";
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/send-fill-in-notifications`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+          body: JSON.stringify({ fillInRequestId: data.id }),
+        });
         if (!response.ok) {
           const errorText = await response.text();
           console.error('Error sending notifications:', errorText);
@@ -1209,7 +903,6 @@ export function useChurch() {
         }
       } catch (notifError) {
         console.error('Error calling notification function:', notifError);
-        // Don't fail the whole operation if notifications fail
       }
 
       await fetchFillInRequests(churchId);
@@ -1221,17 +914,11 @@ export function useChurch() {
     }
   }, [fetchFillInRequests]);
 
-  // Accept a fill-in request - FIXED: Update assignment BEFORE marking request as filled
-  const acceptFillInRequest = useCallback(async (
-    requestId: string,
-    filledByMemberId: string,
-    churchId: string
-  ) => {
+  const acceptFillInRequest = useCallback(async (requestId: string, filledByMemberId: string, churchId: string) => {
     console.log('Accepting fill-in request:', { requestId, filledByMemberId });
     try {
       setError(null);
 
-      // 1. Fetch the fill-in request to get assignment_id and verify it's still pending
       const { data: fillInRequest, error: fetchRequestError } = await supabase
         .from('fill_in_requests')
         .select('assignment_id, requesting_member_id, role_name, status')
@@ -1245,14 +932,10 @@ export function useChurch() {
       }
 
       if (fillInRequest.status !== 'pending') {
-        console.error('Fill-in request is not pending:', fillInRequest.status);
         setError('This fill-in request has already been processed');
         return false;
       }
 
-      console.log('Fetched fill-in request:', fillInRequest);
-
-      // 2. Fetch the member who is filling in to get their name/email
       const { data: fillingMember, error: fetchMemberError } = await supabase
         .from('church_members')
         .select('id, name, email')
@@ -1265,52 +948,29 @@ export function useChurch() {
         return false;
       }
 
-      console.log('Fetched filling member:', fillingMember);
+      const personName = fillingMember.name ?? fillingMember.email;
 
-      // 3. Determine the person_name to use (prefer name, fallback to email)
-      const personName = fillingMember.name || fillingMember.email;
-      console.log('Using person_name for assignment:', personName);
-
-      // 4. CRITICAL: Update the assignment FIRST (while request is still 'pending')
-      // This allows the RLS policy to verify the pending request exists
       const { error: updateAssignmentError } = await supabase
         .from('assignments')
-        .update({
-          member_id: filledByMemberId,
-          person_name: personName,
-        })
+        .update({ member_id: filledByMemberId, person_name: personName })
         .eq('id', fillInRequest.assignment_id);
 
       if (updateAssignmentError) {
         console.error('Error updating assignment:', updateAssignmentError);
-        console.error('Assignment update error details:', JSON.stringify(updateAssignmentError));
         setError('Failed to update assignment. You may not have permission to accept this request.');
         return false;
       }
 
-      console.log('Assignment updated successfully with new member');
-
-      // 5. Now update the fill-in request status (after assignment is updated)
       const { error: updateRequestError } = await supabase
         .from('fill_in_requests')
-        .update({
-          status: 'filled',
-          filled_by_member_id: filledByMemberId,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ status: 'filled', filled_by_member_id: filledByMemberId, updated_at: new Date().toISOString() })
         .eq('id', requestId);
 
       if (updateRequestError) {
         console.error('Error updating fill-in request:', updateRequestError);
-        setError('Failed to update fill-in request status');
-        // Don't return false here - the assignment was already updated successfully
       }
 
-      console.log('Fill-in request marked as filled');
-
-      // 6. Refresh fill-in requests to update UI
       await fetchFillInRequests(churchId);
-      
       return true;
     } catch (err) {
       console.error('Error in acceptFillInRequest:', err);
@@ -1319,27 +979,19 @@ export function useChurch() {
     }
   }, [fetchFillInRequests]);
 
-  // Cancel a fill-in request
   const cancelFillInRequest = useCallback(async (requestId: string, churchId: string) => {
     console.log('Cancelling fill-in request:', requestId);
     try {
       setError(null);
-
       const { error: updateError } = await supabase
         .from('fill_in_requests')
-        .update({
-          status: 'cancelled',
-          updated_at: new Date().toISOString(),
-        })
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
         .eq('id', requestId);
-
       if (updateError) {
         console.error('Error cancelling fill-in request:', updateError);
         setError(updateError.message);
         return false;
       }
-
-      console.log('Fill-in request cancelled successfully');
       await fetchFillInRequests(churchId);
       return true;
     } catch (err) {
@@ -1349,29 +1001,20 @@ export function useChurch() {
     }
   }, [fetchFillInRequests]);
 
-  // Register OneSignal player ID (push subscription ID) in push_tokens table
   const registerPushToken = useCallback(async (memberId: string, pushToken: string, deviceType?: string) => {
-    console.log('[OneSignal] Registering push token (player ID) for member:', memberId, 'device:', deviceType);
+    console.log('[OneSignal] Registering push token for member:', memberId, 'device:', deviceType);
     try {
       setError(null);
-
       const tokenData: TablesInsert<'push_tokens'> = {
-        member_id: memberId,
-        token: pushToken,
-        device_type: deviceType || null,
+        member_id: memberId, token: pushToken, device_type: deviceType ?? null,
       };
-
-      const { error: insertError } = await supabase
-        .from('push_tokens')
-        .upsert(tokenData, { onConflict: 'member_id,token' });
-
+      const { error: insertError } = await supabase.from('push_tokens').upsert(tokenData, { onConflict: 'member_id,token' });
       if (insertError) {
         console.error('Error registering push token:', insertError);
         setError(insertError.message);
         return false;
       }
-
-      console.log('✅ Push token registered successfully in database');
+      console.log('Push token registered successfully');
       return true;
     } catch (err) {
       console.error('Error in registerPushToken:', err);
@@ -1380,7 +1023,6 @@ export function useChurch() {
     }
   }, []);
 
-  // Sign out function
   const signOut = useCallback(async () => {
     console.log('Signing out user');
     try {
@@ -1389,10 +1031,6 @@ export function useChurch() {
         console.error('Error signing out:', error);
         throw error;
       }
-      console.log('User signed out successfully');
-      
-      // Clear local state (user is derived from session, so it clears automatically
-      // when AuthContext updates session to null after signOut)
       setChurches([]);
       setCurrentChurch(null);
       setMembers([]);
@@ -1409,12 +1047,12 @@ export function useChurch() {
 
   useEffect(() => {
     if (currentChurch) {
-      fetchMembers(currentChurch.id);
-      fetchRecurringServices(currentChurch.id);
-      fetchChurchRoles(currentChurch.id);
-      fetchCurrentMember(currentChurch.id);
-      fetchNotificationSettings(currentChurch.id);
-      fetchFillInRequests(currentChurch.id);
+      fetchMembers(currentChurch.id).catch(err => console.error('[useChurch] fetchMembers error:', err));
+      fetchRecurringServices(currentChurch.id).catch(err => console.error('[useChurch] fetchRecurringServices error:', err));
+      fetchChurchRoles(currentChurch.id).catch(err => console.error('[useChurch] fetchChurchRoles error:', err));
+      fetchCurrentMember(currentChurch.id).catch(err => console.error('[useChurch] fetchCurrentMember error:', err));
+      fetchNotificationSettings(currentChurch.id).catch(err => console.error('[useChurch] fetchNotificationSettings error:', err));
+      fetchFillInRequests(currentChurch.id).catch(err => console.error('[useChurch] fetchFillInRequests error:', err));
     } else {
       setMembers([]);
       setRecurringServices([]);
@@ -1425,115 +1063,30 @@ export function useChurch() {
     }
   }, [currentChurch, fetchMembers, fetchRecurringServices, fetchChurchRoles, fetchCurrentMember, fetchNotificationSettings, fetchFillInRequests]);
 
-  // Set up realtime subscriptions for live updates
   useEffect(() => {
-    if (!user) return; // Don't set up subscriptions without a user
-    if (!currentChurch) {
-      console.log('No current church, skipping realtime subscription');
-      return;
-    }
+    if (!user) return;
+    if (!currentChurch) return;
 
     console.log('Setting up realtime subscriptions for church data:', currentChurch.id);
 
-    // Create a channel for church-related updates
     const churchChannel = supabase
       .channel(`church-data-${currentChurch.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'church_members',
-          filter: `church_id=eq.${currentChurch.id}`,
-        },
-        (payload) => {
-          console.log('Church members realtime update:', payload.eventType);
-          fetchMembers(currentChurch.id);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'member_roles',
-        },
-        (payload) => {
-          console.log('Member roles realtime update:', payload.eventType);
-          fetchMembers(currentChurch.id);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'church_roles',
-          filter: `church_id=eq.${currentChurch.id}`,
-        },
-        (payload) => {
-          console.log('Church roles realtime update:', payload.eventType);
-          fetchChurchRoles(currentChurch.id);
-          fetchRecurringServices(currentChurch.id);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'fill_in_requests',
-          filter: `church_id=eq.${currentChurch.id}`,
-        },
-        (payload) => {
-          console.log('Fill-in requests realtime update:', payload.eventType, payload.new);
-          fetchFillInRequests(currentChurch.id);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'assignments',
-        },
-        (payload) => {
-          console.log('Assignments realtime update:', payload.eventType);
-          // Refresh fill-in requests when assignments change
-          fetchFillInRequests(currentChurch.id);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'recurring_services',
-          filter: `church_id=eq.${currentChurch.id}`,
-        },
-        (payload) => {
-          console.log('Recurring services realtime update:', payload.eventType);
-          fetchRecurringServices(currentChurch.id);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'notification_settings',
-          filter: `church_id=eq.${currentChurch.id}`,
-        },
-        (payload) => {
-          console.log('Notification settings realtime update:', payload.eventType);
-          fetchNotificationSettings(currentChurch.id);
-        }
-      )
-      .subscribe((status) => {
-        console.log('Church data realtime subscription status:', status);
-      });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'church_members', filter: `church_id=eq.${currentChurch.id}` },
+        (payload) => { console.log('Church members realtime update:', payload.eventType); fetchMembers(currentChurch.id); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'member_roles' },
+        (payload) => { console.log('Member roles realtime update:', payload.eventType); fetchMembers(currentChurch.id); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'church_roles', filter: `church_id=eq.${currentChurch.id}` },
+        (payload) => { console.log('Church roles realtime update:', payload.eventType); fetchChurchRoles(currentChurch.id); fetchRecurringServices(currentChurch.id); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fill_in_requests', filter: `church_id=eq.${currentChurch.id}` },
+        (payload) => { console.log('Fill-in requests realtime update:', payload.eventType); fetchFillInRequests(currentChurch.id); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments' },
+        (payload) => { console.log('Assignments realtime update:', payload.eventType); fetchFillInRequests(currentChurch.id); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'recurring_services', filter: `church_id=eq.${currentChurch.id}` },
+        (payload) => { console.log('Recurring services realtime update:', payload.eventType); fetchRecurringServices(currentChurch.id); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notification_settings', filter: `church_id=eq.${currentChurch.id}` },
+        (payload) => { console.log('Notification settings realtime update:', payload.eventType); fetchNotificationSettings(currentChurch.id); })
+      .subscribe((status) => { console.log('Church data realtime subscription status:', status); });
 
-    // Cleanup subscriptions on unmount
     return () => {
       console.log('Cleaning up church data realtime subscriptions');
       supabase.removeChannel(churchChannel);
@@ -1541,11 +1094,8 @@ export function useChurch() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentChurch, fetchMembers, fetchChurchRoles, fetchRecurringServices, fetchFillInRequests, fetchNotificationSettings]);
 
-  // Check if current user is admin of current church
   const isAdmin = !!(currentChurch && user && currentChurch.admin_id === user.id);
 
-  // Stable refresh helpers — must be declared as proper useCallback hooks, not inline
-  // in the return object (that would violate Rules of Hooks).
   const refreshMembers = useCallback(() => {
     if (!currentChurch) return Promise.resolve(undefined);
     return fetchMembers(currentChurch.id);
