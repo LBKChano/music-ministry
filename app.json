@@ -104,7 +104,8 @@
         }
       ],
       "./plugins/withCxxStandard",
-      "react-native-edge-to-edge"
+      "react-native-edge-to-edge",
+      "./plugins/withMergePostInstall"
     ],
     "scheme": "musicministry",
     "experiments": {
