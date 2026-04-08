@@ -13,7 +13,8 @@
       "ios": {
         "simulator": true,
         "resourceClass": "m-medium",
-        "buildConfiguration": "Debug"
+        "buildConfiguration": "Debug",
+        "config": "ios-simulator-pre-install.yml"
       },
       "android": {
         "buildType": "apk"
@@ -28,7 +29,8 @@
       "ios": {
         "simulator": false,
         "buildConfiguration": "Release",
-        "resourceClass": "m-medium"
+        "resourceClass": "m-medium",
+        "config": "ios-pre-install.yml"
       },
       "android": {
         "buildType": "apk"
@@ -42,7 +44,8 @@
       "ios": {
         "buildConfiguration": "Release",
         "resourceClass": "m-medium",
-        "autoIncrement": true
+        "autoIncrement": true,
+        "config": "ios-pre-install.yml"
       },
       "android": {
         "buildType": "apk",

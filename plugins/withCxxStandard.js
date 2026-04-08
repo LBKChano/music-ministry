@@ -10,26 +10,28 @@ module.exports = function withCxxStandard(config) {
   return withDangerousMod(config, [
     'ios',
     (config) => {
-      const podfilePath = path.join(config.modRequest.platformProjectRoot, 'Podfile');
-      if (!fs.existsSync(podfilePath)) return config;
+      try {
+        const podfilePath = path.join(config.modRequest.platformProjectRoot, 'Podfile');
+        if (!fs.existsSync(podfilePath)) return config;
 
-      let podfile = fs.readFileSync(podfilePath, 'utf8');
+        let podfile = fs.readFileSync(podfilePath, 'utf8');
 
-      const marker = '# withCxxStandard patch';
-      if (podfile.includes(marker)) return config;
+        const marker = '# withCxxStandard patch';
+        if (podfile.includes(marker)) return config;
 
-      // Find the post_install block and inject into it
-      // EAS managed workflow generates exactly one post_install block
-      const postInstallRegex = /^post_install do \|installer\|/m;
-      const patch = `  # withCxxStandard patch — set C++20 for all pods\n  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'\n    end\n  end\n`;
+        const postInstallRegex = /^post_install do \|installer\|/m;
+        const patch = `  # withCxxStandard patch — set C++20 for all pods\n  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'\n    end\n  end\n`;
 
-      if (postInstallRegex.test(podfile)) {
-        podfile = podfile.replace(postInstallRegex, `post_install do |installer|\n${patch}`);
-      } else {
-        podfile += `\npost_install do |installer|\n${patch}end\n`;
+        if (postInstallRegex.test(podfile)) {
+          podfile = podfile.replace(postInstallRegex, `post_install do |installer|\n${patch}`);
+        } else {
+          podfile += `\npost_install do |installer|\n${patch}end\n`;
+        }
+
+        fs.writeFileSync(podfilePath, podfile);
+      } catch (e) {
+        console.warn('[withCxxStandard] Failed to patch Podfile:', e.message);
       }
-
-      fs.writeFileSync(podfilePath, podfile);
       return config;
     },
   ]);

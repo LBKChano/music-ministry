@@ -1,0 +1,38 @@
+build:
+  name: iOS simulator build with pre-install hook
+  steps:
+    - eas/checkout
+
+    - run:
+        name: Pre-install hook (clean node_modules, remove broken packages from package.json)
+        command: bash eas-hooks/eas-build-pre-install.sh
+
+    - eas/install_node_modules
+
+    - eas/resolve_build_config
+
+    - run:
+        name: Expo prebuild (generate native project, skip pod install)
+        command: npx expo prebuild --platform ios --skip-dependency-update --non-interactive
+
+    - run:
+        name: Remove expo-glass-effect podspec after prebuild
+        command: |
+          GLASS_DIR="node_modules/expo-glass-effect"
+          if [ -d "$GLASS_DIR" ]; then
+            find "$GLASS_DIR" -name "*.podspec" -delete || true
+            echo "expo-glass-effect podspec files removed"
+          fi
+
+    - run:
+        name: Install CocoaPods
+        working_directory: ios
+        command: pod install --repo-update --ansi
+
+    - eas/configure_eas_update
+
+    - eas/generate_gymfile_from_template
+
+    - eas/run_fastlane
+
+    - eas/find_and_upload_build_artifacts

@@ -12,6 +12,23 @@ rm -rf node_modules || true
 # Clear pnpm store to prevent cached package versions
 pnpm store prune || true
 
+# ─── expo-glass-effect (broken podspec) ──────────────────────────────────────
+# This package has an unstable podspec that causes pod install to fail.
+# It is not used in any app code. Remove it from package.json before pnpm
+# install runs so it is never installed and CocoaPods never sees it.
+echo "[eas-build-pre-install] Removing expo-glass-effect from package.json..."
+node -e "
+  const fs = require('fs');
+  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+  if (pkg.dependencies && pkg.dependencies['expo-glass-effect']) {
+    delete pkg.dependencies['expo-glass-effect'];
+    fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+    console.log('[eas-build-pre-install] expo-glass-effect removed from package.json');
+  } else {
+    console.log('[eas-build-pre-install] expo-glass-effect not found in dependencies, skipping');
+  }
+" || true
+
 echo "[eas-build-pre-install] Starting codegen safety cleanup..."
 
 # ─── react-native-onesignal 5.4.x ────────────────────────────────────────────
