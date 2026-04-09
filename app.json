@@ -34,10 +34,7 @@
         "backgroundColor": "#1a2332"
       },
       "entitlements": {
-        "aps-environment": "production",
-        "com.apple.security.application-groups": [
-          "group.com.lbkchano.musicministry.onesignal"
-        ]
+        "aps-environment": "production"
       }
     },
     "android": {
@@ -75,11 +72,11 @@
     },
     "plugins": [
       [
-        "onesignal-expo-plugin",
+        "expo-notifications",
         {
-          "mode": "production",
-          "smallIcons": ["./assets/notification-icon.png"],
-          "iosNSEBundleIdentifier": "com.lbkchano.musicministry.OneSignalNotificationServiceExtension"
+          "icon": "./assets/notification-icon.png",
+          "color": "#1a2332",
+          "sounds": []
         }
       ],
       [
@@ -118,8 +115,7 @@
         "origin": false
       },
       "backendUrl": "https://nucffxkqp3vv9chpnxeb3a3fcnb99vdb.app.specular.dev",
-      "oneSignalAppId": "d22a0591-70f3-4c9b-b006-00beed197e85",
-      "oneSignalRestApiKey": "os_v2_app_2ivalelq6ngjxmagac7o2gl6qwd6u4uidlmuxnfyyfdoccpnbwzfwhlu7ew3hvhoz3rjjb2camlxgqssguzfncvvkogeeiaph4xmm5i"
+
     }
   }
 }

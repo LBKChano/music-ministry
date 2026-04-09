@@ -2,7 +2,7 @@
  * Service Reminder Notifications
  *
  * Checks upcoming services against the church's notification_hours settings
- * and sends OneSignal push notifications to the current user via the REST API.
+ * and schedules local expo-notifications for the current user.
  *
  * This runs client-side on app open. It uses AsyncStorage to track which
  * (service, hoursBeforeWindow) pairs have already been notified so we don't
@@ -10,14 +10,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
-
-const ONESIGNAL_APP_ID = '8b605bf5-c7ff-424c-ab10-5ef6ce58cebd';
-// REST API key is read from app.json extra to avoid hardcoding secrets in logic files.
-// NOTE: For full security this should be called server-side only.
-const ONESIGNAL_REST_API_KEY: string =
-  Constants.expoConfig?.extra?.oneSignalRestApiKey ?? '';
-const ONESIGNAL_API_URL = 'https://onesignal.com/api/v1/notifications';
+import * as Notifications from 'expo-notifications';
 
 // Storage key prefix for sent-notification deduplication
 const SENT_KEY_PREFIX = 'service_reminder_sent_';
@@ -78,56 +71,35 @@ export async function cleanupOldReminderKeys(pastServiceIds: string[]): Promise<
 }
 
 /**
- * Send a single OneSignal push notification to a specific player (subscription) ID.
+ * Schedule a local push notification via expo-notifications.
  */
-async function sendOneSignalNotification(
-  playerId: string,
+async function scheduleLocalNotification(
   title: string,
   body: string,
   data?: Record<string, string>
 ): Promise<boolean> {
-  console.log('[ServiceReminders] Sending OneSignal notification to player:', playerId.substring(0, 8) + '...');
-  console.log('[ServiceReminders] Notification:', title, '|', body);
-
+  console.log('[ServiceReminders] Scheduling local notification:', title, '|', body);
   try {
-    const payload: Record<string, unknown> = {
-      app_id: ONESIGNAL_APP_ID,
-      include_subscription_ids: [playerId],
-      headings: { en: title },
-      contents: { en: body },
-    };
-
-    if (data) {
-      payload.data = data;
-    }
-
-    const response = await fetch(ONESIGNAL_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Key ${ONESIGNAL_REST_API_KEY}`,
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data: data ?? {},
+        sound: true,
       },
-      body: JSON.stringify(payload),
+      trigger: null, // deliver immediately
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[ServiceReminders] OneSignal API error:', response.status, errorText);
-      return false;
-    }
-
-    const result = await response.json();
-    console.log('[ServiceReminders] OneSignal notification sent successfully. ID:', result.id);
+    console.log('[ServiceReminders] Local notification scheduled successfully');
     return true;
   } catch (err) {
-    console.error('[ServiceReminders] Failed to send OneSignal notification:', err);
+    console.error('[ServiceReminders] Failed to schedule local notification:', err);
     return false;
   }
 }
 
 export interface ServiceReminderParams {
-  /** OneSignal push subscription ID (player ID) for the current user */
-  playerId: string;
+  /** Expo push token for the current user (kept for API compatibility, not used for local notifications) */
+  expoPushToken?: string | null;
   /** Church name for the notification title */
   churchName: string;
   /** Upcoming services the user is assigned to */
@@ -156,7 +128,6 @@ export interface ServiceReminderParams {
  */
 export async function checkAndSendServiceReminders(params: ServiceReminderParams): Promise<void> {
   const {
-    playerId,
     churchName,
     services,
     currentMemberId,
@@ -166,11 +137,6 @@ export async function checkAndSendServiceReminders(params: ServiceReminderParams
 
   if (!notificationsEnabled) {
     console.log('[ServiceReminders] Notifications disabled for this church, skipping');
-    return;
-  }
-
-  if (!playerId) {
-    console.log('[ServiceReminders] No OneSignal player ID available, skipping');
     return;
   }
 
@@ -263,7 +229,7 @@ export async function checkAndSendServiceReminders(params: ServiceReminderParams
         ? `You're scheduled as ${myAssignment.role} for ${service.service_type} on ${dateDisplay} at ${timeDisplay} (in ~${reminderLabel})`
         : `You're scheduled as ${myAssignment.role} for ${service.service_type} on ${dateDisplay} (in ~${reminderLabel})`;
 
-      const success = await sendOneSignalNotification(playerId, title, body, {
+      const success = await scheduleLocalNotification(title, body, {
         serviceId: service.id,
         serviceType: service.service_type,
         serviceDate: service.date,

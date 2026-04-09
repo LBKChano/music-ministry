@@ -1047,7 +1047,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
   }, [fetchFillInRequests]);
 
   const registerPushToken = useCallback(async (memberId: string, pushToken: string, deviceType?: string) => {
-    console.log('[OneSignal] Registering push token for member:', memberId, 'device:', deviceType);
+    console.log('[Notifications] Registering push token for member:', memberId, 'device:', deviceType);
     try {
       setError(null);
       const tokenData: TablesInsert<'push_tokens'> = {

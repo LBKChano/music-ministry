@@ -386,14 +386,14 @@ export default function HomeScreen() {
     user,
   } = useChurch();
 
-  // OneSignal notification context — replaces expo-notifications push token logic
-  const { requestPermission, oneSignalPlayerId, hasPermission } = useNotifications();
+  // Notification context — expo-notifications push token logic
+  const { requestPermission, expoPushToken, hasPermission } = useNotifications();
 
   const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate } = useServices(currentChurch?.id ?? null);
 
   const insets = useSafeAreaInsets();
 
-  // Track if we've already registered the OneSignal player ID for this member
+  // Track if we've already registered the push token for this member this session
   const hasRegisteredThisSession = useRef(false);
 
   const [addServiceModalVisible, setAddServiceModalVisible] = useState(false);
@@ -420,61 +420,56 @@ export default function HomeScreen() {
 
   // ── useEffect hooks (after all useState/useRef/other hooks) ──────────────
 
-  // Register OneSignal player ID with Supabase push_tokens table
+  // Register Expo push token with Supabase push_tokens table
   useEffect(() => {
     if (!currentMember) {
-      console.log('[OneSignal] No current member, skipping push token registration');
+      console.log('[Notifications] No current member, skipping push token registration');
       return;
     }
 
     if (hasRegisteredThisSession.current) {
-      console.log('[OneSignal] Already registered push token this session, skipping');
+      console.log('[Notifications] Already registered push token this session, skipping');
       return;
     }
 
-    const registerOneSignalToken = async () => {
+    const registerToken = async () => {
       try {
-        console.log('[OneSignal] Starting push notification setup for member:', currentMember.id);
+        console.log('[Notifications] Starting push notification setup for member:', currentMember.id);
 
-        // Request permission via OneSignal (handles both iOS and Android)
         let permissionGranted = hasPermission;
         if (!permissionGranted) {
-          console.log('[OneSignal] Requesting notification permission...');
+          console.log('[Notifications] Requesting notification permission...');
           permissionGranted = await requestPermission();
-          console.log('[OneSignal] Permission result:', permissionGranted);
+          console.log('[Notifications] Permission result:', permissionGranted);
         }
 
         if (!permissionGranted) {
-          console.log('[OneSignal] Notification permission not granted, skipping token registration');
+          console.log('[Notifications] Notification permission not granted, skipping token registration');
           return;
         }
 
-        // Wait for player ID to become available (may take a moment after permission grant)
-        let playerId = oneSignalPlayerId;
-        if (!playerId) {
-          console.log('[OneSignal] Player ID not yet available, waiting...');
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          // Re-read from context won't work here — we rely on the effect re-running
-          // when oneSignalPlayerId updates in context
+        const token = expoPushToken;
+        if (!token) {
+          console.log('[Notifications] Push token not yet available, will retry when token updates');
           return;
         }
 
-        console.log('[OneSignal] Registering player ID with Supabase:', playerId);
-        const success = await registerPushToken(currentMember.id, playerId, Platform.OS);
+        console.log('[Notifications] Registering push token with Supabase');
+        const success = await registerPushToken(currentMember.id, token, Platform.OS);
 
         if (success) {
-          console.log('[OneSignal] Push token (player ID) registered successfully in database');
+          console.log('[Notifications] Push token registered successfully in database');
           hasRegisteredThisSession.current = true;
         } else {
-          console.error('[OneSignal] Failed to register push token in database');
+          console.error('[Notifications] Failed to register push token in database');
         }
       } catch (error: any) {
-        console.error('[OneSignal] Error during push notification registration:', error?.message || error);
+        console.error('[Notifications] Error during push notification registration:', error?.message || error);
       }
     };
 
-    registerOneSignalToken();
-  }, [currentMember, oneSignalPlayerId, hasPermission, requestPermission, registerPushToken]);
+    registerToken();
+  }, [currentMember, expoPushToken, hasPermission, requestPermission, registerPushToken]);
 
   // Refresh services when church changes
   useEffect(() => {
@@ -487,7 +482,7 @@ export default function HomeScreen() {
   // Check and send service reminder notifications on app open
   useEffect(() => {
     if (
-      !oneSignalPlayerId ||
+      !hasPermission ||
       !currentChurch ||
       !currentMember ||
       !notificationSettings ||
@@ -514,7 +509,7 @@ export default function HomeScreen() {
     cleanupOldReminderKeys(pastServiceIds).catch(() => {});
 
     checkAndSendServiceReminders({
-      playerId: oneSignalPlayerId,
+      expoPushToken,
       churchName: currentChurch.name,
       services,
       currentMemberId: currentMember.id,
@@ -523,7 +518,7 @@ export default function HomeScreen() {
     }).catch(err => {
       console.error('[ServiceReminders] Error checking reminders:', err);
     });
-  }, [oneSignalPlayerId, currentChurch, currentMember, notificationSettings, services, servicesLoading]);
+  }, [hasPermission, expoPushToken, currentChurch, currentMember, notificationSettings, services, servicesLoading]);
 
   // OPTIMIZATION: Memoize filtered services to avoid recalculating on every render
   const filteredServices = useMemo(() => {

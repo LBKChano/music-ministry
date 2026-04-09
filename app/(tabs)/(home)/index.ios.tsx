@@ -361,14 +361,14 @@ export default function HomeScreen() {
     user,
   } = useChurch();
 
-  // OneSignal notification context — replaces expo-notifications push token logic on iOS
-  const { requestPermission, oneSignalPlayerId, hasPermission } = useNotifications();
+  // Notification context — expo-notifications push token logic
+  const { requestPermission, expoPushToken, hasPermission } = useNotifications();
 
   const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate } = useServices(currentChurch?.id ?? null);
 
   const insets = useSafeAreaInsets();
 
-  // Track if we've already registered the OneSignal player ID for this member
+  // Track if we've already registered the push token for this member this session
   const hasRegisteredThisSession = useRef(false);
 
   const [addServiceModalVisible, setAddServiceModalVisible] = useState(false);
@@ -395,32 +395,31 @@ export default function HomeScreen() {
 
   // ── useEffect hooks (after all useState/useRef/other hooks) ──────────────
 
-  // Register OneSignal player ID with Supabase push_tokens table
+  // Register Expo push token with Supabase push_tokens table
   useEffect(() => {
     if (!currentMember) {
-      console.log('[OneSignal] [iOS] No current member, skipping push token registration');
+      console.log('[Notifications] [iOS] No current member, skipping push token registration');
       return;
     }
 
     if (hasRegisteredThisSession.current) {
-      console.log('[OneSignal] [iOS] Already registered push token this session, skipping');
+      console.log('[Notifications] [iOS] Already registered push token this session, skipping');
       return;
     }
 
-    const registerOneSignalToken = async () => {
+    const registerToken = async () => {
       try {
-        console.log('[OneSignal] [iOS] Starting push notification setup for member:', currentMember.id);
+        console.log('[Notifications] [iOS] Starting push notification setup for member:', currentMember.id);
 
-        // Request permission via OneSignal (shows iOS native permission dialog)
         let permissionGranted = hasPermission;
         if (!permissionGranted) {
-          console.log('[OneSignal] [iOS] Requesting notification permission...');
+          console.log('[Notifications] [iOS] Requesting notification permission...');
           permissionGranted = await requestPermission();
-          console.log('[OneSignal] [iOS] Permission result:', permissionGranted);
+          console.log('[Notifications] [iOS] Permission result:', permissionGranted);
         }
 
         if (!permissionGranted) {
-          console.log('[OneSignal] [iOS] Notification permission not granted, skipping token registration');
+          console.log('[Notifications] [iOS] Notification permission not granted, skipping token registration');
           Alert.alert(
             'Notifications Disabled',
             'Please enable notifications in Settings > Music Ministry > Notifications to receive service reminders.',
@@ -429,30 +428,28 @@ export default function HomeScreen() {
           return;
         }
 
-        // Wait for player ID to become available (may take a moment after permission grant)
-        const playerId = oneSignalPlayerId;
-        if (!playerId) {
-          console.log('[OneSignal] [iOS] Player ID not yet available, waiting for subscription change event...');
-          // The effect will re-run when oneSignalPlayerId updates in context
+        const token = expoPushToken;
+        if (!token) {
+          console.log('[Notifications] [iOS] Push token not yet available, will retry when token updates');
           return;
         }
 
-        console.log('[OneSignal] [iOS] Registering player ID with Supabase:', playerId);
-        const success = await registerPushToken(currentMember.id, playerId, 'ios');
+        console.log('[Notifications] [iOS] Registering push token with Supabase');
+        const success = await registerPushToken(currentMember.id, token, 'ios');
 
         if (success) {
-          console.log('[OneSignal] [iOS] Push token (player ID) registered successfully in database');
+          console.log('[Notifications] [iOS] Push token registered successfully in database');
           hasRegisteredThisSession.current = true;
         } else {
-          console.error('[OneSignal] [iOS] Failed to register push token in database');
+          console.error('[Notifications] [iOS] Failed to register push token in database');
         }
       } catch (error: any) {
-        console.error('[OneSignal] [iOS] Error during push notification registration:', error?.message || error);
+        console.error('[Notifications] [iOS] Error during push notification registration:', error?.message || error);
       }
     };
 
-    registerOneSignalToken();
-  }, [currentMember, oneSignalPlayerId, hasPermission, requestPermission, registerPushToken]);
+    registerToken();
+  }, [currentMember, expoPushToken, hasPermission, requestPermission, registerPushToken]);
 
   // Refresh services when church changes
   useEffect(() => {
@@ -465,7 +462,7 @@ export default function HomeScreen() {
   // Check and send service reminder notifications on app open
   useEffect(() => {
     if (
-      !oneSignalPlayerId ||
+      !hasPermission ||
       !currentChurch ||
       !currentMember ||
       !notificationSettings ||
@@ -492,7 +489,7 @@ export default function HomeScreen() {
     cleanupOldReminderKeys(pastServiceIds).catch(() => {});
 
     checkAndSendServiceReminders({
-      playerId: oneSignalPlayerId,
+      expoPushToken,
       churchName: currentChurch.name,
       services,
       currentMemberId: currentMember.id,
@@ -501,7 +498,7 @@ export default function HomeScreen() {
     }).catch(err => {
       console.error('[ServiceReminders] [iOS] Error checking reminders:', err);
     });
-  }, [oneSignalPlayerId, currentChurch, currentMember, notificationSettings, services, servicesLoading]);
+  }, [hasPermission, expoPushToken, currentChurch, currentMember, notificationSettings, services, servicesLoading]);
 
   const filteredServices = useMemo(() => {
     const today = new Date();
