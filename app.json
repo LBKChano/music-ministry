@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.a500e23ed75d44a5bf0c6baaf4d67839.app",
+      "bundleIdentifier": "com.lbkchano.musicministry",
       "buildNumber": "2",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -36,7 +36,7 @@
       "entitlements": {
         "aps-environment": "production",
         "com.apple.security.application-groups": [
-          "group.com.a500e23ed75d44a5bf0c6baaf4d67839.app.onesignal"
+          "group.com.lbkchano.musicministry.onesignal"
         ]
       }
     },
@@ -77,7 +77,9 @@
       [
         "onesignal-expo-plugin",
         {
-          "mode": "production"
+          "mode": "production",
+          "smallIcons": ["./assets/notification-icon.png"],
+          "iosNSEBundleIdentifier": "com.lbkchano.musicministry.OneSignalNotificationServiceExtension"
         }
       ],
       [
