@@ -63,6 +63,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (event === 'SIGNED_OUT') {
           console.log('[AuthContext] SIGNED_OUT — clearing session');
           setSession(null);
+        } else if (event === 'TOKEN_REFRESHED') {
+          // Silently update the session token without triggering navigation side-effects.
+          // On iOS, closing and reopening the app fires TOKEN_REFRESHED (not SIGNED_IN),
+          // so treating it like a new sign-in would incorrectly redirect to onboarding.
+          console.log('[AuthContext] TOKEN_REFRESHED — updating session silently');
+          setSession(newSession ?? null);
         } else {
           setSession(newSession ?? null);
         }
