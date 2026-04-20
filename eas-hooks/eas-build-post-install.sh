@@ -13,8 +13,22 @@ if [ -f "$PODSPEC" ]; then
     echo "[eas-build-post-install] safe-area-context podspec already patched, skipping."
   else
     echo "[eas-build-post-install] Patching safe-area-context podspec with C++20..."
-    node -e "const fs=require('fs');let s=fs.readFileSync('$PODSPEC','utf8');s=s.replace('ss.pod_target_xcconfig  = { \"HEADER_SEARCH_PATHS\" => \"\\\\\"\\$(PODS_TARGET_SRCROOT)/common/cpp\\\\\"\" }','ss.pod_target_xcconfig  = { \"HEADER_SEARCH_PATHS\" => \"\\\\\"\\$(PODS_TARGET_SRCROOT)/common/cpp\\\\\"\", \"CLANG_CXX_LANGUAGE_STANDARD\" => \"c++20\", \"CLANG_CXX_LIBRARY\" => \"libc++\" }');fs.writeFileSync('$PODSPEC',s);console.log('[eas-build-post-install] Patched.');"
-    echo "[eas-build-post-install] safe-area-context podspec patched."
+    # Use a Python one-liner to avoid bash quoting hell
+    python3 - "$PODSPEC" <<'PYEOF'
+import sys, re
+path = sys.argv[1]
+with open(path, 'r') as f:
+    s = f.read()
+# Add pod_target_xcconfig with C++20 to the top-level spec (before s.dependency "React-Core")
+if 'CLANG_CXX_LANGUAGE_STANDARD' not in s:
+    insert = '\n  s.pod_target_xcconfig = {\n    \'CLANG_CXX_LANGUAGE_STANDARD\' => \'c++20\',\n    \'CLANG_CXX_LIBRARY\' => \'libc++\'\n  }\n'
+    s = s.replace('  s.dependency "React-Core"', insert + '  s.dependency "React-Core"', 1)
+    with open(path, 'w') as f:
+        f.write(s)
+    print('[eas-build-post-install] Patched safe-area-context podspec with C++20.')
+else:
+    print('[eas-build-post-install] Already patched.')
+PYEOF
   fi
 else
   echo "[eas-build-post-install] safe-area-context podspec not found, skipping."
