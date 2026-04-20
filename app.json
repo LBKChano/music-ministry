@@ -83,7 +83,8 @@
         "expo-build-properties",
         {
           "ios": {
-            "deploymentTarget": "16.0"
+            "deploymentTarget": "16.0",
+            "extraPodfileContent": "post_install do |installer|\n  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'\n      config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'\n    end\n  end\nend\n"
           },
           "android": {
             "compileSdkVersion": 35,
@@ -101,9 +102,7 @@
           "photosPermission": "The app accesses your photos to let you select images for member profiles.",
           "cameraPermission": "The app accesses your camera to let you take photos for member profiles."
         }
-      ],
-      "react-native-edge-to-edge",
-      "./plugins/withCxxStandard"
+      ]
     ],
     "scheme": "musicministry",
     "experiments": {
