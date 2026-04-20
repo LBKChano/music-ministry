@@ -1,0 +1,18 @@
+diff --git a/node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp b/node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp
+index 0000000..0000001 100644
+--- a/node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp
++++ b/node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp
+@@ -16,11 +16,11 @@ inline Style::Length valueFromEdges(
+     Style::Length edge,
+     Style::Length axis,
+     Style::Length defaultValue) {
+-  if (edge.unit() != Unit::Undefined) {
++  if (edge.isDefined()) {
+     return edge;
+   }
+-  if (axis.unit() != Unit::Undefined) {
++  if (axis.isDefined()) {
+     return axis;
+   }
+   return defaultValue;
+ }
