@@ -15,6 +15,7 @@ export function WidgetProvider({ children }: { children: React.ReactNode }) {
     if (Platform.OS !== 'ios') return;
     try {
       // Dynamically require so Android never loads the module
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { ExtensionStorage } = require("@bacons/apple-targets");
       ExtensionStorage.reloadWidget();
     } catch (e) {
@@ -25,6 +26,7 @@ export function WidgetProvider({ children }: { children: React.ReactNode }) {
   const refreshWidget = useCallback(() => {
     if (Platform.OS !== 'ios') return;
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { ExtensionStorage } = require("@bacons/apple-targets");
       ExtensionStorage.reloadWidget();
     } catch (e) {

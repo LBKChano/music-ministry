@@ -55,7 +55,7 @@ const CustomDarkTheme: Theme = {
 type SystemBarsComponent = React.ComponentType<{ style?: string }>;
 let SystemBars: SystemBarsComponent | null = null;
 try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const edgeToEdge = require('react-native-edge-to-edge') as { SystemBars: SystemBarsComponent };
   SystemBars = edgeToEdge.SystemBars ?? null;
 } catch {
