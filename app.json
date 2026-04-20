@@ -102,7 +102,6 @@
           "cameraPermission": "The app accesses your camera to let you take photos for member profiles."
         }
       ],
-      "./plugins/withCxxStandard",
       "react-native-edge-to-edge"
     ],
     "scheme": "musicministry",
