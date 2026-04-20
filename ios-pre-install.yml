@@ -1,6 +1,0 @@
-build:
-  hooks:
-    pre_install:
-      command: bash eas-hooks/eas-build-pre-install.sh
-    post_install:
-      command: bash eas-hooks/eas-build-post-install.sh
