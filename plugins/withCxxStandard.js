@@ -3,7 +3,8 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * Injects CLANG_CXX_LANGUAGE_STANDARD = c++20 into the existing post_install block.
+ * Injects CLANG_CXX_LANGUAGE_STANDARD = c++20 and CLANG_CXX_LIBRARY = libc++
+ * into the existing post_install block (or creates one if absent).
  * Required for react-native-safe-area-context 4.10.x with RN 0.81 on Old Architecture.
  */
 module.exports = function withCxxStandard(config) {
@@ -24,6 +25,7 @@ module.exports = function withCxxStandard(config) {
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
       config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
+      config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
     end
   end
 `;
@@ -39,6 +41,7 @@ module.exports = function withCxxStandard(config) {
         }
 
         fs.writeFileSync(podfilePath, podfile);
+        console.log('[withCxxStandard] Podfile patched with C++20 settings.');
       } catch (e) {
         console.warn('[withCxxStandard] Failed to patch Podfile:', e.message);
       }
