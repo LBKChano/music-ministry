@@ -51,6 +51,7 @@
     "expo-web-browser": "^14.0.2",
     "leaflet": "^1.9.4",
     "onesignal-expo-plugin": "^2.4.0",
+    "patch-package": "^8.0.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-leaflet": "^4.2.1",
