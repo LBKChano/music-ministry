@@ -10,6 +10,8 @@
     "build:web": "expo export -p web && npx workbox generateSW workbox-config.js",
     "build:android": "expo prebuild -p android",
     "lint": "eslint ."
+		"eas-build-pre-install": "bash eas-hooks/eas-build-pre-install.sh"
+		
   },
   "dependencies": {
     "@babel/plugin-proposal-export-namespace-from": "^7.18.9",
