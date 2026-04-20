@@ -28,9 +28,9 @@ module.exports = function withCxxStandard(config) {
   end
 `;
 
-        // Find the FIRST post_install block and inject at the top of it
-        // This avoids creating a second post_install block
-        const postInstallRegex = /^(post_install do \|installer\|)/m;
+        // Find the FIRST post_install block (at any indentation) and inject at the top of it.
+        // This avoids creating a second post_install block.
+        const postInstallRegex = /([ \t]*post_install do \|installer\|[ \t]*\n)/;
         if (postInstallRegex.test(podfile)) {
           podfile = podfile.replace(postInstallRegex, `$1${cxxPatch}`);
         } else {
