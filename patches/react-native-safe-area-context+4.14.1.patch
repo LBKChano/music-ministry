@@ -1,0 +1,33 @@
+diff --git a/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp b/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp
+index 1234567..abcdefg 100644
+--- a/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp
++++ b/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp
+@@ -16,9 +16,9 @@ inline Style::Length valueFromEdges(
+     Style::Length edge,
+     Style::Length axis,
+     Style::Length defaultValue) {
+-  if (edge.unit() != Unit::Undefined) {
++  if (edge.isDefined()) {
+     return edge;
+   }
+-  if (axis.unit() != Unit::Undefined) {
++  if (axis.isDefined()) {
+     return axis;
+   }
+   return defaultValue;
+diff --git a/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.h b/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.h
+index 1234567..abcdefg 100644
+--- a/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.h
++++ b/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.h
+@@ -20,12 +20,6 @@ class JSI_EXPORT RNCSafeAreaViewShadowNode final
+   using ConcreteViewShadowNode::ConcreteViewShadowNode;
+ 
+  public:
+-  static ShadowNodeTraits BaseTraits() {
+-    auto traits = ConcreteViewShadowNode::BaseTraits();
+-    traits.set(ShadowNodeTraits::Trait::DirtyYogaNode);
+-    return traits;
+-  }
+-
+   void adjustLayoutWithState();
+ };
