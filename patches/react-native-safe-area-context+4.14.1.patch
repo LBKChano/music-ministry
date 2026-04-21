@@ -1,33 +1,16 @@
-diff --git a/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp b/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp
-index 1234567..abcdefg 100644
---- a/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp
-+++ b/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp
-@@ -16,9 +16,9 @@ inline Style::Length valueFromEdges(
-     Style::Length edge,
-     Style::Length axis,
-     Style::Length defaultValue) {
--  if (edge.unit() != Unit::Undefined) {
-+  if (edge.isDefined()) {
-     return edge;
-   }
--  if (axis.unit() != Unit::Undefined) {
-+  if (axis.isDefined()) {
-     return axis;
-   }
-   return defaultValue;
-diff --git a/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.h b/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.h
-index 1234567..abcdefg 100644
---- a/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.h
-+++ b/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.h
-@@ -20,12 +20,6 @@ class JSI_EXPORT RNCSafeAreaViewShadowNode final
-   using ConcreteViewShadowNode::ConcreteViewShadowNode;
+diff --git a/node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp b/node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp
+index 0000000..0000001 100644
+--- a/node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp
++++ b/node_modules/react-native-safe-area-context/common/cpp/react/renderer/components/safeareacontext/RNCSafeAreaViewShadowNode.cpp
+@@ -16,10 +16,10 @@ void RNCSafeAreaViewShadowNode::layout(LayoutContext layoutContext) {
+   auto insets = getConcreteProps().insets;
  
-  public:
--  static ShadowNodeTraits BaseTraits() {
--    auto traits = ConcreteViewShadowNode::BaseTraits();
--    traits.set(ShadowNodeTraits::Trait::DirtyYogaNode);
--    return traits;
--  }
--
-   void adjustLayoutWithState();
- };
+   if (insets.has_value()) {
+-    if (insets->top.unit() != Unit::Undefined) {
++    if (insets->top.isDefined()) {
+       yogaNode.getStyle().setPadding(yoga::Edge::Top, insets->top);
+     }
+-    if (insets->bottom.unit() != Unit::Undefined) {
++    if (insets->bottom.isDefined()) {
+       yogaNode.getStyle().setPadding(yoga::Edge::Bottom, insets->bottom);
+     }
