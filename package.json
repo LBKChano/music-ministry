@@ -70,11 +70,6 @@
     "workbox-cli": "^7.3.0",
     "workbox-precaching": "^7.3.0",
     "workbox-webpack-plugin": "^7.3.0"
-		"pnpm": {
-      "overrides": {
-        "react-native-screens": "4.5.0"
-      }
-    }
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
@@ -93,5 +88,10 @@
     "webpack-cli": "^6.0.1",
     "patch-package": "^8.0.0"
   },
+	"pnpm": {
+    "overrides": {
+      "react-native-screens": "4.5.0"
+    }
+  }
   "private": true
 }
