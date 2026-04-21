@@ -3,9 +3,6 @@
     "version": ">= 5.9.3",
     "packageManager": "pnpm"
   },
-  "hooks": {
-    "pre-install": "bash eas-hooks/eas-build-pre-install.sh"
-  },
   "build": {
     "development": {
       "cache": { "disabled": true },
