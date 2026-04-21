@@ -72,14 +72,6 @@
     },
     "plugins": [
       [
-        "expo-notifications",
-        {
-          "icon": "./assets/notification-icon.png",
-          "color": "#1a2332",
-          "sounds": []
-        }
-      ],
-      [
         "expo-build-properties",
         {
           "ios": {
