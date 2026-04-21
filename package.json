@@ -1,6 +1,7 @@
 {
   "name": "music-ministry",
   "version": "1.0.0",
+	"packageManager": "pnpm@9.0.0",
   "main": "index.ts",
   "scripts": {
     "dev": "EXPO_NO_TELEMETRY=1 expo start",
