@@ -1,3 +1,3 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -eo pipefail
-echo "[eas-build-post-install] Done."
+echo "Post-install hook running"
