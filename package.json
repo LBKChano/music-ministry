@@ -1,7 +1,7 @@
 {
   "name": "music-ministry",
   "version": "1.0.0",
-	"packageManager": "pnpm@9.0.0",
+	"packageManager": "pnpm@9.15.0",
   "main": "index.ts",
   "scripts": {
     "dev": "EXPO_NO_TELEMETRY=1 expo start",
@@ -85,7 +85,8 @@
     "eslint-plugin-react": "^7.37.4",
     "globals": "^15.14.0",
     "typescript": "^5.9.3",
-    "webpack-cli": "^6.0.1"
+    "webpack-cli": "^6.0.1",
+		"patch-package": "^8.0.0"
   },
   "resolutions": {
     "@expo/prebuild-config": "latest"
