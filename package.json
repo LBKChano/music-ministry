@@ -92,6 +92,6 @@
     "overrides": {
       "react-native-screens": "4.5.0"
     }
-  }
+  },
   "private": true
 }
