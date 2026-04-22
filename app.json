@@ -14,10 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.placeholder.app",
-      "icon": {
-        "url": "./assets/images/natively-dark.png",
-        "backgroundColor": "#000000"
-      },
+      "icon": "./assets/images/natively-dark.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -37,7 +34,8 @@
       "expo-font",
       "expo-router",
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-build-properties"
     ],
     "scheme": "musicministry",
     "experiments": {

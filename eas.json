@@ -3,14 +3,17 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "prebuildCommand": "node scripts/flatten-icon.js"
     },
     "preview": {
       "distribution": "internal",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "prebuildCommand": "node scripts/flatten-icon.js"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "prebuildCommand": "node scripts/flatten-icon.js"
     }
   }
 }

@@ -47,6 +47,12 @@ module.exports = {
       rules: {
         '@typescript-eslint/no-var-requires': 'off'
       }
+    },
+    {
+      files: ['scripts/**/*.js'],
+      env: {
+        node: true
+      }
     }
   ]
 };
