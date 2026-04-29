@@ -932,19 +932,13 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const SUPABASE_URL = "https://cvgdxmmtrukahyvkgazj.supabase.co";
-        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2Z2R4bW10cnVrYWh5dmtnYXpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NTc1MzYsImV4cCI6MjA4ODIzMzUzNn0.ssx8t1fCmlvq-3K1EdpTnNyT14HSy6kAZ_-G7KZkHBs";
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/send-fill-in-notifications`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-          body: JSON.stringify({ fillInRequestId: data.id }),
+        const { data: fnData, error: fnError } = await supabase.functions.invoke('send-fill-in-notifications', {
+          body: { fillInRequestId: data.id },
         });
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error('Error sending notifications:', errorText);
+        if (fnError) {
+          console.error('Error sending notifications:', fnError);
         } else {
-          const result = await response.json();
-          console.log('Notifications sent successfully:', result);
+          console.log('Notifications sent successfully:', fnData);
         }
       } catch (notifError) {
         console.error('Error calling notification function:', notifError);
