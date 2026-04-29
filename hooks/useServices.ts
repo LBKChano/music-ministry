@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Tables, TablesInsert } from '@/lib/supabase/types';
@@ -376,6 +376,13 @@ export function useServices(churchId: string | null) {
     fetchServices();
   }, [fetchServices, session?.user?.id, initialized]);
 
+  // Keep a ref to the latest fetchServices so realtime callbacks always call
+  // the current version without needing it as a dependency of the channel effect.
+  const fetchServicesRef = useRef(fetchServices);
+  useEffect(() => {
+    fetchServicesRef.current = fetchServices;
+  }, [fetchServices]);
+
   // Set up realtime subscriptions for live updates
   useEffect(() => {
     if (!initialized || !session?.user?.id || !churchId) {
@@ -385,9 +392,12 @@ export function useServices(churchId: string | null) {
 
     console.log('Setting up realtime subscriptions for church:', churchId);
 
+    // Use a unique channel name per mount to avoid "already subscribed" collisions
+    const channelName = `church-schedule-${churchId}-${Date.now()}`;
+
     // Create a single channel for both services and assignments
     const realtimeChannel = supabase
-      .channel(`church-schedule-${churchId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -403,7 +413,7 @@ export function useServices(churchId: string | null) {
           }
           // Refetch services to get updated data with assignments
           console.log('Refetching services due to realtime update...');
-          fetchServices();
+          fetchServicesRef.current();
         }
       )
       .on(
@@ -416,7 +426,7 @@ export function useServices(churchId: string | null) {
         (payload) => {
           console.log('Assignments realtime update:', payload.eventType);
           // Refetch services to get updated assignments
-          fetchServices();
+          fetchServicesRef.current();
         }
       )
       .subscribe((status) => {
@@ -429,7 +439,7 @@ export function useServices(churchId: string | null) {
       supabase.removeChannel(realtimeChannel);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [churchId, fetchServices, session?.user?.id, initialized]);
+  }, [churchId, session?.user?.id, initialized]);
 
   return {
     services,
