@@ -69,6 +69,7 @@ interface ChurchContextValue {
   cancelFillInRequest: (requestId: string, churchId: string) => Promise<boolean>;
   registerPushToken: (memberId: string, pushToken: string, deviceType?: string) => Promise<boolean>;
   signOut: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   fetchFillInRequests: (churchId: string) => Promise<void>;
   refreshChurches: () => Promise<void>;
   refreshMembers: () => Promise<void>;
@@ -82,7 +83,7 @@ interface ChurchContextValue {
 const ChurchContext = createContext<ChurchContextValue | null>(null);
 
 export function ChurchProvider({ children }: { children: React.ReactNode }) {
-  const { session, initialized } = useAuth();
+  const { session, initialized, deleteAccount } = useAuth();
   const [churches, setChurches] = useState<Church[]>([]);
   const [currentChurch, setCurrentChurch] = useState<Church | null>(null);
   const [members, setMembers] = useState<ChurchMemberWithRoles[]>([]);
@@ -1207,6 +1208,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     cancelFillInRequest,
     registerPushToken,
     signOut,
+    deleteAccount,
     fetchFillInRequests,
     refreshChurches,
     refreshMembers,

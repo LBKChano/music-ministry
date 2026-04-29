@@ -8,12 +8,14 @@ interface AuthContextType {
   session: Session | null;
   initialized: boolean;
   signOut: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   session: null,
   initialized: false,
   signOut: async () => {},
+  deleteAccount: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -115,8 +117,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const deleteAccount = async () => {
+    console.log('[AuthContext] deleteAccount called');
+    await supabase.rpc('delete_account');
+    // Auth state change listener will handle session clearing automatically
+  };
+
   return (
-    <AuthContext.Provider value={{ session, initialized, signOut }}>
+    <AuthContext.Provider value={{ session, initialized, signOut, deleteAccount }}>
       {children}
     </AuthContext.Provider>
   );

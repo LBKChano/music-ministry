@@ -14,9 +14,11 @@ type MemberUnavailability = Tables<'member_unavailability'>;
 type ToastType = 'success' | 'error';
 
 export default function ProfileScreen() {
-  const { user, loading, currentMember, currentChurch, signOut, fetchMemberUnavailability, saveUnavailableDates } = useChurch();
+  const { user, loading, currentMember, currentChurch, signOut, deleteAccount, fetchMemberUnavailability, saveUnavailableDates } = useChurch();
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [savedDates, setSavedDates] = useState<MemberUnavailability[]>([]);
   const [pendingDates, setPendingDates] = useState<Set<string>>(new Set());
   const [loadingDates, setLoadingDates] = useState(false);
@@ -61,6 +63,20 @@ export default function ProfileScreen() {
 
     loadUnavailability().catch(err => console.error('[ProfileScreen] loadUnavailability error:', err));
   }, [currentMember?.id, fetchMemberUnavailability]);
+
+  const handleDeleteAccount = async () => {
+    console.log('User confirmed account deletion');
+    try {
+      setDeleting(true);
+      setShowDeleteModal(false);
+      await deleteAccount();
+      // Auth guard will redirect to onboarding automatically
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      showToast('Failed to delete account. Please try again.', 'error');
+      setDeleting(false);
+    }
+  };
 
   const handleSignOut = async () => {
     console.log('User tapped Sign Out button');
@@ -303,6 +319,23 @@ export default function ProfileScreen() {
           />
           <Text style={styles.signOutButtonText}>Sign Out</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.deleteAccountButton}
+          onPress={() => {
+            console.log('User tapped Delete Account button');
+            setShowDeleteModal(true);
+          }}
+          disabled={deleting}
+        >
+          <IconSymbol
+            ios_icon_name="trash"
+            android_material_icon_name="delete"
+            size={18}
+            color="#FF3B30"
+          />
+          <Text style={styles.deleteAccountButtonText}>Delete Account</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* Toast notification */}
@@ -344,6 +377,45 @@ export default function ProfileScreen() {
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
                   <Text style={[styles.modalButtonText, { color: '#FFFFFF' }]}>Sign Out</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showDeleteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDeleteModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Account</Text>
+            <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
+              This will permanently delete your account and all your data. This action cannot be undone.
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton, { backgroundColor: colors.border }]}
+                onPress={() => {
+                  console.log('User cancelled account deletion');
+                  setShowDeleteModal(false);
+                }}
+                disabled={deleting}
+              >
+                <Text style={[styles.modalButtonText, { color: colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.confirmButton, { backgroundColor: '#FF3B30' }]}
+                onPress={handleDeleteAccount}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={[styles.modalButtonText, { color: '#FFFFFF' }]}>Delete</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -487,6 +559,23 @@ const styles = StyleSheet.create({
   },
   signOutButtonText: {
     color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deleteAccountButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 8,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#FF3B30',
+    backgroundColor: 'transparent',
+  },
+  deleteAccountButtonText: {
+    color: '#FF3B30',
     fontSize: 16,
     fontWeight: '600',
   },
