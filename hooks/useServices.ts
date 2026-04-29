@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Tables, TablesInsert } from '@/lib/supabase/types';
@@ -263,7 +263,7 @@ export function useServices(churchId: string | null) {
       const { error: updateError } = await supabase
         .from('assignments')
         .update({
-          member_id: memberId,
+          member_id: memberId || null,  // convert '' to null for UUID column
           person_name: personName,
         })
         .eq('id', assignmentId);
@@ -282,7 +282,7 @@ export function useServices(churchId: string | null) {
           ...service,
           assignments: service.assignments.map(assignment =>
             assignment.id === assignmentId
-              ? { ...assignment, member_id: memberId, person_name: personName }
+              ? { ...assignment, member_id: memberId || null, person_name: personName }
               : assignment
           ),
         }))
@@ -422,6 +422,9 @@ export function useServices(churchId: string | null) {
           event: '*',
           schema: 'public',
           table: 'assignments',
+          // TODO: scope to church — assignments have no church_id column; the services
+          // subscription above already refetches assignments via the joined query, so
+          // this broad subscription is acceptable for now.
         },
         (payload) => {
           console.log('Assignments realtime update:', payload.eventType);

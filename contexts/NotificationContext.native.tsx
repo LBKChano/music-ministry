@@ -85,12 +85,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       });
 
       if (Platform.OS === "android") {
-        await Notifications.setNotificationChannelAsync("default", {
-          name: "default",
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: "#1a2332",
-        });
+        try {
+          await Notifications.setNotificationChannelAsync("default", {
+            name: "default",
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: "#1a2332",
+          });
+        } catch (err) {
+          console.warn("[Notifications] Failed to set Android notification channel:", err);
+        }
       }
 
       setLoading(false);
