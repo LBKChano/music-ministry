@@ -16,7 +16,9 @@
       }
     },
     "development": {
-      "cache": { "disabled": true },
+      "cache": {
+        "disabled": true
+      },
       "developmentClient": true,
       "distribution": "internal",
       "node": "20.19.4",
@@ -28,10 +30,14 @@
         "resourceClass": "m-medium",
         "buildConfiguration": "Debug"
       },
-      "android": { "buildType": "apk" }
+      "android": {
+        "buildType": "apk"
+      }
     },
     "preview": {
-      "cache": { "disabled": true },
+      "cache": {
+        "disabled": true
+      },
       "distribution": "internal",
       "node": "20.19.4",
       "env": {
@@ -42,10 +48,14 @@
         "buildConfiguration": "Release",
         "resourceClass": "m-medium"
       },
-      "android": { "buildType": "apk" }
+      "android": {
+        "buildType": "apk"
+      }
     },
     "production": {
-      "cache": { "disabled": true },
+      "cache": {
+        "disabled": true
+      },
       "node": "20.19.4",
       "env": {
         "EAS_BUILD_NO_EXPO_GO_WARNING": "true"
@@ -61,5 +71,7 @@
       }
     }
   },
-  "submit": { "production": {} }
+  "submit": {
+    "production": {}
+  }
 }

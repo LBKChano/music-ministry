@@ -16,6 +16,7 @@ import React, {
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
+import Constants from "expo-constants";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -60,10 +61,27 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // 1. Android channel setup must happen before token registration
+      if (Platform.OS === "android") {
+        try {
+          await Notifications.setNotificationChannelAsync("default", {
+            name: "default",
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: "#1a2332",
+          });
+          console.log("[Notifications] Android notification channel configured");
+        } catch (err) {
+          console.warn("[Notifications] Failed to set Android notification channel:", err);
+        }
+      }
+
+      // 2. Check existing permissions
       try {
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
         console.log("[Notifications] Current permission status:", existingStatus);
 
+        // 3. If granted, register for push token
         if (existingStatus === "granted") {
           setHasPermission(true);
           await registerForPushToken();
@@ -74,7 +92,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         console.warn("[Notifications] Error checking permissions:", err);
       }
 
-      // Listen for incoming notifications while app is foregrounded
+      // 4. Set up notification listener
       notificationListener = Notifications.addNotificationReceivedListener((notification) => {
         console.log("[Notifications] Foreground notification received:", notification.request.content.title);
         setLastNotification({
@@ -84,19 +102,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         });
       });
 
-      if (Platform.OS === "android") {
-        try {
-          await Notifications.setNotificationChannelAsync("default", {
-            name: "default",
-            importance: Notifications.AndroidImportance.MAX,
-            vibrationPattern: [0, 250, 250, 250],
-            lightColor: "#1a2332",
-          });
-        } catch (err) {
-          console.warn("[Notifications] Failed to set Android notification channel:", err);
-        }
-      }
-
+      // 5. Done loading
       setLoading(false);
     }
 
@@ -111,7 +117,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   async function registerForPushToken() {
     try {
-      const tokenData = await Notifications.getExpoPushTokenAsync();
+      const projectId =
+        Constants.expoConfig?.extra?.eas?.projectId ??
+        Constants.easConfig?.projectId;
+      console.log("[Notifications] Registering push token with projectId:", projectId ?? "(none)");
+      const tokenData = await Notifications.getExpoPushTokenAsync(
+        projectId ? { projectId } : undefined
+      );
       const token = tokenData.data;
       console.log("[Notifications] Expo push token registered:", token.substring(0, 20) + "...");
       setExpoPushToken(token);
