@@ -20,7 +20,11 @@
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "remote-notification"
-        ]
+        ],
+        "NSCameraUsageDescription": "This app uses the camera to take photos for member profiles.",
+        "NSPhotoLibraryUsageDescription": "This app accesses your photo library to select images for member profiles.",
+        "NSPhotoLibraryAddUsageDescription": "This app saves photos to your photo library.",
+        "NSMicrophoneUsageDescription": "This app uses the microphone for video recording."
       },
       "splash": {
         "image": "./assets/images/9b11f806-5921-4e61-9383-a3f7e125c18f.png",
