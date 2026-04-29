@@ -18,7 +18,6 @@
       "buildNumber": "2",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSUserTrackingUsageDescription": "This app does not track you.",
         "UIBackgroundModes": [
           "remote-notification"
         ]
