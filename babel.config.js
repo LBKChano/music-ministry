@@ -41,8 +41,8 @@ module.exports = function (api) {
       ],
       ...EDITABLE_COMPONENTS,
       "@babel/plugin-proposal-export-namespace-from",
-      // react-native-reanimated v3 requires its babel plugin to be LAST
-      "react-native-reanimated/plugin",
+      // react-native-worklets plugin (used by Reanimated v4) must be LAST
+      "react-native-worklets/plugin",
     ],
   };
 };

@@ -1,9 +1,20 @@
 {
   "cli": {
-    "version": ">= 5.9.3",
-    "packageManager": "pnpm"
+    "version": ">= 5.9.3"
   },
   "build": {
+    "simulator": {
+      "distribution": "internal",
+      "node": "20.19.4",
+      "env": {
+        "EAS_BUILD_NO_EXPO_GO_WARNING": "true"
+      },
+      "ios": {
+        "simulator": true,
+        "buildConfiguration": "Release",
+        "resourceClass": "m-medium"
+      }
+    },
     "development": {
       "cache": { "disabled": true },
       "developmentClient": true,
