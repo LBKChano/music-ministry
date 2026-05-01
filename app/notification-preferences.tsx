@@ -2,16 +2,15 @@
  * Notification Preferences Screen
  *
  * Shows notification permission status and allows users to manage
- * their notification preferences using OneSignal tags.
+ * their notification preferences.
  */
 
-import React, { useState } from "react";
+import React from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Switch,
   Alert,
   Platform,
   Linking,
@@ -22,31 +21,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useNotifications } from "@/contexts/NotificationContext";
 
-// Notification categories - customize these for your app
-const NOTIFICATION_CATEGORIES = [
-  {
-    key: "updates",
-    label: "App Updates",
-    description: "New features and improvements",
-    defaultEnabled: true,
-  },
-  {
-    key: "promotions",
-    label: "Promotions",
-    description: "Special offers and discounts",
-    defaultEnabled: true,
-  },
-  {
-    key: "reminders",
-    label: "Reminders",
-    description: "Activity reminders and tips",
-    defaultEnabled: true,
-  },
-];
-
 export default function NotificationPreferencesScreen() {
   const router = useRouter();
-  const { hasPermission, permissionDenied, isWeb, requestPermission, sendTag, deleteTag } =
+  const { hasPermission, permissionDenied, isWeb, requestPermission } =
     useNotifications();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -57,13 +34,6 @@ export default function NotificationPreferencesScreen() {
     secondaryText: '#8E8E93',
     separator: isDark ? '#3A3A3C' : '#E5E5EA',
   };
-
-  // Track category toggles locally
-  const [categories, setCategories] = useState<Record<string, boolean>>(
-    Object.fromEntries(
-      NOTIFICATION_CATEGORIES.map((cat) => [cat.key, cat.defaultEnabled])
-    )
-  );
 
   const handleEnableNotifications = async () => {
     if (permissionDenied) {
@@ -88,16 +58,6 @@ export default function NotificationPreferencesScreen() {
     }
 
     await requestPermission();
-  };
-
-  const handleCategoryToggle = (key: string, value: boolean) => {
-    setCategories((prev) => ({ ...prev, [key]: value }));
-
-    if (value) {
-      sendTag(`notify_${key}`, "true");
-    } else {
-      deleteTag(`notify_${key}`);
-    }
   };
 
   if (isWeb) {
@@ -161,30 +121,6 @@ export default function NotificationPreferencesScreen() {
           </View>
         </View>
 
-        {/* Notification Categories */}
-        {hasPermission && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: dynamicColors.secondaryText }]}>Notification Types</Text>
-            {NOTIFICATION_CATEGORIES.map((category) => (
-              <View key={category.key} style={[styles.categoryRow, { backgroundColor: dynamicColors.card, borderBottomColor: dynamicColors.separator }]}>
-                <View style={styles.categoryText}>
-                  <Text style={[styles.categoryLabel, { color: dynamicColors.text }]}>{category.label}</Text>
-                  <Text style={[styles.categoryDescription, { color: dynamicColors.secondaryText }]}>
-                    {category.description}
-                  </Text>
-                </View>
-                <Switch
-                  value={categories[category.key]}
-                  onValueChange={(value) =>
-                    handleCategoryToggle(category.key, value)
-                  }
-                  trackColor={{ false: dynamicColors.separator, true: "#34C759" }}
-                  thumbColor="#fff"
-                />
-              </View>
-            ))}
-          </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -277,24 +213,5 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
-  },
-  categoryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-  },
-  categoryText: {
-    flex: 1,
-    marginRight: 12,
-  },
-  categoryLabel: {
-    fontSize: 16,
-  },
-  categoryDescription: {
-    fontSize: 13,
-    marginTop: 2,
   },
 });

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -15,7 +15,8 @@ import { StatusBar } from 'expo-status-bar';
 import { WidgetProvider } from '@/contexts/WidgetContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { ChurchProvider } from '@/contexts/ChurchContext';
+import { ChurchProvider, useChurch } from '@/contexts/ChurchContext';
+import { useNotifications } from '@/contexts/NotificationContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // Force expo-router to always start at index, never restore cached navigation state
@@ -68,6 +69,21 @@ function RootLayoutNav() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
   const { initialized } = useAuth();
+  const { expoPushToken } = useNotifications();
+  const { currentMember, registerPushToken } = useChurch();
+
+  useEffect(() => {
+    if (expoPushToken && currentMember?.id) {
+      console.log('[Layout] Registering push token for member:', currentMember.id);
+      registerPushToken(currentMember.id, expoPushToken, Platform.OS)
+        .then((success) => {
+          if (success) {
+            console.log('[Layout] Push token saved for member:', currentMember.id);
+          }
+        })
+        .catch((err) => console.warn('[Layout] Failed to save push token:', err));
+    }
+  }, [expoPushToken, currentMember?.id]);
 
   // Fonts are loaded asynchronously but we don't block rendering on them.
   void fontsLoaded;
