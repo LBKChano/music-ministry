@@ -104,6 +104,9 @@
         "origin": false
       },
       "backendUrl": "https://nucffxkqp3vv9chpnxeb3a3fcnb99vdb.app.specular.dev"
+    },
+    "notification": {
+      "icon": "./assets/notification-icon.png"
     }
   }
 }
