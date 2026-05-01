@@ -18,7 +18,6 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  Platform,
   ActivityIndicator,
   Alert,
 } from 'react-native';
@@ -380,7 +379,6 @@ export default function HomeScreen() {
     createFillInRequest,
     acceptFillInRequest,
     cancelFillInRequest,
-    registerPushToken,
     refreshFillInRequests,
     refreshMembers,
     user,
@@ -392,9 +390,6 @@ export default function HomeScreen() {
   const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate } = useServices(currentChurch?.id ?? null);
 
   const insets = useSafeAreaInsets();
-
-  // Track if we've already registered the push token for this member this session
-  const hasRegisteredThisSession = useRef(false);
 
   const [addServiceModalVisible, setAddServiceModalVisible] = useState(false);
   const [assignMemberModalVisible, setAssignMemberModalVisible] = useState(false);
@@ -419,57 +414,6 @@ export default function HomeScreen() {
   const [fillInRoleName, setFillInRoleName] = useState('');
 
   // ── useEffect hooks (after all useState/useRef/other hooks) ──────────────
-
-  // Register Expo push token with Supabase push_tokens table
-  useEffect(() => {
-    if (!currentMember) {
-      console.log('[Notifications] No current member, skipping push token registration');
-      return;
-    }
-
-    if (hasRegisteredThisSession.current) {
-      console.log('[Notifications] Already registered push token this session, skipping');
-      return;
-    }
-
-    const registerToken = async () => {
-      try {
-        console.log('[Notifications] Starting push notification setup for member:', currentMember.id);
-
-        let permissionGranted = hasPermission;
-        if (!permissionGranted) {
-          console.log('[Notifications] Requesting notification permission...');
-          permissionGranted = await requestPermission();
-          console.log('[Notifications] Permission result:', permissionGranted);
-        }
-
-        if (!permissionGranted) {
-          console.log('[Notifications] Notification permission not granted, skipping token registration');
-          return;
-        }
-
-        const token = expoPushToken;
-        if (!token) {
-          console.log('[Notifications] Push token not yet available, will retry when token updates');
-          return;
-        }
-
-        console.log('[Notifications] Registering push token with Supabase');
-        const success = await registerPushToken(currentMember.id, token, Platform.OS);
-
-        if (success) {
-          console.log('[Notifications] Push token registered successfully in database');
-          hasRegisteredThisSession.current = true;
-        } else {
-          console.error('[Notifications] Failed to register push token in database');
-        }
-      } catch (error: any) {
-        console.error('[Notifications] Error during push notification registration:', error?.message || error);
-      }
-    };
-
-    registerToken();
-  }, [currentMember, expoPushToken, hasPermission, requestPermission, registerPushToken]);
 
   // Refresh services when church changes
   useEffect(() => {

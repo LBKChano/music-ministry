@@ -86,6 +86,7 @@ async function scheduleLocalNotification(
         body,
         data: data ?? {},
         sound: true,
+        channelId: 'default',
       },
       trigger: null, // deliver immediately
     });
