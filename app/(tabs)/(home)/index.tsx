@@ -7,6 +7,7 @@ import { Stack } from 'expo-router';
 import { useServices } from '@/hooks/useServices';
 
 import { IconSymbol } from '@/components/IconSymbol';
+import { NotificationBell } from "@/components/NotificationBell";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   StyleSheet,
@@ -757,7 +758,9 @@ export default function HomeScreen() {
         >
           {churchName}
         </Text>
-        <Text style={styles.headerSubtitle}>{upcomingText}</Text>
+                <NotificationBell />
+        
+<Text style={styles.headerSubtitle}>{upcomingText}</Text>
       </View>
 
       <ScrollView 

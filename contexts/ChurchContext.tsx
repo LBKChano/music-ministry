@@ -15,7 +15,6 @@ type MemberUnavailability = Tables<'member_unavailability'>;
 type MemberRole = Tables<'member_roles'>;
 type NotificationSettings = Tables<'notification_settings'>;
 type FillInRequest = Tables<'fill_in_requests'>;
-type PushToken = Tables<'push_tokens'>;
 
 export interface RecurringServiceWithRoles extends RecurringService {
   roles: string[];
@@ -67,7 +66,6 @@ interface ChurchContextValue {
   createFillInRequest: (assignmentId: string, serviceId: string, churchId: string, requestingMemberId: string, roleName: string, reason?: string) => Promise<FillInRequest | null>;
   acceptFillInRequest: (requestId: string, filledByMemberId: string, churchId: string) => Promise<boolean>;
   cancelFillInRequest: (requestId: string, churchId: string) => Promise<boolean>;
-  registerPushToken: (memberId: string, pushToken: string, deviceType?: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
   fetchFillInRequests: (churchId: string) => Promise<void>;
@@ -1041,28 +1039,6 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchFillInRequests]);
 
-  const registerPushToken = useCallback(async (memberId: string, pushToken: string, deviceType?: string) => {
-    console.log('[Notifications] Registering push token for member:', memberId, 'device:', deviceType);
-    try {
-      setError(null);
-      const tokenData: TablesInsert<'push_tokens'> = {
-        member_id: memberId, token: pushToken, device_type: deviceType ?? null,
-      };
-      const { error: insertError } = await supabase.from('push_tokens').upsert(tokenData, { onConflict: 'member_id,token' });
-      if (insertError) {
-        console.error('Error registering push token:', insertError);
-        setError(insertError.message);
-        return false;
-      }
-      console.log('Push token registered successfully');
-      return true;
-    } catch (err) {
-      console.error('Error in registerPushToken:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error');
-      return false;
-    }
-  }, []);
-
   const signOut = useCallback(async () => {
     console.log('Signing out user');
     try {
@@ -1206,7 +1182,6 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     createFillInRequest,
     acceptFillInRequest,
     cancelFillInRequest,
-    registerPushToken,
     signOut,
     deleteAccount,
     fetchFillInRequests,

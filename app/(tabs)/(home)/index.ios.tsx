@@ -2,10 +2,11 @@
 import { useChurch } from '@/hooks/useChurch';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { colors } from '@/styles/commonStyles';
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Stack } from 'expo-router';
 import { useServices } from '@/hooks/useServices';
 import { IconSymbol } from '@/components/IconSymbol';
+import { NotificationBell } from "@/components/NotificationBell";
 import {
   StyleSheet,
   View,
@@ -354,21 +355,17 @@ export default function HomeScreen() {
     createFillInRequest,
     acceptFillInRequest,
     cancelFillInRequest,
-    registerPushToken,
     refreshFillInRequests,
     refreshMembers,
     user,
   } = useChurch();
 
-  // Notification context — expo-notifications push token logic
-  const { requestPermission, expoPushToken, hasPermission } = useNotifications();
+  // Notification context — OneSignal handles token registration automatically
+  const { requestPermission, hasPermission } = useNotifications();
 
   const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate } = useServices(currentChurch?.id ?? null);
 
   const insets = useSafeAreaInsets();
-
-  // Track if we've already registered the push token for this member this session
-  const hasRegisteredThisSession = useRef(false);
 
   const [addServiceModalVisible, setAddServiceModalVisible] = useState(false);
   const [assignMemberModalVisible, setAssignMemberModalVisible] = useState(false);
@@ -394,61 +391,17 @@ export default function HomeScreen() {
 
   // ── useEffect hooks (after all useState/useRef/other hooks) ──────────────
 
-  // Register Expo push token with Supabase push_tokens table
+  // Request notification permission on first load if not yet granted
+  // OneSignal handles token registration automatically — no manual Supabase upsert needed
   useEffect(() => {
-    if (!currentMember) {
-      console.log('[Notifications] [iOS] No current member, skipping push token registration');
-      return;
-    }
-
-    if (hasRegisteredThisSession.current) {
-      console.log('[Notifications] [iOS] Already registered push token this session, skipping');
-      return;
-    }
-
-    const registerToken = async () => {
-      try {
-        console.log('[Notifications] [iOS] Starting push notification setup for member:', currentMember.id);
-
-        let permissionGranted = hasPermission;
-        if (!permissionGranted) {
-          console.log('[Notifications] [iOS] Requesting notification permission...');
-          permissionGranted = await requestPermission();
-          console.log('[Notifications] [iOS] Permission result:', permissionGranted);
-        }
-
-        if (!permissionGranted) {
-          console.log('[Notifications] [iOS] Notification permission not granted, skipping token registration');
-          Alert.alert(
-            'Notifications Disabled',
-            'Please enable notifications in Settings > Music Ministry > Notifications to receive service reminders.',
-            [{ text: 'OK' }]
-          );
-          return;
-        }
-
-        const token = expoPushToken;
-        if (!token) {
-          console.log('[Notifications] [iOS] Push token not yet available, will retry when token updates');
-          return;
-        }
-
-        console.log('[Notifications] [iOS] Registering push token with Supabase');
-        const success = await registerPushToken(currentMember.id, token, 'ios');
-
-        if (success) {
-          console.log('[Notifications] [iOS] Push token registered successfully in database');
-          hasRegisteredThisSession.current = true;
-        } else {
-          console.error('[Notifications] [iOS] Failed to register push token in database');
-        }
-      } catch (error: any) {
-        console.error('[Notifications] [iOS] Error during push notification registration:', error?.message || error);
-      }
-    };
-
-    registerToken();
-  }, [currentMember, expoPushToken, hasPermission, requestPermission, registerPushToken]);
+    if (!currentMember || hasPermission) return;
+    console.log('[Notifications] [iOS] Requesting OneSignal permission for member:', currentMember.id);
+    requestPermission().then((granted) => {
+      console.log('[Notifications] [iOS] Permission result:', granted);
+    }).catch((err) => {
+      console.warn('[Notifications] [iOS] Permission request error:', err);
+    });
+  }, [currentMember, hasPermission, requestPermission]);
 
   // Refresh services when church changes
   useEffect(() => {
@@ -779,7 +732,9 @@ export default function HomeScreen() {
 
       <View style={[styles.headerContainer, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.headerTitle}>{churchName}</Text>
-        <Text style={styles.headerSubtitle}>{upcomingText}</Text>
+                <NotificationBell />
+        
+<Text style={styles.headerSubtitle}>{upcomingText}</Text>
       </View>
 
       <ScrollView

@@ -28,7 +28,10 @@
         "backgroundColor": "#1a2332"
       },
       "entitlements": {
-        "aps-environment": "production"
+        "aps-environment": "production",
+        "com.apple.security.application-groups": [
+          "group.com.lbkchano.musicministry.onesignal"
+        ]
       }
     },
     "android": {
@@ -39,20 +42,10 @@
       "package": "com.lbkchano.musicministry",
       "versionCode": 11,
       "googleServicesFile": "./google-services.json",
-      "permissions": [
-        "NOTIFICATIONS",
-        "POST_NOTIFICATIONS",
-        "VIBRATE"
-      ],
       "splash": {
         "image": "./assets/images/9b11f806-5921-4e61-9383-a3f7e125c18f.png",
         "resizeMode": "cover",
         "backgroundColor": "#1a2332"
-      },
-      "notification": {
-        "icon": "./assets/notification-icon.png",
-        "color": "#1a2332",
-        "androidMode": "default"
       }
     },
     "web": {
@@ -60,6 +53,12 @@
       "bundler": "metro"
     },
     "plugins": [
+      [
+        "onesignal-expo-plugin",
+        {
+          "mode": "production"
+        }
+      ],
       [
         "expo-build-properties",
         {
@@ -78,15 +77,7 @@
       "expo-font",
       "expo-router",
       "expo-web-browser",
-      "react-native-edge-to-edge",
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/notification-icon.png",
-          "color": "#1a2332",
-          "sounds": []
-        }
-      ]
+      "react-native-edge-to-edge"
     ],
     "scheme": "musicministry",
     "experiments": {
@@ -99,10 +90,8 @@
       "router": {
         "origin": false
       },
-      "backendUrl": "https://nucffxkqp3vv9chpnxeb3a3fcnb99vdb.app.specular.dev"
-    },
-    "notification": {
-      "icon": "./assets/notification-icon.png"
+      "backendUrl": "https://nucffxkqp3vv9chpnxeb3a3fcnb99vdb.app.specular.dev",
+      "oneSignalAppId": "d22a0591-70f3-4c9b-b006-00beed197e85"
     }
   }
 }

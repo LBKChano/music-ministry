@@ -456,41 +456,6 @@ export type Database = {
           },
         ]
       }
-      push_tokens: {
-        Row: {
-          id: string
-          member_id: string
-          token: string
-          device_type: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          member_id: string
-          token: string
-          device_type?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          member_id?: string
-          token?: string
-          device_type?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "push_tokens_member_id_fkey"
-            columns: ["member_id"]
-            isOneToOne: false
-            referencedRelation: "church_members"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Views: {
       [_ in never]: never

@@ -1,8 +1,9 @@
 /**
  * NotificationContext — default (web-safe) stub.
  *
- * The real expo-notifications implementation lives in NotificationContext.native.tsx,
- * which Metro loads on iOS/Android. This file is the fallback for web.
+ * The real OneSignal implementation lives in NotificationContext.native.tsx,
+ * which Metro loads on iOS/Android. This file is the fallback for web where
+ * react-native-onesignal would crash at import time.
  */
 
 import React, { createContext, useContext, ReactNode } from "react";
@@ -12,8 +13,9 @@ interface NotificationContextType {
   permissionDenied: boolean;
   loading: boolean;
   isWeb: boolean;
-  expoPushToken: string | null;
   requestPermission: () => Promise<boolean>;
+  sendTag: (key: string, value: string) => void;
+  deleteTag: (key: string) => void;
   lastNotification: Record<string, unknown> | null;
 }
 
@@ -22,8 +24,9 @@ const NotificationContext = createContext<NotificationContextType>({
   permissionDenied: false,
   loading: false,
   isWeb: true,
-  expoPushToken: null,
   requestPermission: async () => false,
+  sendTag: () => {},
+  deleteTag: () => {},
   lastNotification: null,
 });
 
@@ -35,8 +38,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         permissionDenied: false,
         loading: false,
         isWeb: true,
-        expoPushToken: null,
         requestPermission: async () => false,
+        sendTag: () => {},
+        deleteTag: () => {},
         lastNotification: null,
       }}
     >

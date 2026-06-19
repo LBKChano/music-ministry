@@ -16,7 +16,6 @@ import { WidgetProvider } from '@/contexts/WidgetContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ChurchProvider, useChurch } from '@/contexts/ChurchContext';
-import { useNotifications } from '@/contexts/NotificationContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // Force expo-router to always start at index, never restore cached navigation state
@@ -69,21 +68,20 @@ function RootLayoutNav() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
   const { initialized } = useAuth();
-  const { expoPushToken } = useNotifications();
-  const { currentMember, registerPushToken } = useChurch();
+  const { currentMember } = useChurch();
 
   useEffect(() => {
-    if (expoPushToken && currentMember?.id) {
-      console.log('[Layout] Registering push token for member:', currentMember.id);
-      registerPushToken(currentMember.id, expoPushToken, Platform.OS)
-        .then((success) => {
-          if (success) {
-            console.log('[Layout] Push token saved for member:', currentMember.id);
-          }
-        })
-        .catch((err) => console.warn('[Layout] Failed to save push token:', err));
+    if (currentMember?.id && Platform.OS !== 'web') {
+      console.log('[Layout] Linking OneSignal user ID for member:', currentMember.id);
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { OneSignal } = require('react-native-onesignal') as { OneSignal: { login: (id: string) => void } };
+        OneSignal.login(currentMember.id);
+      } catch (err) {
+        console.warn('[Layout] OneSignal login failed:', err);
+      }
     }
-  }, [expoPushToken, currentMember?.id]);
+  }, [currentMember?.id]);
 
   // Fonts are loaded asynchronously but we don't block rendering on them.
   void fontsLoaded;

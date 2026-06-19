@@ -2,38 +2,58 @@
  * Notification Preferences Screen
  *
  * Shows notification permission status and allows users to manage
- * their notification preferences.
+ * their notification preferences using OneSignal tags.
  */
 
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
+  Switch,
   Alert,
   Platform,
   Linking,
   ScrollView,
-  useColorScheme,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useNotifications } from "@/contexts/NotificationContext";
 
+// Notification categories - customize these for your app
+const NOTIFICATION_CATEGORIES = [
+  {
+    key: "updates",
+    label: "App Updates",
+    description: "New features and improvements",
+    defaultEnabled: true,
+  },
+  {
+    key: "promotions",
+    label: "Promotions",
+    description: "Special offers and discounts",
+    defaultEnabled: true,
+  },
+  {
+    key: "reminders",
+    label: "Reminders",
+    description: "Activity reminders and tips",
+    defaultEnabled: true,
+  },
+];
+
 export default function NotificationPreferencesScreen() {
   const router = useRouter();
-  const { hasPermission, permissionDenied, isWeb, requestPermission } =
+  const { hasPermission, permissionDenied, isWeb, requestPermission, sendTag, deleteTag } =
     useNotifications();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const dynamicColors = {
-    background: isDark ? '#1C1C1E' : '#F2F2F7',
-    card: isDark ? '#2C2C2E' : '#FFFFFF',
-    text: isDark ? '#FFFFFF' : '#000000',
-    secondaryText: '#8E8E93',
-    separator: isDark ? '#3A3A3C' : '#E5E5EA',
-  };
+
+  // Track category toggles locally
+  const [categories, setCategories] = useState<Record<string, boolean>>(
+    Object.fromEntries(
+      NOTIFICATION_CATEGORIES.map((cat) => [cat.key, cat.defaultEnabled])
+    )
+  );
 
   const handleEnableNotifications = async () => {
     if (permissionDenied) {
@@ -60,18 +80,28 @@ export default function NotificationPreferencesScreen() {
     await requestPermission();
   };
 
+  const handleCategoryToggle = (key: string, value: boolean) => {
+    setCategories((prev) => ({ ...prev, [key]: value }));
+
+    if (value) {
+      sendTag(`notify_${key}`, "true");
+    } else {
+      deleteTag(`notify_${key}`);
+    }
+  };
+
   if (isWeb) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: dynamicColors.background }]}>
-        <View style={[styles.header, { backgroundColor: dynamicColors.card, borderBottomColor: dynamicColors.separator }]}>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()}>
             <Text style={styles.backButton}>← Back</Text>
           </TouchableOpacity>
-          <Text style={[styles.title, { color: dynamicColors.text }]}>Notifications</Text>
+          <Text style={styles.title}>Notifications</Text>
           <View style={{ width: 60 }} />
         </View>
         <View style={styles.centeredContent}>
-          <Text style={[styles.webMessage, { color: dynamicColors.secondaryText }]}>
+          <Text style={styles.webMessage}>
             Push notifications are available in the mobile app.
           </Text>
         </View>
@@ -80,30 +110,30 @@ export default function NotificationPreferencesScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: dynamicColors.background }]}>
-      <View style={[styles.header, { backgroundColor: dynamicColors.card, borderBottomColor: dynamicColors.separator }]}>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
           <Text style={styles.backButton}>← Back</Text>
         </TouchableOpacity>
-        <Text style={[styles.title, { color: dynamicColors.text }]}>Notifications</Text>
+        <Text style={styles.title}>Notifications</Text>
         <View style={{ width: 60 }} />
       </View>
 
       <ScrollView style={styles.content}>
         {/* Permission Status */}
         <View style={styles.section}>
-          <View style={[styles.permissionCard, { backgroundColor: dynamicColors.card }]}>
+          <View style={styles.permissionCard}>
             <View style={styles.permissionHeader}>
               <Text style={styles.permissionIcon}>
                 {hasPermission ? "🔔" : "🔕"}
               </Text>
               <View style={styles.permissionTextContainer}>
-                <Text style={[styles.permissionTitle, { color: dynamicColors.text }]}>
+                <Text style={styles.permissionTitle}>
                   {hasPermission
                     ? "Notifications Enabled"
                     : "Notifications Disabled"}
                 </Text>
-                <Text style={[styles.permissionDescription, { color: dynamicColors.secondaryText }]}>
+                <Text style={styles.permissionDescription}>
                   {hasPermission
                     ? "You'll receive push notifications"
                     : "Enable notifications to stay updated"}
@@ -121,6 +151,30 @@ export default function NotificationPreferencesScreen() {
           </View>
         </View>
 
+        {/* Notification Categories */}
+        {hasPermission && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Notification Types</Text>
+            {NOTIFICATION_CATEGORIES.map((category) => (
+              <View key={category.key} style={styles.categoryRow}>
+                <View style={styles.categoryText}>
+                  <Text style={styles.categoryLabel}>{category.label}</Text>
+                  <Text style={styles.categoryDescription}>
+                    {category.description}
+                  </Text>
+                </View>
+                <Switch
+                  value={categories[category.key]}
+                  onValueChange={(value) =>
+                    handleCategoryToggle(category.key, value)
+                  }
+                  trackColor={{ false: "#E5E5EA", true: "#34C759" }}
+                  thumbColor="#fff"
+                />
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -129,6 +183,7 @@ export default function NotificationPreferencesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: "#F2F2F7",
   },
   header: {
     flexDirection: "row",
@@ -136,7 +191,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
+    backgroundColor: "#fff",
     borderBottomWidth: 1,
+    borderBottomColor: "#E5E5EA",
   },
   backButton: {
     fontSize: 16,
@@ -146,6 +203,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: "600",
+    color: "#000",
   },
   content: {
     flex: 1,
@@ -175,6 +233,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   permissionCard: {
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 16,
     shadowColor: "#000",
@@ -197,9 +256,11 @@ const styles = StyleSheet.create({
   permissionTitle: {
     fontSize: 17,
     fontWeight: "600",
+    color: "#000",
   },
   permissionDescription: {
     fontSize: 14,
+    color: "#8E8E93",
     marginTop: 2,
   },
   enableButton: {
@@ -213,5 +274,28 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+  },
+  categoryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#fff",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F2F2F7",
+  },
+  categoryText: {
+    flex: 1,
+    marginRight: 12,
+  },
+  categoryLabel: {
+    fontSize: 16,
+    color: "#000",
+  },
+  categoryDescription: {
+    fontSize: 13,
+    color: "#8E8E93",
+    marginTop: 2,
   },
 });
