@@ -44,7 +44,8 @@
           "androidMode": "default",
           "androidCollapsedTitle": "Music Ministry"
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "scheme": "musicministry",
     "experiments": {
