@@ -14,8 +14,6 @@ interface NotificationContextType {
   isWeb: boolean;
   expoPushToken: string | null;
   requestPermission: () => Promise<boolean>;
-  sendTag: (key: string, value: string) => void;
-  deleteTag: (key: string) => void;
   lastNotification: Record<string, unknown> | null;
 }
 
@@ -26,8 +24,6 @@ const NotificationContext = createContext<NotificationContextType>({
   isWeb: true,
   expoPushToken: null,
   requestPermission: async () => false,
-  sendTag: () => {},
-  deleteTag: () => {},
   lastNotification: null,
 });
 
@@ -41,8 +37,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         isWeb: true,
         expoPushToken: null,
         requestPermission: async () => false,
-        sendTag: () => {},
-        deleteTag: () => {},
         lastNotification: null,
       }}
     >

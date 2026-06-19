@@ -35,8 +35,6 @@ interface NotificationContextType {
   isWeb: boolean;
   expoPushToken: string | null;
   requestPermission: () => Promise<boolean>;
-  sendTag: (key: string, value: string) => void;
-  deleteTag: (key: string) => void;
   lastNotification: Record<string, unknown> | null;
 }
 
@@ -152,10 +150,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // sendTag / deleteTag are no-ops without OneSignal — kept for API compatibility
-  const sendTag = useCallback((_key: string, _value: string) => {}, []);
-  const deleteTag = useCallback((_key: string) => {}, []);
-
   return (
     <NotificationContext.Provider
       value={{
@@ -165,8 +159,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         isWeb: false,
         expoPushToken,
         requestPermission,
-        sendTag,
-        deleteTag,
         lastNotification,
       }}
     >

@@ -43,8 +43,7 @@ Deno.serve(async (req) => {
     const { data: requestingMember } = await supabase
       .from('church_members')
       .select('name')
-      .eq('member_id', fillInRequest.requesting_member_id)
-      .eq('church_id', fillInRequest.church_id)
+      .eq('id', fillInRequest.requesting_member_id)
       .single()
 
     const requestingMemberName = requestingMember?.name ?? 'A member'
