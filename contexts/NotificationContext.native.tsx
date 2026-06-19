@@ -51,6 +51,8 @@ interface NotificationContextType {
   deleteTag: (key: string) => void;
   /** Last received notification data */
   lastNotification: Record<string, unknown> | null;
+  /** OneSignal push subscription ID (UUID) for backend targeting */
+  onesignalSubscriptionId: string | null;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(
@@ -66,6 +68,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastNotification, setLastNotification] = useState<Record<string, unknown> | null>(null);
+  const [onesignalSubscriptionId, setOnesignalSubscriptionId] = useState<string | null>(null);
 
   // Initialize OneSignal on mount
   useEffect(() => {
@@ -90,6 +93,25 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
       if (__DEV__) {
         console.log("[OneSignal] Initialized with App ID:", ONESIGNAL_APP_ID.substring(0, 8) + "...");
       }
+
+      // Get the push subscription ID for backend targeting
+      OneSignal.User.pushSubscription.getIdAsync().then((subscriptionId) => {
+        if (subscriptionId) {
+          console.log("[OneSignal] Subscription ID:", subscriptionId);
+          setOnesignalSubscriptionId(subscriptionId);
+        }
+      }).catch((err) => {
+        console.warn("[OneSignal] Failed to get subscription ID:", err);
+      });
+
+      // Listen for subscription ID changes (e.g. after permission granted)
+      const subscriptionChangeHandler = (subscription: { current: { id?: string } }) => {
+        if (subscription.current.id) {
+          console.log("[OneSignal] Subscription ID updated:", subscription.current.id);
+          setOnesignalSubscriptionId(subscription.current.id);
+        }
+      };
+      OneSignal.User.pushSubscription.addEventListener("change", subscriptionChangeHandler);
 
       // Check current permission status
       const permissionStatus = OneSignal.Notifications.hasPermission();
@@ -119,6 +141,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
       return () => {
         OneSignal.Notifications.removeEventListener("foregroundWillDisplay", foregroundHandler);
         OneSignal.Notifications.removeEventListener("permissionChange", permissionHandler);
+        OneSignal.User.pushSubscription.removeEventListener("change", subscriptionChangeHandler);
       };
     } catch (error) {
       console.error("[OneSignal] Failed to initialize:", error);
@@ -170,6 +193,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
         sendTag,
         deleteTag,
         lastNotification,
+        onesignalSubscriptionId,
       }}
     >
       {children}

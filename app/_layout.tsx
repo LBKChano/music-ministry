@@ -13,10 +13,11 @@ import {
 } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { WidgetProvider } from '@/contexts/WidgetContext';
-import { NotificationProvider } from '@/contexts/NotificationContext';
+import { NotificationProvider, useNotifications } from '@/contexts/NotificationContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ChurchProvider, useChurch } from '@/contexts/ChurchContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { supabase } from '@/lib/supabase/client';
 
 // Force expo-router to always start at index, never restore cached navigation state
 export const unstable_settings = {
@@ -69,19 +70,49 @@ function RootLayoutNav() {
   });
   const { initialized } = useAuth();
   const { currentMember } = useChurch();
+  const { onesignalSubscriptionId } = useNotifications();
 
+  // Retry OneSignal.login with a delay to ensure SDK is fully initialized
   useEffect(() => {
     if (currentMember?.id && Platform.OS !== 'web') {
       console.log('[Layout] Linking OneSignal user ID for member:', currentMember.id);
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { OneSignal } = require('react-native-onesignal') as { OneSignal: { login: (id: string) => void } };
-        OneSignal.login(currentMember.id);
-      } catch (err) {
-        console.warn('[Layout] OneSignal login failed:', err);
-      }
+      const timer = setTimeout(() => {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const { OneSignal } = require('react-native-onesignal') as { OneSignal: { login: (id: string) => void } };
+          OneSignal.login(currentMember.id);
+          console.log('[Layout] OneSignal.login called for:', currentMember.id);
+        } catch (err) {
+          console.warn('[Layout] OneSignal login failed:', err);
+        }
+      }, 1000);
+      return () => clearTimeout(timer);
     }
   }, [currentMember?.id]);
+
+  // Save OneSignal subscription ID to Supabase for backend targeting
+  useEffect(() => {
+    if (currentMember?.id && onesignalSubscriptionId && Platform.OS !== 'web') {
+      console.log('[Layout] Saving OneSignal subscription ID to Supabase for member:', currentMember.id);
+      supabase
+        .from('onesignal_subscriptions')
+        .upsert(
+          {
+            member_id: currentMember.id,
+            subscription_id: onesignalSubscriptionId,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'member_id' }
+        )
+        .then(({ error }) => {
+          if (error) {
+            console.warn('[Layout] Failed to save subscription ID:', error.message);
+          } else {
+            console.log('[Layout] Subscription ID saved for member:', currentMember.id);
+          }
+        });
+    }
+  }, [currentMember?.id, onesignalSubscriptionId]);
 
   // Fonts are loaded asynchronously but we don't block rendering on them.
   void fontsLoaded;
