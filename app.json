@@ -56,7 +56,8 @@
       [
         "onesignal-expo-plugin",
         {
-          "mode": "production"
+          "mode": "production",
+          "iPhoneDeploymentTarget": "16.0"
         }
       ],
       [
