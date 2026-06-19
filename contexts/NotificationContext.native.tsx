@@ -27,9 +27,6 @@ import { Platform } from "react-native";
 import { OneSignal, NotificationWillDisplayEvent } from "react-native-onesignal";
 import Constants from "expo-constants";
 
-// Import auth hook for user targeting (validated at setup time)
-import { useAuth } from "@/contexts/AuthContext";
-
 // Read App ID from app.json (expo.extra)
 const extra = Constants.expoConfig?.extra || {};
 const ONESIGNAL_APP_ID = extra.oneSignalAppId || "";
@@ -65,12 +62,6 @@ interface NotificationProviderProps {
 }
 
 export function NotificationProvider({ children }: NotificationProviderProps) {
-  // Get user from auth context for notification targeting
-  // Safe: handles different auth context shapes (Better Auth, Supabase, etc.)
-  const auth = useAuth() as Record<string, unknown> | null;
-  const session = auth?.session as Record<string, unknown> | undefined;
-  const user = (auth?.user ?? session?.user ?? null) as { id?: string } | null;
-
   const [hasPermission, setHasPermission] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -135,24 +126,6 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
       setLoading(false);
     }
   }, []);
-
-  // Sync OneSignal external user ID with authenticated user
-  useEffect(() => {
-    if (isWeb || !ONESIGNAL_APP_ID) return;
-
-    try {
-      if (user?.id) {
-        OneSignal.login(user.id);
-        if (__DEV__) {
-          console.log("[OneSignal] Linked user ID:", user.id);
-        }
-      } else {
-        OneSignal.logout();
-      }
-    } catch (error) {
-      console.error("[OneSignal] Failed to update user:", error);
-    }
-  }, [user?.id]);
 
   const requestPermission = useCallback(async (): Promise<boolean> => {
     if (isWeb) return false;
