@@ -32,6 +32,12 @@ yarn-error.*
 android/
 ios/
 
-pnpm-lock.yaml
 package-lock.json
 
+.next/
+.turbo/
+.vercel/
+.cache/
+build/
+yarn.lock
+next-env.d.ts

@@ -35,7 +35,16 @@
       "expo-router",
       "expo-web-browser",
       "expo-secure-store",
-      "expo-build-properties"
+      "expo-build-properties",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/natively-dark.png",
+          "color": "#1a2332",
+          "androidMode": "default",
+          "androidCollapsedTitle": "Music Ministry"
+        }
+      ]
     ],
     "scheme": "musicministry",
     "experiments": {
@@ -44,7 +53,10 @@
     },
     "extra": {
       "router": {},
-      "backendUrl": "https://nucffxkqp3vv9chpnxeb3a3fcnb99vdb.app.specular.dev"
+      "backendUrl": "https://nucffxkqp3vv9chpnxeb3a3fcnb99vdb.app.specular.dev",
+      "eas": {
+        "projectId": "69c9dc98-2c88-441d-be4d-4e0c9ba1af05"
+      }
     }
   }
 }
