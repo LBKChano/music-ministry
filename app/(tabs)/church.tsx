@@ -13,7 +13,7 @@ import {
   Switch,
   RefreshControl,
 } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -60,6 +60,7 @@ export default function ChurchScreen() {
     loading,
     error,
     user,
+    isAdmin,
     createChurch,
     deleteMember,
     updateMember,
@@ -179,6 +180,11 @@ export default function ChurchScreen() {
       setRefreshing(false);
     }
   }, [refreshChurches, refreshMembers, refreshRecurringServices, refreshChurchRoles, refreshNotificationSettings, refreshServicesHook, currentChurch]);
+
+  if (!isAdmin) {
+    console.log('[ChurchScreen] Non-admin user attempted to access church screen, redirecting');
+    return <Redirect href="/(tabs)/(home)" />;
+  }
 
   const handleCreateChurch = async () => {
     console.log('User tapped Create Church button');
