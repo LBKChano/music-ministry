@@ -57,7 +57,8 @@
         "onesignal-expo-plugin",
         {
           "mode": "production",
-          "iPhoneDeploymentTarget": "16.0"
+          "iPhoneDeploymentTarget": "16.0",
+          "nseBundleIdentifier": "com.lbkchano.musicministry.OneSignalNotificationServiceExtension"
         }
       ],
       [
