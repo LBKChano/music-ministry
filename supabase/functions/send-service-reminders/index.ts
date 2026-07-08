@@ -46,7 +46,7 @@ async function sendOneSignalMessages(messages: OneSignalMessage[]) {
     })
 
     const result = await response.json().catch(() => ({}))
-    if (!response.ok || result.errors) {
+    if (!response.ok || result.errors || !result.id) {
       errors.push(`${message.subscriptionId}: ${JSON.stringify(result.errors ?? result)}`)
       continue
     }

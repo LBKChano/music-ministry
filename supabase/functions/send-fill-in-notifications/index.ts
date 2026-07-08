@@ -36,7 +36,7 @@ async function sendOneSignalNotification(params: {
   })
 
   const result = await response.json().catch(() => ({}))
-  if (!response.ok || result.errors) {
+  if (!response.ok || result.errors || !result.id) {
     return {
       sent: 0,
       errors: [JSON.stringify(result.errors ?? result)],
