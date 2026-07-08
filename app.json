@@ -58,7 +58,7 @@
         {
           "mode": "production",
           "iPhoneDeploymentTarget": "16.0",
-          "nseBundleIdentifier": "com.lbkchano.musicministry.OneSignalNotificationServiceExtension",
+          "nseBundleIdentifier": "onesignalnse",
           "appGroupName": "group.com.lbkchano.musicministry.onesignal"
         }
       ],
