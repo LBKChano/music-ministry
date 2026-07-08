@@ -113,6 +113,14 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
       };
       OneSignal.User.pushSubscription.addEventListener("change", subscriptionChangeHandler);
 
+      const userChangeHandler = (event: { current: { externalId?: string; onesignalId?: string } }) => {
+        console.log("[OneSignal] User state changed:", {
+          externalId: event.current.externalId,
+          onesignalId: event.current.onesignalId,
+        });
+      };
+      OneSignal.User.addEventListener("change", userChangeHandler);
+
       // Check current permission status
       const permissionStatus = OneSignal.Notifications.hasPermission();
       setHasPermission(permissionStatus);
@@ -142,6 +150,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
         OneSignal.Notifications.removeEventListener("foregroundWillDisplay", foregroundHandler);
         OneSignal.Notifications.removeEventListener("permissionChange", permissionHandler);
         OneSignal.User.pushSubscription.removeEventListener("change", subscriptionChangeHandler);
+        OneSignal.User.removeEventListener("change", userChangeHandler);
       };
     } catch (error) {
       console.error("[OneSignal] Failed to initialize:", error);
@@ -157,6 +166,14 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
       const granted = await OneSignal.Notifications.requestPermission(true);
       setHasPermission(granted);
       setPermissionDenied(!granted);
+      if (granted) {
+        OneSignal.User.pushSubscription.optIn();
+        const subscriptionId = await OneSignal.User.pushSubscription.getIdAsync();
+        if (subscriptionId) {
+          console.log("[OneSignal] Subscription ID after permission:", subscriptionId);
+          setOnesignalSubscriptionId(subscriptionId);
+        }
+      }
       return granted;
     } catch (error) {
       console.error("[OneSignal] Permission request failed:", error);

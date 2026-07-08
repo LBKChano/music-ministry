@@ -10,6 +10,7 @@ const ONESIGNAL_REST_API_KEY = Deno.env.get('ONESIGNAL_REST_API_KEY')
 
 async function sendOneSignalNotification(params: {
   externalIds: string[]
+  subscriptionIds: string[]
   title: string
   body: string
   data: Record<string, string | null>
@@ -18,36 +19,64 @@ async function sendOneSignalNotification(params: {
     throw new Error('ONESIGNAL_REST_API_KEY is not configured')
   }
 
-  const response = await fetch('https://api.onesignal.com/notifications', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Key ${ONESIGNAL_REST_API_KEY}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-    body: JSON.stringify({
-      app_id: ONESIGNAL_APP_ID,
-      target_channel: 'push',
-      include_aliases: {
-        external_id: params.externalIds,
-      },
-      headings: { en: params.title },
-      contents: { en: params.body },
-      data: params.data,
-    }),
-  })
+  let sent = 0
+  const errors: string[] = []
 
-  const result = await response.json().catch(() => ({}))
-  if (!response.ok || result.errors || !result.id) {
-    return {
-      sent: 0,
-      errors: [JSON.stringify(result.errors ?? result)],
+  const sends = [
+    params.subscriptionIds.length > 0
+      ? {
+        label: 'subscription_ids',
+        expectedRecipients: params.subscriptionIds.length,
+        target: { include_subscription_ids: params.subscriptionIds },
+      }
+      : null,
+    params.externalIds.length > 0
+      ? {
+        label: 'external_ids',
+        expectedRecipients: params.externalIds.length,
+        target: {
+          include_aliases: {
+            external_id: params.externalIds,
+          },
+          target_channel: 'push',
+        },
+      }
+      : null,
+  ].filter(Boolean) as Array<{
+    label: string
+    expectedRecipients: number
+    target: Record<string, unknown>
+  }>
+
+  for (const send of sends) {
+    const response = await fetch('https://api.onesignal.com/notifications', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Key ${ONESIGNAL_REST_API_KEY}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        app_id: ONESIGNAL_APP_ID,
+        ...send.target,
+        headings: { en: params.title },
+        contents: { en: params.body },
+        data: params.data,
+      }),
+    })
+
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok || result.errors || !result.id) {
+      errors.push(`${send.label}: ${JSON.stringify(result.errors ?? result)}`)
+      continue
     }
+
+    sent += result.recipients ?? send.expectedRecipients
   }
 
   return {
-    sent: result.recipients ?? params.externalIds.length,
-    errors: [] as string[],
+    sent,
+    errors,
   }
 }
 
@@ -180,14 +209,16 @@ Deno.serve(async (req) => {
       )
     }
 
-    // 6. Count saved OneSignal subscriptions for diagnostics. Delivery targets
-    // OneSignal external_id aliases, which are set by OneSignal.login(memberId).
+    // 6. Prefer saved OneSignal subscription IDs because they target the exact
+    // device. Fall back to external_id aliases for members without a saved row.
     const { data: subscriptionRows } = await supabase
       .from('onesignal_subscriptions')
       .select('member_id, subscription_id')
       .in('member_id', eligibleMemberIds)
 
     stats.subscriptions = subscriptionRows?.length ?? 0
+    const memberIdsWithSubscriptions = new Set((subscriptionRows ?? []).map((row: { member_id: string }) => row.member_id))
+    const fallbackExternalIds = eligibleMemberIds.filter((memberId) => !memberIdsWithSubscriptions.has(memberId))
 
     // 7. Build notification content
     const notificationTitle = `Fill-In Needed — ${churchName}`
@@ -198,7 +229,8 @@ Deno.serve(async (req) => {
 
     // 8. Send via OneSignal Push API
     const { sent, errors } = await sendOneSignalNotification({
-      externalIds: eligibleMemberIds,
+      externalIds: fallbackExternalIds,
+      subscriptionIds: (subscriptionRows ?? []).map((row: { subscription_id: string }) => row.subscription_id),
       title: notificationTitle,
       body: notificationBody,
       data: {
@@ -217,7 +249,7 @@ Deno.serve(async (req) => {
       tokens_found: subscriptionRows?.length ?? 0,
       notifications_sent: sent,
       onesignal_response: JSON.stringify({ errors }),
-      notes: `fill-in request ${fillInRequest.id}; role=${fillInRequest.role_name}; stats=${JSON.stringify(stats)}`,
+      notes: `fill-in request ${fillInRequest.id}; role=${fillInRequest.role_name}; fallbackExternalIds=${fallbackExternalIds.length}; stats=${JSON.stringify(stats)}`,
     })
 
     return new Response(

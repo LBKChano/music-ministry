@@ -70,25 +70,50 @@ function RootLayoutNav() {
   });
   const { initialized } = useAuth();
   const { currentMember } = useChurch();
-  const { onesignalSubscriptionId } = useNotifications();
+  const { hasPermission, onesignalSubscriptionId } = useNotifications();
 
-  // Retry OneSignal.login with a delay to ensure SDK is fully initialized
+  // Keep OneSignal's user alias in sync with the app member. This runs again
+  // after permission/subscription changes so a fresh install cannot miss linking.
   useEffect(() => {
     if (currentMember?.id && Platform.OS !== 'web') {
       console.log('[Layout] Linking OneSignal user ID for member:', currentMember.id);
       const timer = setTimeout(() => {
         try {
           // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const { OneSignal } = require('react-native-onesignal') as { OneSignal: { login: (id: string) => void } };
+          const { OneSignal } = require('react-native-onesignal') as {
+            OneSignal: {
+              login: (id: string) => void;
+              User: {
+                addTags: (tags: Record<string, string>) => void;
+                getExternalId: () => Promise<string | null>;
+                pushSubscription: {
+                  optIn: () => void;
+                };
+              };
+            };
+          };
+          if (hasPermission) {
+            OneSignal.User.pushSubscription.optIn();
+          }
           OneSignal.login(currentMember.id);
-          console.log('[Layout] OneSignal.login called for:', currentMember.id);
+          OneSignal.User.addTags({
+            member_id: currentMember.id,
+            church_id: currentMember.church_id,
+          });
+          OneSignal.User.getExternalId()
+            .then((externalId) => {
+              console.log('[Layout] OneSignal external ID after login:', externalId);
+            })
+            .catch((err) => {
+              console.warn('[Layout] Failed to read OneSignal external ID:', err);
+            });
         } catch (err) {
           console.warn('[Layout] OneSignal login failed:', err);
         }
       }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [currentMember?.id]);
+  }, [currentMember?.church_id, currentMember?.id, hasPermission, onesignalSubscriptionId]);
 
   // Save OneSignal subscription ID to Supabase for backend targeting
   useEffect(() => {

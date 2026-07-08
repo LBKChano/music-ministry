@@ -12,6 +12,7 @@ const REMINDER_TOLERANCE_MINUTES = Number(Deno.env.get('REMINDER_TOLERANCE_MINUT
 
 type OneSignalMessage = {
   memberId: string
+  subscriptionIds: string[]
   reminderKey: string
   title: string
   body: string
@@ -28,6 +29,15 @@ async function sendOneSignalMessages(messages: OneSignalMessage[]) {
   const successfulReminderKeys = new Set<string>()
 
   for (const message of messages) {
+    const target = message.subscriptionIds.length > 0
+      ? { include_subscription_ids: message.subscriptionIds }
+      : {
+        include_aliases: {
+          external_id: [message.memberId],
+        },
+        target_channel: 'push',
+      }
+
     const response = await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
       headers: {
@@ -37,10 +47,7 @@ async function sendOneSignalMessages(messages: OneSignalMessage[]) {
       },
       body: JSON.stringify({
         app_id: ONESIGNAL_APP_ID,
-        target_channel: 'push',
-        include_aliases: {
-          external_id: [message.memberId],
-        },
+        ...target,
         headings: { en: message.title },
         contents: { en: message.body },
         data: message.data,
@@ -236,6 +243,7 @@ Deno.serve(async (req) => {
           if (subscriptionIds.length === 0) stats.skippedNoSubscription += 1
           messages.push({
             memberId: assignment.member_id,
+            subscriptionIds,
             reminderKey,
             title,
             body,
