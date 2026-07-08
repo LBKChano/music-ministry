@@ -11,7 +11,7 @@ const SERVICE_TIME_ZONE = Deno.env.get('SERVICE_TIME_ZONE') ?? 'America/Chihuahu
 const REMINDER_TOLERANCE_MINUTES = Number(Deno.env.get('REMINDER_TOLERANCE_MINUTES') ?? '5')
 
 type OneSignalMessage = {
-  subscriptionId: string
+  memberId: string
   reminderKey: string
   title: string
   body: string
@@ -38,7 +38,9 @@ async function sendOneSignalMessages(messages: OneSignalMessage[]) {
       body: JSON.stringify({
         app_id: ONESIGNAL_APP_ID,
         target_channel: 'push',
-        include_subscription_ids: [message.subscriptionId],
+        include_aliases: {
+          external_id: [message.memberId],
+        },
         headings: { en: message.title },
         contents: { en: message.body },
         data: message.data,
@@ -47,7 +49,7 @@ async function sendOneSignalMessages(messages: OneSignalMessage[]) {
 
     const result = await response.json().catch(() => ({}))
     if (!response.ok || result.errors || !result.id) {
-      errors.push(`${message.subscriptionId}: ${JSON.stringify(result.errors ?? result)}`)
+      errors.push(`${message.memberId}: ${JSON.stringify(result.errors ?? result)}`)
       continue
     }
 
@@ -217,11 +219,7 @@ Deno.serve(async (req) => {
         for (const assignment of (service.assignments ?? [])) {
           if (!assignment.member_id) continue
 
-          const subscriptionIds = subscriptionMap.get(assignment.member_id)
-          if (!subscriptionIds || subscriptionIds.length === 0) {
-            stats.skippedNoSubscription += 1
-            continue
-          }
+          const subscriptionIds = subscriptionMap.get(assignment.member_id) ?? []
 
           const reminderKey = `${service.id}:${assignment.member_id}:${windowHours}`
           if (sentKeys.has(reminderKey) || pendingSentKeys.has(reminderKey)) {
@@ -235,22 +233,21 @@ Deno.serve(async (req) => {
             : `You're scheduled as ${assignment.role} for ${service.service_type} on ${dateDisplay} (in ~${reminderLabel})`
 
           stats.dueAssignments += 1
-          for (const subscriptionId of subscriptionIds) {
-            messages.push({
-              subscriptionId,
-              reminderKey,
-              title,
-              body,
-              data: {
-                type: 'service_reminder',
-                serviceId: service.id,
-                serviceType: service.service_type,
-                serviceDate: service.date,
-                role: assignment.role,
-                reminderHours: String(windowHours),
-              },
-            })
-          }
+          if (subscriptionIds.length === 0) stats.skippedNoSubscription += 1
+          messages.push({
+            memberId: assignment.member_id,
+            reminderKey,
+            title,
+            body,
+            data: {
+              type: 'service_reminder',
+              serviceId: service.id,
+              serviceType: service.service_type,
+              serviceDate: service.date,
+              role: assignment.role,
+              reminderHours: String(windowHours),
+            },
+          })
 
           pendingSentKeys.add(reminderKey)
         }

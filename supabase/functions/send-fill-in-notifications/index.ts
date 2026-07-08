@@ -9,7 +9,7 @@ const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID') ?? 'd22a0591-70f3-4c9b
 const ONESIGNAL_REST_API_KEY = Deno.env.get('ONESIGNAL_REST_API_KEY')
 
 async function sendOneSignalNotification(params: {
-  subscriptionIds: string[]
+  externalIds: string[]
   title: string
   body: string
   data: Record<string, string | null>
@@ -28,7 +28,9 @@ async function sendOneSignalNotification(params: {
     body: JSON.stringify({
       app_id: ONESIGNAL_APP_ID,
       target_channel: 'push',
-      include_subscription_ids: params.subscriptionIds,
+      include_aliases: {
+        external_id: params.externalIds,
+      },
       headings: { en: params.title },
       contents: { en: params.body },
       data: params.data,
@@ -44,7 +46,7 @@ async function sendOneSignalNotification(params: {
   }
 
   return {
-    sent: result.recipients ?? params.subscriptionIds.length,
+    sent: result.recipients ?? params.externalIds.length,
     errors: [] as string[],
   }
 }
@@ -178,31 +180,14 @@ Deno.serve(async (req) => {
       )
     }
 
-    // 6. Get OneSignal subscription IDs for eligible members
+    // 6. Count saved OneSignal subscriptions for diagnostics. Delivery targets
+    // OneSignal external_id aliases, which are set by OneSignal.login(memberId).
     const { data: subscriptionRows } = await supabase
       .from('onesignal_subscriptions')
       .select('member_id, subscription_id')
       .in('member_id', eligibleMemberIds)
 
-    if (!subscriptionRows || subscriptionRows.length === 0) {
-      await supabase.from('notification_log').insert({
-        run_at: new Date().toISOString(),
-        church_id: fillInRequest.church_id,
-        service_id: fillInRequest.service_id,
-        members_found: eligibleMemberIds.length,
-        tokens_found: 0,
-        notifications_sent: 0,
-        onesignal_response: '[]',
-        notes: `fill-in request ${fillInRequest.id}; eligible members have no OneSignal subscriptions; role=${fillInRequest.role_name}; stats=${JSON.stringify(stats)}`,
-      })
-
-      return new Response(
-        JSON.stringify({ sent: 0, errors: [], message: 'Eligible members do not have OneSignal subscriptions', stats }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    stats.subscriptions = subscriptionRows.length
+    stats.subscriptions = subscriptionRows?.length ?? 0
 
     // 7. Build notification content
     const notificationTitle = `Fill-In Needed — ${churchName}`
@@ -213,7 +198,7 @@ Deno.serve(async (req) => {
 
     // 8. Send via OneSignal Push API
     const { sent, errors } = await sendOneSignalNotification({
-      subscriptionIds: subscriptionRows.map((row: { subscription_id: string }) => row.subscription_id),
+      externalIds: eligibleMemberIds,
       title: notificationTitle,
       body: notificationBody,
       data: {
@@ -229,7 +214,7 @@ Deno.serve(async (req) => {
       church_id: fillInRequest.church_id,
       service_id: fillInRequest.service_id,
       members_found: eligibleMemberIds.length,
-      tokens_found: subscriptionRows.length,
+      tokens_found: subscriptionRows?.length ?? 0,
       notifications_sent: sent,
       onesignal_response: JSON.stringify({ errors }),
       notes: `fill-in request ${fillInRequest.id}; role=${fillInRequest.role_name}; stats=${JSON.stringify(stats)}`,
