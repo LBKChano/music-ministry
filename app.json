@@ -18,6 +18,7 @@
       "buildNumber": "2",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Music Ministry does not use your location. This permission description is included because a notification library may reference location APIs.",
         "UIBackgroundModes": [
           "remote-notification"
         ]
@@ -59,7 +60,8 @@
           "mode": "production",
           "iPhoneDeploymentTarget": "16.0",
           "nseBundleIdentifier": "onesignalnse",
-          "appGroupName": "group.com.lbkchano.musicministry.onesignal"
+          "appGroupName": "group.com.lbkchano.musicministry.onesignal",
+          "disableLocation": true
         }
       ],
       [
