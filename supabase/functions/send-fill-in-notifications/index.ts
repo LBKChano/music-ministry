@@ -27,6 +27,7 @@ async function sendOneSignalNotification(params: {
     },
     body: JSON.stringify({
       app_id: ONESIGNAL_APP_ID,
+      target_channel: 'push',
       include_subscription_ids: params.subscriptionIds,
       headings: { en: params.title },
       contents: { en: params.body },
@@ -71,7 +72,7 @@ Deno.serve(async (req) => {
     // 1. Look up the fill-in request
     const { data: fillInRequest, error: fillInError } = await supabase
       .from('fill_in_requests')
-      .select('id, church_id, requesting_member_id, role_name, reason, service_id, status')
+      .select('id, church_id, requesting_member_id, role_name, reason, service_id, status, assignment_id')
       .eq('id', fillInRequestId)
       .single()
 
@@ -122,32 +123,46 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 5. Find role id for the requested role name
-    const { data: churchRole } = await supabase
+    const stats = {
+      matchingRoles: 0,
+      eligibleMembers: 0,
+      subscriptions: 0,
+    }
+
+    // 5. Find role ids for the requested role name. Fetch and normalize locally so
+    // small spacing/case differences do not make fill-in requests silently fail.
+    const { data: churchRoles } = await supabase
       .from('church_roles')
-      .select('id')
+      .select('id, name')
       .eq('church_id', fillInRequest.church_id)
-      .ilike('name', fillInRequest.role_name)
-      .single()
+
+    const requestedRole = normalizeRoleName(fillInRequest.role_name)
+    const matchingRoleIds = (churchRoles ?? [])
+      .filter((role: { id: string; name: string }) => normalizeRoleName(role.name) === requestedRole)
+      .map((role: { id: string }) => role.id)
+
+    stats.matchingRoles = matchingRoleIds.length
 
     let eligibleMemberIds: string[] = []
 
-    if (churchRole) {
+    if (matchingRoleIds.length > 0) {
       const { data: memberRoles } = await supabase
         .from('member_roles')
         .select('member_id')
-        .eq('role_id', churchRole.id)
+        .in('role_id', matchingRoleIds)
 
       if (memberRoles && memberRoles.length > 0) {
-        eligibleMemberIds = memberRoles
+        eligibleMemberIds = Array.from(new Set(memberRoles
           .map((mr: { member_id: string }) => mr.member_id)
-          .filter((id: string) => id !== fillInRequest.requesting_member_id)
+          .filter((id: string) => id !== fillInRequest.requesting_member_id)))
       }
     }
 
+    stats.eligibleMembers = eligibleMemberIds.length
+
     if (eligibleMemberIds.length === 0) {
       return new Response(
-        JSON.stringify({ sent: 0, errors: [] }),
+        JSON.stringify({ sent: 0, errors: [], message: 'No eligible members found for this role', stats }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -160,10 +175,12 @@ Deno.serve(async (req) => {
 
     if (!subscriptionRows || subscriptionRows.length === 0) {
       return new Response(
-        JSON.stringify({ sent: 0, errors: [] }),
+        JSON.stringify({ sent: 0, errors: [], message: 'Eligible members do not have OneSignal subscriptions', stats }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    stats.subscriptions = subscriptionRows.length
 
     // 7. Build notification content
     const notificationTitle = `Fill-In Needed — ${churchName}`
@@ -178,6 +195,7 @@ Deno.serve(async (req) => {
       title: notificationTitle,
       body: notificationBody,
       data: {
+        type: 'fill_in_request',
         fillInRequestId: fillInRequest.id,
         serviceId: fillInRequest.service_id,
         roleName: fillInRequest.role_name,
@@ -185,7 +203,7 @@ Deno.serve(async (req) => {
     })
 
     return new Response(
-      JSON.stringify({ sent, errors }),
+      JSON.stringify({ sent, errors, stats }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (err) {
@@ -196,3 +214,7 @@ Deno.serve(async (req) => {
     )
   }
 })
+
+function normalizeRoleName(roleName: string): string {
+  return roleName.trim().replace(/\s+/g, ' ').toLowerCase()
+}

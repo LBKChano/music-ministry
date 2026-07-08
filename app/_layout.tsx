@@ -102,7 +102,7 @@ function RootLayoutNav() {
             subscription_id: onesignalSubscriptionId,
             updated_at: new Date().toISOString(),
           },
-          { onConflict: 'member_id' }
+          { onConflict: 'subscription_id' }
         )
         .then(({ error }) => {
           if (error) {

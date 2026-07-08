@@ -7,9 +7,12 @@ const corsHeaders = {
 
 const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID') ?? 'd22a0591-70f3-4c9b-b006-00beed197e85'
 const ONESIGNAL_REST_API_KEY = Deno.env.get('ONESIGNAL_REST_API_KEY')
+const SERVICE_TIME_ZONE = Deno.env.get('SERVICE_TIME_ZONE') ?? 'America/Chihuahua'
+const REMINDER_TOLERANCE_MINUTES = Number(Deno.env.get('REMINDER_TOLERANCE_MINUTES') ?? '5')
 
 type OneSignalMessage = {
   subscriptionId: string
+  reminderKey: string
   title: string
   body: string
   data: Record<string, string>
@@ -22,6 +25,7 @@ async function sendOneSignalMessages(messages: OneSignalMessage[]) {
 
   let sent = 0
   const errors: string[] = []
+  const successfulReminderKeys = new Set<string>()
 
   for (const message of messages) {
     const response = await fetch('https://api.onesignal.com/notifications', {
@@ -33,6 +37,7 @@ async function sendOneSignalMessages(messages: OneSignalMessage[]) {
       },
       body: JSON.stringify({
         app_id: ONESIGNAL_APP_ID,
+        target_channel: 'push',
         include_subscription_ids: [message.subscriptionId],
         headings: { en: message.title },
         contents: { en: message.body },
@@ -42,14 +47,15 @@ async function sendOneSignalMessages(messages: OneSignalMessage[]) {
 
     const result = await response.json().catch(() => ({}))
     if (!response.ok || result.errors) {
-      errors.push(JSON.stringify(result.errors ?? result))
+      errors.push(`${message.subscriptionId}: ${JSON.stringify(result.errors ?? result)}`)
       continue
     }
 
     sent += result.recipients ?? 1
+    successfulReminderKeys.add(message.reminderKey)
   }
 
-  return { sent, errors }
+  return { sent, errors, successfulReminderKeys: Array.from(successfulReminderKeys) }
 }
 
 Deno.serve(async (req) => {
@@ -64,6 +70,7 @@ Deno.serve(async (req) => {
 
   try {
     const now = new Date()
+    const toleranceMs = Math.max(1, REMINDER_TOLERANCE_MINUTES) * 60 * 1000
 
     // 1. Get all churches with notification settings enabled
     const { data: notifSettings, error: settingsError } = await supabase
@@ -166,7 +173,16 @@ Deno.serve(async (req) => {
 
     // 8. Build messages
     const messages: OneSignalMessage[] = []
-    const newSentKeys: string[] = []
+    const pendingSentKeys = new Set<string>()
+    const stats = {
+      churches: churchIds.length,
+      services: services.length,
+      assignedMembers: allMemberIds.size,
+      subscriptions: subscriptionRows?.length ?? 0,
+      dueAssignments: 0,
+      skippedNoSubscription: 0,
+      skippedAlreadySent: 0,
+    }
 
     // Build a map of church_id -> notification_hours
     const churchHoursMap = new Map<string, number[]>()
@@ -178,28 +194,15 @@ Deno.serve(async (req) => {
       const notifHours = churchHoursMap.get(service.church_id) ?? [24, 6]
       const churchName = churchNameMap.get(service.church_id) ?? 'Your Church'
 
-      // Build service datetime
-      const dateParts = service.date.split('-')
-      const year = parseInt(dateParts[0], 10)
-      const month = parseInt(dateParts[1], 10) - 1
-      const day = parseInt(dateParts[2], 10)
-
-      let serviceDateTime: Date
-      if (service.time) {
-        const timeParts = service.time.split(':')
-        serviceDateTime = new Date(year, month, day, parseInt(timeParts[0], 10), parseInt(timeParts[1], 10), 0, 0)
-      } else {
-        serviceDateTime = new Date(year, month, day, 9, 0, 0, 0)
-      }
+      const serviceDateTime = makeZonedDate(service.date, service.time ?? '09:00', SERVICE_TIME_ZONE)
 
       // Skip past services
       if (serviceDateTime <= now) continue
 
-      const hoursUntil = (serviceDateTime.getTime() - now.getTime()) / (1000 * 60 * 60)
-
       for (const windowHours of notifHours) {
-        // Send when within the window (with 1h buffer on upper end)
-        if (hoursUntil > windowHours + 1 || hoursUntil <= 0) continue
+        const reminderDueAt = new Date(serviceDateTime.getTime() - windowHours * 60 * 60 * 1000)
+        const msSinceDue = now.getTime() - reminderDueAt.getTime()
+        if (msSinceDue < 0 || msSinceDue > toleranceMs) continue
 
         const roundedDays = Math.round(windowHours / 24)
         const reminderLabel = windowHours >= 24
@@ -207,7 +210,7 @@ Deno.serve(async (req) => {
           : `${windowHours} hour${windowHours !== 1 ? 's' : ''}`
 
         const dateDisplay = serviceDateTime.toLocaleDateString('en-US', {
-          weekday: 'short', month: 'short', day: 'numeric'
+          weekday: 'short', month: 'short', day: 'numeric', timeZone: SERVICE_TIME_ZONE,
         })
         const timeDisplay = service.time ? formatTime(service.time) : null
 
@@ -215,50 +218,64 @@ Deno.serve(async (req) => {
           if (!assignment.member_id) continue
 
           const subscriptionIds = subscriptionMap.get(assignment.member_id)
-          if (!subscriptionIds || subscriptionIds.length === 0) continue
+          if (!subscriptionIds || subscriptionIds.length === 0) {
+            stats.skippedNoSubscription += 1
+            continue
+          }
 
           const reminderKey = `${service.id}:${assignment.member_id}:${windowHours}`
-          if (sentKeys.has(reminderKey)) continue
+          if (sentKeys.has(reminderKey) || pendingSentKeys.has(reminderKey)) {
+            stats.skippedAlreadySent += 1
+            continue
+          }
 
           const title = `${churchName} — Service Reminder`
           const body = timeDisplay
             ? `You're scheduled as ${assignment.role} for ${service.service_type} on ${dateDisplay} at ${timeDisplay} (in ~${reminderLabel})`
             : `You're scheduled as ${assignment.role} for ${service.service_type} on ${dateDisplay} (in ~${reminderLabel})`
 
+          stats.dueAssignments += 1
           for (const subscriptionId of subscriptionIds) {
             messages.push({
               subscriptionId,
+              reminderKey,
               title,
               body,
-              data: { serviceId: service.id, serviceType: service.service_type, serviceDate: service.date, role: assignment.role },
+              data: {
+                type: 'service_reminder',
+                serviceId: service.id,
+                serviceType: service.service_type,
+                serviceDate: service.date,
+                role: assignment.role,
+                reminderHours: String(windowHours),
+              },
             })
           }
 
-          newSentKeys.push(reminderKey)
-          sentKeys.add(reminderKey) // prevent duplicates within this run
+          pendingSentKeys.add(reminderKey)
         }
       }
     }
 
     if (messages.length === 0) {
-      return new Response(JSON.stringify({ sent: 0, message: 'No reminders due' }), {
+      return new Response(JSON.stringify({ sent: 0, message: 'No reminders due', stats }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
     // 9. Send via OneSignal Push API
-    const { sent, errors } = await sendOneSignalMessages(messages)
+    const { sent, errors, successfulReminderKeys } = await sendOneSignalMessages(messages)
 
-    // 10. Record sent reminders for deduplication
-    if (newSentKeys.length > 0) {
-      console.log(`Recording ${newSentKeys.length} sent reminder keys`)
+    // 10. Record only reminders that OneSignal accepted so failed sends can retry.
+    if (successfulReminderKeys.length > 0) {
+      console.log(`Recording ${successfulReminderKeys.length} sent reminder keys`)
       await supabase.from('sent_reminders').insert(
-        newSentKeys.map(key => ({ reminder_key: key }))
+        successfulReminderKeys.map(key => ({ reminder_key: key }))
       )
     }
 
     console.log(`send-service-reminders: sent=${sent}, errors=${errors.length}`)
-    return new Response(JSON.stringify({ sent, errors }), {
+    return new Response(JSON.stringify({ sent, errors, stats }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 
@@ -269,6 +286,45 @@ Deno.serve(async (req) => {
     })
   }
 })
+
+function makeZonedDate(dateString: string, timeString: string, timeZone: string): Date {
+  const [year, month, day] = dateString.split('-').map((part) => parseInt(part, 10))
+  const [hour, minute] = timeString.split(':').map((part) => parseInt(part, 10))
+  const utcGuess = Date.UTC(year, month - 1, day, hour || 0, minute || 0, 0, 0)
+  let utcTime = utcGuess
+
+  for (let i = 0; i < 2; i += 1) {
+    const offset = getTimeZoneOffsetMs(new Date(utcTime), timeZone)
+    utcTime = utcGuess - offset
+  }
+
+  return new Date(utcTime)
+}
+
+function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date)
+
+  const values = new Map(parts.map((part) => [part.type, part.value]))
+  const asUTC = Date.UTC(
+    parseInt(values.get('year') ?? '1970', 10),
+    parseInt(values.get('month') ?? '1', 10) - 1,
+    parseInt(values.get('day') ?? '1', 10),
+    parseInt(values.get('hour') ?? '0', 10) % 24,
+    parseInt(values.get('minute') ?? '0', 10),
+    parseInt(values.get('second') ?? '0', 10),
+  )
+
+  return asUTC - date.getTime()
+}
 
 function formatTime(timeString: string): string {
   try {
