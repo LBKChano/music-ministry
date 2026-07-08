@@ -5,8 +5,19 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID') ?? 'd22a0591-70f3-4c9b-b006-00beed197e85'
-const ONESIGNAL_REST_API_KEY = Deno.env.get('ONESIGNAL_REST_API_KEY')
+const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID')
+  ?? Deno.env.get('ONE_SIGNAL_APP_ID')
+  ?? 'd22a0591-70f3-4c9b-b006-00beed197e85'
+const ONESIGNAL_REST_API_KEY_NAMES = [
+  'ONESIGNAL_REST_API_KEY',
+  'ONE_SIGNAL_REST_API_KEY',
+  'ONESIGNAL_API_KEY',
+  'ONE_SIGNAL_API_KEY',
+  'ONESIGNAL_REST_KEY',
+]
+const ONESIGNAL_REST_API_KEY = ONESIGNAL_REST_API_KEY_NAMES
+  .map((name) => Deno.env.get(name))
+  .find((value): value is string => Boolean(value))
 
 async function sendOneSignalNotification(params: {
   externalIds: string[]
@@ -16,7 +27,7 @@ async function sendOneSignalNotification(params: {
   data: Record<string, string | null>
 }) {
   if (!ONESIGNAL_REST_API_KEY) {
-    throw new Error('ONESIGNAL_REST_API_KEY is not configured')
+    throw new Error(`OneSignal REST API key is not configured. Set one of: ${ONESIGNAL_REST_API_KEY_NAMES.join(', ')}`)
   }
 
   let sent = 0
