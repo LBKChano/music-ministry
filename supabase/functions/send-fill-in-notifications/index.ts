@@ -161,6 +161,17 @@ Deno.serve(async (req) => {
     stats.eligibleMembers = eligibleMemberIds.length
 
     if (eligibleMemberIds.length === 0) {
+      await supabase.from('notification_log').insert({
+        run_at: new Date().toISOString(),
+        church_id: fillInRequest.church_id,
+        service_id: fillInRequest.service_id,
+        members_found: 0,
+        tokens_found: 0,
+        notifications_sent: 0,
+        onesignal_response: '[]',
+        notes: `fill-in request ${fillInRequest.id}; no eligible members for role ${fillInRequest.role_name}; stats=${JSON.stringify(stats)}`,
+      })
+
       return new Response(
         JSON.stringify({ sent: 0, errors: [], message: 'No eligible members found for this role', stats }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -174,6 +185,17 @@ Deno.serve(async (req) => {
       .in('member_id', eligibleMemberIds)
 
     if (!subscriptionRows || subscriptionRows.length === 0) {
+      await supabase.from('notification_log').insert({
+        run_at: new Date().toISOString(),
+        church_id: fillInRequest.church_id,
+        service_id: fillInRequest.service_id,
+        members_found: eligibleMemberIds.length,
+        tokens_found: 0,
+        notifications_sent: 0,
+        onesignal_response: '[]',
+        notes: `fill-in request ${fillInRequest.id}; eligible members have no OneSignal subscriptions; role=${fillInRequest.role_name}; stats=${JSON.stringify(stats)}`,
+      })
+
       return new Response(
         JSON.stringify({ sent: 0, errors: [], message: 'Eligible members do not have OneSignal subscriptions', stats }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -200,6 +222,17 @@ Deno.serve(async (req) => {
         serviceId: fillInRequest.service_id,
         roleName: fillInRequest.role_name,
       },
+    })
+
+    await supabase.from('notification_log').insert({
+      run_at: new Date().toISOString(),
+      church_id: fillInRequest.church_id,
+      service_id: fillInRequest.service_id,
+      members_found: eligibleMemberIds.length,
+      tokens_found: subscriptionRows.length,
+      notifications_sent: sent,
+      onesignal_response: JSON.stringify({ errors }),
+      notes: `fill-in request ${fillInRequest.id}; role=${fillInRequest.role_name}; stats=${JSON.stringify(stats)}`,
     })
 
     return new Response(

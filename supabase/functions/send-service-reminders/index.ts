@@ -96,8 +96,8 @@ Deno.serve(async (req) => {
     const maxHours = allHours.length > 0 ? Math.max(...allHours) : 48
     const windowEnd = new Date(now.getTime() + (maxHours + 2) * 60 * 60 * 1000)
 
-    const todayStr = now.toISOString().split('T')[0]
-    const windowEndStr = windowEnd.toISOString().split('T')[0]
+    const todayStr = formatDateInTimeZone(now, SERVICE_TIME_ZONE)
+    const windowEndStr = formatDateInTimeZone(windowEnd, SERVICE_TIME_ZONE)
 
     // 3. Fetch upcoming services with assignments for all relevant churches
     const churchIds = notifSettings.map((s: { church_id: string }) => s.church_id)
@@ -266,6 +266,15 @@ Deno.serve(async (req) => {
     // 9. Send via OneSignal Push API
     const { sent, errors, successfulReminderKeys } = await sendOneSignalMessages(messages)
 
+    await supabase.from('notification_log').insert({
+      run_at: new Date().toISOString(),
+      members_found: stats.dueAssignments,
+      tokens_found: messages.length,
+      notifications_sent: sent,
+      onesignal_response: JSON.stringify({ errors, successfulReminderKeys }),
+      notes: `service reminder batch; stats=${JSON.stringify(stats)}`,
+    })
+
     // 10. Record only reminders that OneSignal accepted so failed sends can retry.
     if (successfulReminderKeys.length > 0) {
       console.log(`Recording ${successfulReminderKeys.length} sent reminder keys`)
@@ -299,6 +308,18 @@ function makeZonedDate(dateString: string, timeString: string, timeZone: string)
   }
 
   return new Date(utcTime)
+}
+
+function formatDateInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+
+  const values = new Map(parts.map((part) => [part.type, part.value]))
+  return `${values.get('year')}-${values.get('month')}-${values.get('day')}`
 }
 
 function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
