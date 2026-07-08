@@ -32,6 +32,13 @@ interface SpecialService {
   selectedRoleIds: string[];
 }
 
+type MemberForAutoAssign = {
+  id: string;
+  name: string | null;
+  email: string;
+  memberRoles?: { role_id: string; role_name: string }[];
+};
+
 // Helper function to format date as YYYY-MM-DD in local timezone
 function formatDateForDatabase(date: Date): string {
   const year = date.getFullYear();
@@ -45,6 +52,14 @@ function formatTimeForDatabase(date: Date): string {
   const hours = String(date.getHours()).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
   return `${hours}:${minutes}`;
+}
+
+function normalizeRoleName(roleName: string): string {
+  return roleName.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function getMemberDisplayName(member: MemberForAutoAssign): string {
+  return member.name?.trim() || member.email;
 }
 
 export default function ChurchScreen() {
@@ -626,26 +641,42 @@ export default function ChurchScreen() {
     setIsAutoAssigning(true);
 
     try {
-      // OPTIMIZATION 1: Build member-by-role map once
-      const membersByRole: { [role: string]: any[] } = {};
+      const churchMembers = members ?? [];
+      const churchServices = (services ?? [])
+        .filter(service => service.church_id === currentChurch.id)
+        .sort((a, b) => {
+          const dateCompare = a.date.localeCompare(b.date);
+          if (dateCompare !== 0) return dateCompare;
+          return (a.time ?? '').localeCompare(b.time ?? '');
+        });
+
+      if (churchServices.length === 0) {
+        Alert.alert('Info', 'No scheduled services found for this church');
+        return;
+      }
+
+      // Build member-by-role map once, normalized so spacing/case differences
+      // between role setup and service slots do not block assignment.
+      const membersByRole: Record<string, MemberForAutoAssign[]> = {};
       (members ?? []).forEach(member => {
         if (member.memberRoles && member.memberRoles.length > 0) {
           member.memberRoles.forEach(memberRole => {
-            if (!membersByRole[memberRole.role_name]) {
-              membersByRole[memberRole.role_name] = [];
+            const normalizedRole = normalizeRoleName(memberRole.role_name);
+            if (!membersByRole[normalizedRole]) {
+              membersByRole[normalizedRole] = [];
             }
-            membersByRole[memberRole.role_name].push(member);
+            membersByRole[normalizedRole].push(member);
           });
         }
       });
 
-      // OPTIMIZATION 2: Fetch ALL unavailability in a single query
-      // Include all member IDs; guard against empty array to avoid Supabase .in() error
-      const memberIds = (members ?? []).map(m => m.id);
+      // Fetch all unavailability in a single query. Include all member IDs;
+      // guard against empty array to avoid Supabase .in() error.
+      const memberIds = churchMembers.map(m => m.id);
       console.log('Fetching all member unavailability in one query for', memberIds.length, 'members...');
 
-      const memberUnavailability: { [memberId: string]: Set<string> } = {};
-      (members ?? []).forEach(member => {
+      const memberUnavailability: Record<string, Set<string>> = {};
+      churchMembers.forEach(member => {
         memberUnavailability[member.id] = new Set();
       });
 
@@ -674,43 +705,77 @@ export default function ChurchScreen() {
         console.log('No members found, skipping unavailability fetch');
       }
 
-      // OPTIMIZATION 3: Track assignment counts
-      const assignmentCounts: { [memberId: string]: number } = {};
-      (members ?? []).forEach(member => {
+      // Start from existing assignments so auto-assign distributes total load,
+      // not only the new assignments created during this button press.
+      const assignmentCounts: Record<string, number> = {};
+      const lastAssignedDateByMember: Record<string, string> = {};
+      churchMembers.forEach(member => {
         assignmentCounts[member.id] = 0;
       });
+      churchServices.forEach(service => {
+        (service.assignments ?? []).forEach(assignment => {
+          if (!assignment.member_id) return;
+          assignmentCounts[assignment.member_id] = (assignmentCounts[assignment.member_id] ?? 0) + 1;
+          const lastDate = lastAssignedDateByMember[assignment.member_id];
+          if (!lastDate || service.date > lastDate) {
+            lastAssignedDateByMember[assignment.member_id] = service.date;
+          }
+        });
+      });
 
-      // OPTIMIZATION 4: Collect all updates for batch processing
       const assignmentUpdates: { id: string; member_id: string; person_name: string }[] = [];
-      const filteredServices = (services ?? []).filter(s => s.church_id === currentChurch.id);
-
       let skippedCount = 0;
+      let unavailableSkippedCount = 0;
+      let noRoleMatchSkippedCount = 0;
+      let sameServiceSkippedCount = 0;
 
-      for (const service of filteredServices) {
+      for (const service of churchServices) {
         const serviceDate = service.date;
+        const assignedMemberIdsForService = new Set<string>(
+          (service.assignments ?? [])
+            .map(assignment => assignment.member_id)
+            .filter((memberId): memberId is string => Boolean(memberId))
+        );
         
         for (const assignment of (service.assignments ?? [])) {
           if (!assignment.member_id && assignment.role) {
-            const availableMembers = (membersByRole[assignment.role] || []).filter(member => {
+            const roleCandidates = membersByRole[normalizeRoleName(assignment.role)] ?? [];
+            if (roleCandidates.length === 0) {
+              skippedCount++;
+              noRoleMatchSkippedCount++;
+              continue;
+            }
+
+            const availableMembers = roleCandidates.filter(member => {
               const isUnavailable = memberUnavailability[member.id]?.has(serviceDate);
-              return !isUnavailable;
+              const alreadyAssignedToService = assignedMemberIdsForService.has(member.id);
+              if (isUnavailable) unavailableSkippedCount++;
+              if (alreadyAssignedToService) sameServiceSkippedCount++;
+              return !isUnavailable && !alreadyAssignedToService;
             });
             
             if (availableMembers.length > 0) {
-              // Sort by current assignment count for load balancing
-              availableMembers.sort((a, b) => 
-                (assignmentCounts[a.id] || 0) - (assignmentCounts[b.id] || 0)
-              );
+              availableMembers.sort((a, b) => {
+                const loadCompare = (assignmentCounts[a.id] || 0) - (assignmentCounts[b.id] || 0);
+                if (loadCompare !== 0) return loadCompare;
+
+                const lastDateCompare = (lastAssignedDateByMember[a.id] ?? '').localeCompare(lastAssignedDateByMember[b.id] ?? '');
+                if (lastDateCompare !== 0) return lastDateCompare;
+
+                return getMemberDisplayName(a).localeCompare(getMemberDisplayName(b));
+              });
 
               const selectedMember = availableMembers[0];
               
               assignmentUpdates.push({
                 id: assignment.id,
                 member_id: selectedMember.id,
-                person_name: selectedMember.name || selectedMember.email,
+                person_name: getMemberDisplayName(selectedMember),
               });
               
               assignmentCounts[selectedMember.id] = (assignmentCounts[selectedMember.id] || 0) + 1;
+              lastAssignedDateByMember[selectedMember.id] = serviceDate;
+              assignedMemberIdsForService.add(selectedMember.id);
             } else {
               skippedCount++;
             }
@@ -724,11 +789,22 @@ export default function ChurchScreen() {
         const success = await batchUpdateAssignments(assignmentUpdates);
         
         if (success) {
-          console.log(`Auto-assignment completed: ${assignmentUpdates.length} assigned, ${skippedCount} skipped`);
-          Alert.alert('Success', `Auto-assignment completed!\n${assignmentUpdates.length} slots assigned\n${skippedCount} slots remain open (no available members)`);
+          console.log('Auto-assignment completed:', {
+            assigned: assignmentUpdates.length,
+            skipped: skippedCount,
+            noRoleMatchSkippedCount,
+            unavailableSkippedCount,
+            sameServiceSkippedCount,
+          });
+          Alert.alert(
+            'Success',
+            `Auto-assignment completed!\n${assignmentUpdates.length} slots assigned\n${skippedCount} slots remain open`
+          );
         } else {
           Alert.alert('Error', 'Some assignments failed to update');
         }
+      } else if (skippedCount > 0) {
+        Alert.alert('Info', `${skippedCount} open slot${skippedCount !== 1 ? 's' : ''} could not be assigned because no eligible members were available`);
       } else {
         Alert.alert('Info', 'No open slots to assign');
       }
@@ -963,6 +1039,7 @@ export default function ChurchScreen() {
 
       <ScrollView 
         style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -2604,13 +2681,13 @@ export default function ChurchScreen() {
         </View>
       </Modal>
 
-      {/* Add Ad-Hoc Service Modal - UPDATED TO MATCH PREPARE QUARTER MODAL SIZE */}
+      {/* Add Ad-Hoc Service Modal */}
       <Modal visible={showAdHocServiceModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <ScrollView contentContainerStyle={styles.modalScrollContent}>
-            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff', maxWidth: 500 }]}>
-              <Text style={[styles.modalTitle, { color: colors.text, fontSize: 22, marginBottom: 8 }]}>Add Single Service</Text>
-              <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 16 }]}>
+            <View style={[styles.modalContent, styles.singleServiceModalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+              <Text style={[styles.modalTitle, { color: colors.text, fontSize: 20, marginBottom: 6 }]}>Add Single Service</Text>
+              <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 12 }]}>
                 Create a one-time service that will appear in the Schedules tab and trigger reminder notifications
               </Text>
               
@@ -2688,8 +2765,8 @@ export default function ChurchScreen() {
                 </View>
               )}
 
-              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>Select Roles</Text>
-              <ScrollView style={{ maxHeight: 200, marginBottom: 16 }}>
+              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 10 }]}>Select Roles</Text>
+              <ScrollView style={{ maxHeight: 140, marginBottom: 12 }}>
                 {(churchRoles ?? []).map(role => {
                   const isSelected = (adHocServiceRoles ?? []).includes(role.id);
                   return (
@@ -2723,7 +2800,7 @@ export default function ChurchScreen() {
               />
 
               <TouchableOpacity 
-                style={[styles.primaryButton, { backgroundColor: colors.primary, marginTop: 20 }]} 
+                style={[styles.primaryButton, { backgroundColor: colors.primary, marginTop: 14 }]} 
                 onPress={handleCreateAdHocService}
                 disabled={isCreatingAdHocService}
               >
@@ -2800,6 +2877,9 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 140,
   },
   section: {
     padding: 16,
@@ -3161,6 +3241,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+  },
+  singleServiceModalContent: {
+    maxWidth: 500,
+    maxHeight: '86%',
+    padding: 18,
   },
   modalTitle: {
     fontSize: 20,

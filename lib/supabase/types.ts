@@ -307,6 +307,57 @@ export type Database = {
           },
         ]
       }
+      member_notifications: {
+        Row: {
+          body: string
+          church_id: string
+          created_at: string
+          data: Json
+          id: string
+          member_id: string
+          notification_type: string
+          read_at: string | null
+          title: string
+        }
+        Insert: {
+          body: string
+          church_id: string
+          created_at?: string
+          data?: Json
+          id?: string
+          member_id: string
+          notification_type: string
+          read_at?: string | null
+          title: string
+        }
+        Update: {
+          body?: string
+          church_id?: string
+          created_at?: string
+          data?: Json
+          id?: string
+          member_id?: string
+          notification_type?: string
+          read_at?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_notifications_church_id_fkey"
+            columns: ["church_id"]
+            isOneToOne: false
+            referencedRelation: "churches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_notifications_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "church_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_roles: {
         Row: {
           created_at: string

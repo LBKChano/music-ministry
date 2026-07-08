@@ -5,9 +5,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID')
-  ?? Deno.env.get('ONE_SIGNAL_APP_ID')
-  ?? 'd22a0591-70f3-4c9b-b006-00beed197e85'
+const ONESIGNAL_APP_ID = 'd22a0591-70f3-4c9b-b006-00beed197e85'
 const ONESIGNAL_REST_API_KEY_NAMES = [
   'ONESIGNAL_REST_API_KEY',
   'ONE_SIGNAL_REST_API_KEY',
@@ -17,6 +15,7 @@ const ONESIGNAL_REST_API_KEY_NAMES = [
 ]
 const ONESIGNAL_REST_API_KEY = ONESIGNAL_REST_API_KEY_NAMES
   .map((name) => Deno.env.get(name))
+  .map(normalizeSecret)
   .find((value): value is string => Boolean(value))
 
 async function sendOneSignalNotification(params: {
@@ -32,6 +31,7 @@ async function sendOneSignalNotification(params: {
 
   let sent = 0
   const errors: string[] = []
+  const successfulTargetLabels: string[] = []
 
   const sends = [
     params.subscriptionIds.length > 0
@@ -83,11 +83,13 @@ async function sendOneSignalNotification(params: {
     }
 
     sent += result.recipients ?? send.expectedRecipients
+    successfulTargetLabels.push(send.label)
   }
 
   return {
     sent,
     errors,
+    successfulTargetLabels,
   }
 }
 
@@ -239,7 +241,7 @@ Deno.serve(async (req) => {
     }
 
     // 8. Send via OneSignal Push API
-    const { sent, errors } = await sendOneSignalNotification({
+    const { sent, errors, successfulTargetLabels } = await sendOneSignalNotification({
       externalIds: fallbackExternalIds,
       subscriptionIds: (subscriptionRows ?? []).map((row: { subscription_id: string }) => row.subscription_id),
       title: notificationTitle,
@@ -252,6 +254,38 @@ Deno.serve(async (req) => {
       },
     })
 
+    if (sent > 0) {
+      const notifiedMemberIds = new Set<string>()
+      if (successfulTargetLabels.includes('subscription_ids')) {
+        ;(subscriptionRows ?? []).forEach((row: { member_id: string }) => notifiedMemberIds.add(row.member_id))
+      }
+      if (successfulTargetLabels.includes('external_ids')) {
+        fallbackExternalIds.forEach((memberId) => notifiedMemberIds.add(memberId))
+      }
+
+      if (notifiedMemberIds.size > 0) {
+        const { error: notificationHistoryError } = await supabase
+          .from('member_notifications')
+          .insert(Array.from(notifiedMemberIds).map(memberId => ({
+            church_id: fillInRequest.church_id,
+            member_id: memberId,
+            notification_type: 'fill_in_request',
+            title: notificationTitle,
+            body: notificationBody,
+            data: {
+              type: 'fill_in_request',
+              fillInRequestId: fillInRequest.id,
+              serviceId: fillInRequest.service_id,
+              roleName: fillInRequest.role_name,
+            },
+          })))
+
+        if (notificationHistoryError) {
+          console.error('Error recording member notifications:', notificationHistoryError)
+        }
+      }
+    }
+
     await supabase.from('notification_log').insert({
       run_at: new Date().toISOString(),
       church_id: fillInRequest.church_id,
@@ -259,7 +293,7 @@ Deno.serve(async (req) => {
       members_found: eligibleMemberIds.length,
       tokens_found: subscriptionRows?.length ?? 0,
       notifications_sent: sent,
-      onesignal_response: JSON.stringify({ errors }),
+      onesignal_response: JSON.stringify({ errors, successfulTargetLabels }),
       notes: `fill-in request ${fillInRequest.id}; role=${fillInRequest.role_name}; fallbackExternalIds=${fallbackExternalIds.length}; stats=${JSON.stringify(stats)}`,
     })
 
@@ -278,4 +312,15 @@ Deno.serve(async (req) => {
 
 function normalizeRoleName(roleName: string): string {
   return roleName.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+function normalizeSecret(value?: string | null): string | undefined {
+  if (!value) return undefined
+
+  const trimmed = value.trim()
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1).trim()
+  }
+
+  return trimmed
 }
