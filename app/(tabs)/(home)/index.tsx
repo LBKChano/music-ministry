@@ -1,6 +1,5 @@
 
 import { useChurch } from '@/hooks/useChurch';
-import { useNotifications } from '@/contexts/NotificationContext';
 import { colors } from '@/styles/commonStyles';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Stack } from 'expo-router';
@@ -384,8 +383,6 @@ export default function HomeScreen() {
     user,
   } = useChurch();
 
-  // Notification context — expo-notifications push token logic
-  const { requestPermission, expoPushToken, hasPermission } = useNotifications();
 
   const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate } = useServices(currentChurch?.id ?? null);
 
