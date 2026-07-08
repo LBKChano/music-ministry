@@ -2,7 +2,6 @@ import { ActivityIndicator, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffect } from 'react';
-import { NotificationBell } from "@/components/NotificationBell";
 
 /**
  * Root index screen — the sole place that decides where to navigate.
@@ -33,9 +32,7 @@ export default function Index() {
   // The splash screen is still visible on top of this (controlled by AuthContext).
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a2332' }}>
-            <NotificationBell />
-      
-<ActivityIndicator size="large" color="#ffffff" />
+      <ActivityIndicator size="large" color="#ffffff" />
     </View>
   );
 }

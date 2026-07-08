@@ -26,6 +26,8 @@ yarn-error.*
 .env*.local
 
 *.tsbuildinfo
+*.sqlite
+*.sqlite3
 
 .natively/
 

@@ -5,6 +5,49 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID') ?? 'd22a0591-70f3-4c9b-b006-00beed197e85'
+const ONESIGNAL_REST_API_KEY = Deno.env.get('ONESIGNAL_REST_API_KEY')
+
+async function sendOneSignalNotification(params: {
+  subscriptionIds: string[]
+  title: string
+  body: string
+  data: Record<string, string | null>
+}) {
+  if (!ONESIGNAL_REST_API_KEY) {
+    throw new Error('ONESIGNAL_REST_API_KEY is not configured')
+  }
+
+  const response = await fetch('https://api.onesignal.com/notifications', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Key ${ONESIGNAL_REST_API_KEY}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify({
+      app_id: ONESIGNAL_APP_ID,
+      include_subscription_ids: params.subscriptionIds,
+      headings: { en: params.title },
+      contents: { en: params.body },
+      data: params.data,
+    }),
+  })
+
+  const result = await response.json().catch(() => ({}))
+  if (!response.ok || result.errors) {
+    return {
+      sent: 0,
+      errors: [JSON.stringify(result.errors ?? result)],
+    }
+  }
+
+  return {
+    sent: result.recipients ?? params.subscriptionIds.length,
+    errors: [] as string[],
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -109,13 +152,13 @@ Deno.serve(async (req) => {
       )
     }
 
-    // 6. Get push tokens for eligible members
-    const { data: pushTokenRows } = await supabase
-      .from('push_tokens')
-      .select('member_id, token')
+    // 6. Get OneSignal subscription IDs for eligible members
+    const { data: subscriptionRows } = await supabase
+      .from('onesignal_subscriptions')
+      .select('member_id, subscription_id')
       .in('member_id', eligibleMemberIds)
 
-    if (!pushTokenRows || pushTokenRows.length === 0) {
+    if (!subscriptionRows || subscriptionRows.length === 0) {
       return new Response(
         JSON.stringify({ sent: 0, errors: [] }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -129,9 +172,9 @@ Deno.serve(async (req) => {
       notificationBody += ` — Reason: ${fillInRequest.reason}`
     }
 
-    // 8. Send via Expo Push API
-    const messages = pushTokenRows.map((row: { member_id: string; token: string }) => ({
-      to: row.token,
+    // 8. Send via OneSignal Push API
+    const { sent, errors } = await sendOneSignalNotification({
+      subscriptionIds: subscriptionRows.map((row: { subscription_id: string }) => row.subscription_id),
       title: notificationTitle,
       body: notificationBody,
       data: {
@@ -139,36 +182,7 @@ Deno.serve(async (req) => {
         serviceId: fillInRequest.service_id,
         roleName: fillInRequest.role_name,
       },
-      sound: 'default',
-      channelId: 'default',
-    }))
-
-    const expoResponse = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Accept-Encoding': 'gzip, deflate',
-      },
-      body: JSON.stringify(messages),
     })
-
-    const expoResult = await expoResponse.json()
-
-    const errors: string[] = []
-    let sent = 0
-
-    if (expoResult?.data && Array.isArray(expoResult.data)) {
-      for (const ticket of expoResult.data) {
-        if (ticket.status === 'ok') {
-          sent++
-        } else if (ticket.status === 'error') {
-          errors.push(ticket.message ?? 'Unknown error')
-        }
-      }
-    } else {
-      sent = messages.length
-    }
 
     return new Response(
       JSON.stringify({ sent, errors }),

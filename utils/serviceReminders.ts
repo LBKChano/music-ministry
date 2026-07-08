@@ -11,6 +11,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 
 // Storage key prefix for sent-notification deduplication
 const SENT_KEY_PREFIX = 'service_reminder_sent_';
@@ -80,15 +81,28 @@ async function scheduleLocalNotification(
 ): Promise<boolean> {
   console.log('[ServiceReminders] Scheduling local notification:', title, '|', body);
   try {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'Service reminders',
+        importance: Notifications.AndroidImportance.DEFAULT,
+        sound: 'default',
+      });
+    }
+
     await Notifications.scheduleNotificationAsync({
       content: {
         title,
         body,
         data: data ?? {},
         sound: true,
-        channelId: 'default',
       },
-      trigger: null, // deliver immediately
+      trigger: Platform.OS === 'android'
+        ? {
+            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: 1,
+            channelId: 'default',
+          }
+        : null,
     });
     console.log('[ServiceReminders] Local notification scheduled successfully');
     return true;
@@ -99,8 +113,6 @@ async function scheduleLocalNotification(
 }
 
 export interface ServiceReminderParams {
-  /** Expo push token for the current user (kept for API compatibility, not used for local notifications) */
-  expoPushToken?: string | null;
   /** Church name for the notification title */
   churchName: string;
   /** Upcoming services the user is assigned to */

@@ -4,7 +4,7 @@
 ## Current Status
 
 ✅ **Working:**
-- Push token registration on iOS devices
+- OneSignal subscription registration on iOS devices
 - Notification permissions handling
 - Token storage in Supabase database
 - Edge Function logic for sending reminders
@@ -135,8 +135,8 @@ To verify notifications work:
 
 1. ✅ **Device Check:** Use a physical iOS device (not simulator)
 2. ✅ **Permissions:** Grant notification permissions when prompted
-3. ✅ **Token Registration:** Check console logs for "Push token registered successfully"
-4. ✅ **Database:** Verify token appears in `push_tokens` table
+3. ✅ **Token Registration:** Check console logs for OneSignal subscription registration
+4. ✅ **Database:** Verify subscription appears in `onesignal_subscriptions` table
 5. ❌ **Cron Job:** Set up automatic Edge Function trigger (see above)
 6. ⏳ **Wait:** After cron job is set up, wait for the next scheduled run
 7. ⏳ **Verify:** Check Edge Function logs to see if notifications were sent

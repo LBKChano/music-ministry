@@ -1,13 +1,55 @@
-// Requires a `sent_reminders` table:
-//   id uuid default gen_random_uuid() primary key,
-//   reminder_key text unique not null,
-//   created_at timestamptz default now()
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+const ONESIGNAL_APP_ID = Deno.env.get('ONESIGNAL_APP_ID') ?? 'd22a0591-70f3-4c9b-b006-00beed197e85'
+const ONESIGNAL_REST_API_KEY = Deno.env.get('ONESIGNAL_REST_API_KEY')
+
+type OneSignalMessage = {
+  subscriptionId: string
+  title: string
+  body: string
+  data: Record<string, string>
+}
+
+async function sendOneSignalMessages(messages: OneSignalMessage[]) {
+  if (!ONESIGNAL_REST_API_KEY) {
+    throw new Error('ONESIGNAL_REST_API_KEY is not configured')
+  }
+
+  let sent = 0
+  const errors: string[] = []
+
+  for (const message of messages) {
+    const response = await fetch('https://api.onesignal.com/notifications', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Key ${ONESIGNAL_REST_API_KEY}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        app_id: ONESIGNAL_APP_ID,
+        include_subscription_ids: [message.subscriptionId],
+        headings: { en: message.title },
+        contents: { en: message.body },
+        data: message.data,
+      }),
+    })
+
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok || result.errors) {
+      errors.push(JSON.stringify(result.errors ?? result))
+      continue
+    }
+
+    sent += result.recipients ?? 1
+  }
+
+  return { sent, errors }
 }
 
 Deno.serve(async (req) => {
@@ -101,16 +143,16 @@ Deno.serve(async (req) => {
       })
     }
 
-    // 6. Get push tokens for all relevant members
-    const { data: pushTokenRows } = await supabase
-      .from('push_tokens')
-      .select('member_id, token')
+    // 6. Get OneSignal subscription IDs for all relevant members
+    const { data: subscriptionRows } = await supabase
+      .from('onesignal_subscriptions')
+      .select('member_id, subscription_id')
       .in('member_id', Array.from(allMemberIds))
 
-    const tokenMap = new Map<string, string[]>()
-    for (const row of (pushTokenRows ?? [])) {
-      if (!tokenMap.has(row.member_id)) tokenMap.set(row.member_id, [])
-      tokenMap.get(row.member_id)!.push(row.token)
+    const subscriptionMap = new Map<string, string[]>()
+    for (const row of (subscriptionRows ?? [])) {
+      if (!subscriptionMap.has(row.member_id)) subscriptionMap.set(row.member_id, [])
+      subscriptionMap.get(row.member_id)!.push(row.subscription_id)
     }
 
     // 7. Check which reminders have already been sent (deduplication)
@@ -123,7 +165,7 @@ Deno.serve(async (req) => {
     const sentKeys = new Set<string>((sentReminders ?? []).map((r: { reminder_key: string }) => r.reminder_key))
 
     // 8. Build messages
-    const messages: object[] = []
+    const messages: OneSignalMessage[] = []
     const newSentKeys: string[] = []
 
     // Build a map of church_id -> notification_hours
@@ -172,8 +214,8 @@ Deno.serve(async (req) => {
         for (const assignment of (service.assignments ?? [])) {
           if (!assignment.member_id) continue
 
-          const tokens = tokenMap.get(assignment.member_id)
-          if (!tokens || tokens.length === 0) continue
+          const subscriptionIds = subscriptionMap.get(assignment.member_id)
+          if (!subscriptionIds || subscriptionIds.length === 0) continue
 
           const reminderKey = `${service.id}:${assignment.member_id}:${windowHours}`
           if (sentKeys.has(reminderKey)) continue
@@ -183,14 +225,12 @@ Deno.serve(async (req) => {
             ? `You're scheduled as ${assignment.role} for ${service.service_type} on ${dateDisplay} at ${timeDisplay} (in ~${reminderLabel})`
             : `You're scheduled as ${assignment.role} for ${service.service_type} on ${dateDisplay} (in ~${reminderLabel})`
 
-          for (const token of tokens) {
+          for (const subscriptionId of subscriptionIds) {
             messages.push({
-              to: token,
+              subscriptionId,
               title,
               body,
               data: { serviceId: service.id, serviceType: service.service_type, serviceDate: service.date, role: assignment.role },
-              sound: 'default',
-              channelId: 'default',
             })
           }
 
@@ -206,34 +246,8 @@ Deno.serve(async (req) => {
       })
     }
 
-    // 9. Send via Expo Push API (batch in chunks of 100)
-    let sent = 0
-    const errors: string[] = []
-
-    for (let i = 0; i < messages.length; i += 100) {
-      const chunk = messages.slice(i, i + 100)
-      console.log(`Sending push batch ${i / 100 + 1}: ${chunk.length} messages`)
-      const expoResponse = await fetch('https://exp.host/--/api/v2/push/send', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Accept-Encoding': 'gzip, deflate',
-        },
-        body: JSON.stringify(chunk),
-      })
-
-      const expoResult = await expoResponse.json()
-
-      if (expoResult?.data && Array.isArray(expoResult.data)) {
-        for (const ticket of expoResult.data) {
-          if (ticket.status === 'ok') sent++
-          else if (ticket.status === 'error') errors.push(ticket.message ?? 'Unknown error')
-        }
-      } else {
-        sent += chunk.length
-      }
-    }
+    // 9. Send via OneSignal Push API
+    const { sent, errors } = await sendOneSignalMessages(messages)
 
     // 10. Record sent reminders for deduplication
     if (newSentKeys.length > 0) {

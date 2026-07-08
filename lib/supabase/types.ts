@@ -378,6 +378,88 @@ export type Database = {
           },
         ]
       }
+      onesignal_subscriptions: {
+        Row: {
+          id: string
+          member_id: string
+          subscription_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          member_id: string
+          subscription_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          member_id?: string
+          subscription_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onesignal_subscriptions_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: true
+            referencedRelation: "church_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_tokens: {
+        Row: {
+          id: string
+          member_id: string
+          token: string
+          device_type: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          member_id: string
+          token: string
+          device_type?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          member_id?: string
+          token?: string
+          device_type?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_tokens_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "church_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sent_reminders: {
+        Row: {
+          id: string
+          reminder_key: string
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          reminder_key: string
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          reminder_key?: string
+          created_at?: string | null
+        }
+        Relationships: []
+      }
       fill_in_requests: {
         Row: {
           id: string

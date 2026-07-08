@@ -9,7 +9,7 @@ The notification system has two components:
 ## Current Status
 
 ### ✅ What's Working
-- Push token registration when users open the app
+- OneSignal subscription registration when users open the app
 - Fill-in request notifications sent to members with the same role
 - Notification settings UI in the Church Management tab
 - Edge Function `send-service-reminders` is deployed and ready
@@ -68,8 +68,8 @@ Schedule: Every 30 minutes
 3. For each notification hour configured (e.g., 24 hours, 6 hours before):
    - Finds services in the time window (±30 minutes)
    - Gets all assigned members for those services
-   - Fetches their push tokens
-   - Sends push notifications via Expo Push Service
+   - Fetches their OneSignal subscription IDs
+   - Sends push notifications via OneSignal
 
 ### Fill-in Request Flow (Already Working)
 1. Member taps "Request Fill-In" button
@@ -95,15 +95,16 @@ Schedule: Every 30 minutes
 
 ## Troubleshooting
 
-### No Push Tokens Registered
+### No OneSignal Subscriptions Registered
 - Check that users have granted notification permissions
-- Verify the Expo project ID is correctly configured in `app.json`
-- Check the `push_tokens` table in Supabase to see if tokens are being saved
+- Verify the OneSignal App ID is correctly configured in `app.json`
+- Check the `onesignal_subscriptions` table in Supabase to see if subscription IDs are being saved
+- Verify the Supabase Edge Function secret `ONESIGNAL_REST_API_KEY` is set
 
 ### Fill-in Notifications Not Received
 - Verify members have the same role assigned
 - Check Edge Function logs in Supabase Dashboard → Edge Functions → send-fill-in-notifications
-- Ensure push tokens are registered for the target members
+- Ensure OneSignal subscriptions are registered for the target members
 
 ### Service Reminders Not Received
 - Verify the cron job is set up and running
@@ -113,11 +114,11 @@ Schedule: Every 30 minutes
 
 ## Database Tables
 
-### push_tokens
-Stores Expo push notification tokens for each member:
+### onesignal_subscriptions
+Stores OneSignal push subscription IDs for each member:
 - `member_id`: Links to church_members table
-- `token`: Expo push token (ExponentPushToken[...])
-- `device_type`: 'ios' or 'android'
+- `subscription_id`: OneSignal push subscription ID
+- `updated_at`: Last registration time
 
 ### notification_settings
 Stores notification preferences per church:
@@ -136,6 +137,6 @@ Stores notification preferences per church:
 
 If you encounter issues:
 1. Check the Edge Function logs in Supabase Dashboard
-2. Verify push tokens are being registered in the `push_tokens` table
+2. Verify OneSignal subscriptions are being registered in the `onesignal_subscriptions` table
 3. Ensure notification settings are properly configured
 4. Test with a service scheduled 1 hour in the future for quick feedback

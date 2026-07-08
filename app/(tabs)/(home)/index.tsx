@@ -1,5 +1,6 @@
 
 import { useChurch } from '@/hooks/useChurch';
+import { useNotifications } from '@/contexts/NotificationContext';
 import { colors } from '@/styles/commonStyles';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Stack } from 'expo-router';
@@ -383,6 +384,8 @@ export default function HomeScreen() {
     user,
   } = useChurch();
 
+  // Notification context - OneSignal handles token registration automatically
+  const { requestPermission, hasPermission } = useNotifications();
 
   const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate } = useServices(currentChurch?.id ?? null);
 
@@ -411,6 +414,17 @@ export default function HomeScreen() {
   const [fillInRoleName, setFillInRoleName] = useState('');
 
   // ── useEffect hooks (after all useState/useRef/other hooks) ──────────────
+
+  // Request notification permission on first load if not yet granted
+  useEffect(() => {
+    if (!currentMember || hasPermission) return;
+    console.log('[Notifications] Requesting OneSignal permission for member:', currentMember.id);
+    requestPermission().then((granted) => {
+      console.log('[Notifications] Permission result:', granted);
+    }).catch((err) => {
+      console.warn('[Notifications] Permission request error:', err);
+    });
+  }, [currentMember, hasPermission, requestPermission]);
 
   // Refresh services when church changes
   useEffect(() => {
