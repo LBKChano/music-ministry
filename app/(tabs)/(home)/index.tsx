@@ -58,7 +58,15 @@ const createLocalDate = (dateString: string): Date => {
   return new Date(year, month - 1, day);
 };
 
-const SONG_TYPE_OPTIONS = ['Opening', 'Praise', 'Worship', 'Offering', 'Special', 'Closing', 'Other'];
+const DEFAULT_SONG_TYPE_OPTIONS = ['Opening', 'Praise', 'Worship', 'Offering', 'Special', 'Closing', 'Other'];
+
+const normalizeSongTypeOptions = (options?: string[] | null) => {
+  const cleaned = (options ?? DEFAULT_SONG_TYPE_OPTIONS)
+    .map(option => option.trim())
+    .filter(Boolean);
+  const unique = Array.from(new Set(cleaned));
+  return unique.length > 0 ? unique : DEFAULT_SONG_TYPE_OPTIONS;
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -88,23 +96,33 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
+  headerTopRow: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
   headerBellSlot: {
-    position: 'absolute',
-    top: 10,
-    right: 16,
+    width: 48,
+    height: 48,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 32,
+    fontSize: 30,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    textAlign: 'center',
-    letterSpacing: 0.5,
+    textAlign: 'left',
   },
   headerSubtitle: {
     fontSize: 14,
     color: '#BFDBFE',
-    textAlign: 'center',
-    marginTop: 4,
+    textAlign: 'left',
+    marginTop: 2,
   },
   serviceCard: {
     backgroundColor: colors.cardBackground,
@@ -197,8 +215,13 @@ const styles = StyleSheet.create({
     color: colors.accent,
   },
   editSongButton: {
-    marginLeft: 'auto',
     padding: 4,
+  },
+  songActions: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   commentAuthor: {
     fontSize: 12,
@@ -369,6 +392,31 @@ const styles = StyleSheet.create({
   },
   songTypeOptionTextSelected: {
     color: colors.primary,
+  },
+  songTypeLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 8,
+  },
+  songTypeManageButton: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  songTypeManageButtonText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  songTypeSettingsText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
   },
   notifySection: {
     marginBottom: 12,
@@ -552,13 +600,14 @@ export default function HomeScreen() {
     cancelFillInRequest,
     refreshFillInRequests,
     refreshMembers,
+    updateChurchSongTypes,
     user,
   } = useChurch();
 
   // Notification context - OneSignal handles token registration automatically
   const { requestPermission, hasPermission } = useNotifications();
 
-  const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate, addServiceComment, updateServiceComment } = useServices(currentChurch?.id ?? null);
+  const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate, addServiceComment, updateServiceComment, deleteServiceComment } = useServices(currentChurch?.id ?? null);
 
   const insets = useSafeAreaInsets();
 
@@ -568,9 +617,11 @@ export default function HomeScreen() {
   const [deleteAssignmentModalVisible, setDeleteAssignmentModalVisible] = useState(false);
   const [fillInRequestModalVisible, setFillInRequestModalVisible] = useState(false);
   const [commentModalVisible, setCommentModalVisible] = useState(false);
+  const [songTypeSettingsModalVisible, setSongTypeSettingsModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isCreatingFillInRequest, setIsCreatingFillInRequest] = useState(false);
   const [isSavingServiceComment, setIsSavingServiceComment] = useState(false);
+  const [isSavingSongTypeSettings, setIsSavingSongTypeSettings] = useState(false);
 
   const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
@@ -588,9 +639,22 @@ export default function HomeScreen() {
   const [fillInRoleName, setFillInRoleName] = useState('');
   const [serviceCommentText, setServiceCommentText] = useState('');
   const [serviceSongType, setServiceSongType] = useState('Opening');
+  const [serviceSongOtherType, setServiceSongOtherType] = useState('');
   const [serviceSongNumber, setServiceSongNumber] = useState('');
   const [editingServiceCommentId, setEditingServiceCommentId] = useState<string | null>(null);
   const [notifyCommentMemberIds, setNotifyCommentMemberIds] = useState<string[]>([]);
+  const [songTypeDraftOptions, setSongTypeDraftOptions] = useState<string[]>([]);
+
+  const enabledSongTypeOptions = useMemo(
+    () => normalizeSongTypeOptions(currentChurch?.song_type_options),
+    [currentChurch?.song_type_options]
+  );
+  const songTypeOptionsForModal = useMemo(() => {
+    if (editingServiceCommentId && serviceSongType === 'Other' && !enabledSongTypeOptions.includes('Other')) {
+      return [...enabledSongTypeOptions, 'Other'];
+    }
+    return enabledSongTypeOptions;
+  }, [editingServiceCommentId, enabledSongTypeOptions, serviceSongType]);
 
   // ── useEffect hooks (after all useState/useRef/other hooks) ──────────────
 
@@ -604,6 +668,13 @@ export default function HomeScreen() {
       console.warn('[Notifications] Permission request error:', err);
     });
   }, [currentMember, hasPermission, requestPermission]);
+
+  useEffect(() => {
+    if (!commentModalVisible || serviceSongType === 'Other') return;
+    if (!enabledSongTypeOptions.includes(serviceSongType)) {
+      setServiceSongType(enabledSongTypeOptions[0] ?? 'Other');
+    }
+  }, [commentModalVisible, enabledSongTypeOptions, serviceSongType]);
 
   // Refresh services when church changes
   useEffect(() => {
@@ -845,11 +916,23 @@ export default function HomeScreen() {
     return member?.name || member?.email || 'Member';
   }, [currentMember?.email, currentMember?.id, currentMember?.name, members]);
 
+  const getSongTypeEditState = (songType?: string | null) => {
+    const normalizedType = songType?.trim();
+    if (!normalizedType) {
+      return { selectedType: enabledSongTypeOptions[0] ?? 'Other', customType: '' };
+    }
+    if (DEFAULT_SONG_TYPE_OPTIONS.includes(normalizedType)) {
+      return { selectedType: normalizedType, customType: '' };
+    }
+    return { selectedType: 'Other', customType: normalizedType };
+  };
+
   const openCommentModal = (service: ServiceWithAssignments) => {
     console.log('User tapped add service song button');
     setSelectedCommentService(service);
     setServiceCommentText('');
-    setServiceSongType('Opening');
+    setServiceSongType(enabledSongTypeOptions[0] ?? 'Other');
+    setServiceSongOtherType('');
     setServiceSongNumber('');
     setEditingServiceCommentId(null);
     setNotifyCommentMemberIds([]);
@@ -863,7 +946,9 @@ export default function HomeScreen() {
     console.log('User tapped edit service song button');
     setSelectedCommentService(service);
     setServiceCommentText(comment.comment_text);
-    setServiceSongType(comment.song_type || 'Song');
+    const editSongType = getSongTypeEditState(comment.song_type);
+    setServiceSongType(editSongType.selectedType);
+    setServiceSongOtherType(editSongType.customType);
     setServiceSongNumber(comment.song_number || '');
     setEditingServiceCommentId(comment.id);
     setNotifyCommentMemberIds([]);
@@ -875,10 +960,49 @@ export default function HomeScreen() {
     setCommentModalVisible(false);
     setSelectedCommentService(null);
     setServiceCommentText('');
-    setServiceSongType('Opening');
+    setServiceSongType(enabledSongTypeOptions[0] ?? 'Other');
+    setServiceSongOtherType('');
     setServiceSongNumber('');
     setEditingServiceCommentId(null);
     setNotifyCommentMemberIds([]);
+  };
+
+  const openSongTypeSettingsModal = () => {
+    setSongTypeDraftOptions(enabledSongTypeOptions);
+    setSongTypeSettingsModalVisible(true);
+  };
+
+  const toggleSongTypeDraftOption = (option: string) => {
+    setSongTypeDraftOptions(prev =>
+      prev.includes(option)
+        ? prev.filter(item => item !== option)
+        : [...prev, option]
+    );
+  };
+
+  const handleSaveSongTypeSettings = async () => {
+    if (!currentChurch || isSavingSongTypeSettings) return;
+    const nextOptions = DEFAULT_SONG_TYPE_OPTIONS.filter(option => songTypeDraftOptions.includes(option));
+    if (nextOptions.length === 0) {
+      Alert.alert('Error', 'Select at least one song type.');
+      return;
+    }
+
+    setIsSavingSongTypeSettings(true);
+    try {
+      const updatedChurch = await updateChurchSongTypes(currentChurch.id, nextOptions);
+      if (!updatedChurch) {
+        Alert.alert('Error', 'Could not save song types. Please try again.');
+        return;
+      }
+      setSongTypeSettingsModalVisible(false);
+      Alert.alert('Success', 'Song types updated.');
+    } catch (error) {
+      console.error('Error saving song type settings:', error);
+      Alert.alert('Error', 'Could not save song types. Please try again.');
+    } finally {
+      setIsSavingSongTypeSettings(false);
+    }
   };
 
   const toggleNotifyCommentMember = (memberId: string) => {
@@ -902,6 +1026,15 @@ export default function HomeScreen() {
       return;
     }
 
+    const songTypeToSave = serviceSongType === 'Other'
+      ? serviceSongOtherType.trim()
+      : serviceSongType.trim();
+
+    if (!songTypeToSave) {
+      Alert.alert('Error', 'Please describe the song type.');
+      return;
+    }
+
     Keyboard.dismiss();
     setIsSavingServiceComment(true);
     try {
@@ -910,7 +1043,7 @@ export default function HomeScreen() {
           editingServiceCommentId,
           selectedCommentService.id,
           serviceCommentText,
-          serviceSongType,
+          songTypeToSave,
           serviceSongNumber,
         )
         : await addServiceComment(
@@ -919,7 +1052,7 @@ export default function HomeScreen() {
           currentMember.id,
           serviceCommentText,
           notifyCommentMemberIds,
-          serviceSongType,
+          songTypeToSave,
           serviceSongNumber,
         );
 
@@ -942,6 +1075,31 @@ export default function HomeScreen() {
     } finally {
       setIsSavingServiceComment(false);
     }
+  };
+
+  const handleDeleteServiceComment = (
+    serviceId: string,
+    commentId: string,
+  ) => {
+    Alert.alert(
+      'Delete Song',
+      'Remove this song from the service?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const success = await deleteServiceComment(commentId, serviceId);
+            if (success) {
+              Alert.alert('Success', 'Song deleted.');
+            } else {
+              Alert.alert('Error', 'Failed to delete song. Please try again.');
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleCreateFillInRequest = async () => {
@@ -1072,16 +1230,20 @@ export default function HomeScreen() {
       />
 
       <View style={[styles.headerContainer, { paddingTop: insets.top + 12 }]}>
-        <Text
-          style={styles.headerTitle}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.6}
-        >
-          {churchName}
-        </Text>
-        <View style={[styles.headerBellSlot, { top: insets.top + 8 }]}>
-          <NotificationBell />
+        <View style={styles.headerTopRow}>
+          <View style={styles.headerTitleWrap}>
+            <Text
+              style={styles.headerTitle}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.72}
+            >
+              {churchName}
+            </Text>
+          </View>
+          <View style={styles.headerBellSlot}>
+            <NotificationBell />
+          </View>
         </View>
         <Text style={styles.headerSubtitle}>{upcomingText}</Text>
       </View>
@@ -1157,12 +1319,20 @@ export default function HomeScreen() {
                               </View>
                             ) : null}
                             {canEditSong ? (
-                              <TouchableOpacity
-                                style={styles.editSongButton}
-                                onPress={() => openEditCommentModal(service, comment)}
-                              >
-                                <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={16} color={colors.primary} />
-                              </TouchableOpacity>
+                              <View style={styles.songActions}>
+                                <TouchableOpacity
+                                  style={styles.editSongButton}
+                                  onPress={() => openEditCommentModal(service, comment)}
+                                >
+                                  <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={16} color={colors.primary} />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.editSongButton}
+                                  onPress={() => handleDeleteServiceComment(service.id, comment.id)}
+                                >
+                                  <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={16} color={colors.error} />
+                                </TouchableOpacity>
+                              </View>
                             ) : null}
                           </View>
                           <Text style={styles.commentText}>{comment.comment_text}</Text>
@@ -1367,9 +1537,19 @@ export default function HomeScreen() {
           <Pressable style={styles.keyboardDismissArea} onPress={Keyboard.dismiss}>
             <Pressable style={styles.modalContent} onPress={Keyboard.dismiss}>
             <Text style={styles.modalTitle}>{editingServiceCommentId ? 'Edit Song' : 'Add Song'}</Text>
-            <Text style={styles.notifyTitle}>Song type</Text>
+            <View style={styles.songTypeLabelRow}>
+              <Text style={styles.notifyTitle}>Song type</Text>
+              {isAdmin ? (
+                <TouchableOpacity
+                  style={styles.songTypeManageButton}
+                  onPress={openSongTypeSettingsModal}
+                >
+                  <Text style={styles.songTypeManageButtonText}>Edit types</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
             <View style={styles.songTypeGrid}>
-              {SONG_TYPE_OPTIONS.map(option => {
+              {songTypeOptionsForModal.map(option => {
                 const selected = serviceSongType === option;
                 return (
                   <TouchableOpacity
@@ -1384,6 +1564,17 @@ export default function HomeScreen() {
                 );
               })}
             </View>
+            {serviceSongType === 'Other' ? (
+              <TextInput
+                style={styles.input}
+                placeholder="Describe song type"
+                placeholderTextColor={colors.textSecondary}
+                value={serviceSongOtherType}
+                onChangeText={setServiceSongOtherType}
+                maxLength={40}
+                returnKeyType="next"
+              />
+            ) : null}
             <TextInput
               style={styles.input}
               placeholder="Song number (optional)"
@@ -1453,6 +1644,59 @@ export default function HomeScreen() {
             </Pressable>
           </Pressable>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Song Type Settings Modal */}
+      <Modal
+        visible={songTypeSettingsModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSongTypeSettingsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Song Types</Text>
+            <Text style={styles.songTypeSettingsText}>
+              Choose which song type buttons members can use when adding songs.
+            </Text>
+            <View style={styles.songTypeGrid}>
+              {DEFAULT_SONG_TYPE_OPTIONS.map(option => {
+                const selected = songTypeDraftOptions.includes(option);
+                return (
+                  <TouchableOpacity
+                    key={option}
+                    style={[styles.songTypeOption, selected && styles.songTypeOptionSelected]}
+                    onPress={() => toggleSongTypeDraftOption(option)}
+                  >
+                    <Text style={[styles.songTypeOptionText, selected && styles.songTypeOptionTextSelected]}>
+                      {option}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setSongTypeSettingsModalVisible(false)}
+                disabled={isSavingSongTypeSettings}
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={handleSaveSongTypeSettings}
+                disabled={isSavingSongTypeSettings}
+              >
+                {isSavingSongTypeSettings ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* Fill-In Request Modal */}

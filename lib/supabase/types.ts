@@ -102,6 +102,7 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          song_type_options: string[]
           updated_at: string
           invitation_code: string
         }
@@ -110,6 +111,7 @@ export type Database = {
           created_at?: string
           id?: string
           name: string
+          song_type_options?: string[]
           updated_at?: string
           invitation_code?: string
         }
@@ -118,6 +120,7 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          song_type_options?: string[]
           updated_at?: string
           invitation_code?: string
         }
@@ -655,6 +658,13 @@ export type Database = {
       delete_account: {
         Args: Record<PropertyKey, never>
         Returns: unknown
+      }
+      update_church_song_type_options: {
+        Args: {
+          target_church_id: string
+          options: string[]
+        }
+        Returns: Database["public"]["Tables"]["churches"]["Row"]
       }
     }
     Enums: {

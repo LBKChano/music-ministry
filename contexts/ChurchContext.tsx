@@ -64,6 +64,7 @@ interface ChurchContextValue {
   saveUnavailableDates: (memberId: string, dates: string[]) => Promise<boolean>;
   fetchNotificationSettings: (churchId: string) => Promise<void>;
   updateNotificationSettings: (churchId: string, notificationHours: number[], enabled: boolean) => Promise<boolean>;
+  updateChurchSongTypes: (churchId: string, songTypeOptions: string[]) => Promise<Church | null>;
   createFillInRequest: (assignmentId: string, serviceId: string, churchId: string, requestingMemberId: string, roleName: string, reason?: string) => Promise<FillInRequest | null>;
   acceptFillInRequest: (requestId: string, filledByMemberId: string, churchId: string) => Promise<boolean>;
   cancelFillInRequest: (requestId: string, churchId: string) => Promise<boolean>;
@@ -834,6 +835,42 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const updateChurchSongTypes = useCallback(async (churchId: string, songTypeOptions: string[]): Promise<Church | null> => {
+    console.log('Updating church song type options:', { churchId, count: songTypeOptions.length });
+    try {
+      setError(null);
+      const normalizedOptions = Array.from(new Set(
+        songTypeOptions
+          .map(option => option.trim())
+          .filter(option => option.length > 0)
+      ));
+
+      if (normalizedOptions.length === 0) {
+        setError('At least one song type is required');
+        return null;
+      }
+
+      const { data, error: updateError } = await supabase.rpc('update_church_song_type_options', {
+        target_church_id: churchId,
+        options: normalizedOptions,
+      });
+
+      if (updateError) {
+        console.error('Error updating church song type options:', updateError);
+        setError(updateError.message);
+        return null;
+      }
+
+      setChurches(prev => prev.map(church => church.id === churchId ? data : church));
+      setCurrentChurch(prev => prev?.id === churchId ? data : prev);
+      return data;
+    } catch (err) {
+      console.error('Error in updateChurchSongTypes:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return null;
+    }
+  }, []);
+
   const removeMemberUnavailability = useCallback(async (unavailabilityId: string) => {
     console.log('Removing unavailability:', unavailabilityId);
     try {
@@ -1195,6 +1232,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     saveUnavailableDates,
     fetchNotificationSettings,
     updateNotificationSettings,
+    updateChurchSongTypes,
     createFillInRequest,
     acceptFillInRequest,
     cancelFillInRequest,

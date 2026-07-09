@@ -529,6 +529,45 @@ export function useServices(churchId: string | null) {
     }
   }, []);
 
+  const deleteServiceComment = useCallback(async (commentId: string, serviceId: string) => {
+    if (!commentId || !serviceId) {
+      console.error('Missing required service comment delete data');
+      return false;
+    }
+
+    try {
+      setError(null);
+
+      const { error: deleteError } = await supabase
+        .from('service_comments')
+        .delete()
+        .eq('id', commentId);
+
+      if (deleteError) {
+        console.error('Error deleting service comment:', deleteError);
+        setError(deleteError.message);
+        return false;
+      }
+
+      setServices(prevServices =>
+        prevServices.map(service =>
+          service.id === serviceId
+            ? {
+              ...service,
+              service_comments: service.service_comments.filter(comment => comment.id !== commentId),
+            }
+            : service
+        )
+      );
+
+      return true;
+    } catch (err) {
+      console.error('Error in deleteServiceComment:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, []);
+
   // Initial fetch — re-run when auth becomes ready or churchId changes
   useEffect(() => {
     fetchServices();
@@ -628,6 +667,7 @@ export function useServices(churchId: string | null) {
     deleteAssignment,
     addServiceComment,
     updateServiceComment,
+    deleteServiceComment,
     refreshServices: fetchServices,
   };
 }
