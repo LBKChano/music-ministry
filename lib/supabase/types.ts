@@ -164,6 +164,58 @@ export type Database = {
           },
         ]
       }
+      service_comments: {
+        Row: {
+          church_id: string
+          comment_text: string
+          created_at: string
+          id: string
+          member_id: string
+          service_id: string
+          updated_at: string
+        }
+        Insert: {
+          church_id: string
+          comment_text: string
+          created_at?: string
+          id?: string
+          member_id: string
+          service_id: string
+          updated_at?: string
+        }
+        Update: {
+          church_id?: string
+          comment_text?: string
+          created_at?: string
+          id?: string
+          member_id?: string
+          service_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_comments_church_id_fkey"
+            columns: ["church_id"]
+            isOneToOne: false
+            referencedRelation: "churches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_comments_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "church_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_comments_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       recurring_services: {
         Row: {
           church_id: string
@@ -594,7 +646,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      delete_account: {
+        Args: Record<PropertyKey, never>
+        Returns: unknown
+      }
     }
     Enums: {
       [_ in never]: never

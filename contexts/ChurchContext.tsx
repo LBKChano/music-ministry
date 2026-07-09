@@ -1,5 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Tables, TablesInsert } from '@/lib/supabase/types';
@@ -42,14 +43,14 @@ interface ChurchContextValue {
   fillInRequests: FillInRequestWithMemberInfo[];
   loading: boolean;
   error: string | null;
-  user: ReturnType<typeof useAuth>['session'] extends { user: infer U } ? U : null;
+  user: User | null;
   currentMember: ChurchMemberWithRoles | null;
   isAdmin: boolean;
   createChurch: (name: string) => Promise<Church | null>;
   addMember: (churchId: string, email: string, name?: string, role?: string) => Promise<ChurchMember | null>;
   inviteMember: (churchId: string, email: string, name?: string, roleIds?: string[]) => Promise<ChurchMember | null>;
   deleteMember: (memberId: string, churchId: string) => Promise<boolean>;
-  updateMember: (memberId: string, churchId: string, updates: { name?: string; role?: string; email?: string }) => Promise<boolean>;
+  updateMember: (memberId: string, churchId: string, updates: { name?: string; role?: string; email?: string; is_admin?: boolean }) => Promise<boolean>;
   addRecurringService: (churchId: string, name: string, dayOfWeek: number, time: string, notes?: string, roles?: string[]) => Promise<RecurringService | null>;
   deleteRecurringService: (serviceId: string, churchId: string) => Promise<boolean>;
   addChurchRole: (churchId: string, name: string, description?: string) => Promise<ChurchRole | null>;
@@ -361,7 +362,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchMembers]);
 
-  const updateMember = useCallback(async (memberId: string, churchId: string, updates: { name?: string; role?: string; email?: string }) => {
+  const updateMember = useCallback(async (memberId: string, churchId: string, updates: { name?: string; role?: string; email?: string; is_admin?: boolean }) => {
     console.log('Updating member:', memberId, updates);
     try {
       setError(null);
@@ -1006,6 +1007,21 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
 
       if (updateRequestError) {
         console.error('Error updating fill-in request:', updateRequestError);
+        setError('Failed to mark fill-in request as filled.');
+        return false;
+      }
+
+      try {
+        const { data: fnData, error: fnError } = await supabase.functions.invoke('send-fill-in-accepted-notification', {
+          body: { fillInRequestId: requestId },
+        });
+        if (fnError) {
+          console.error('Error notifying fill-in requester:', fnError);
+        } else {
+          console.log('Fill-in requester notified successfully:', fnData);
+        }
+      } catch (notifError) {
+        console.error('Error calling accepted fill-in notification function:', notifError);
       }
 
       await fetchFillInRequests(churchId);
@@ -1110,7 +1126,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentChurch, fetchMembers, fetchChurchRoles, fetchRecurringServices, fetchFillInRequests, fetchNotificationSettings]);
 
-  const isAdmin = !!(currentChurch && user && currentChurch.admin_id === user.id);
+  const isAdmin = !!(currentChurch && user && (currentChurch.admin_id === user.id || currentMember?.is_admin));
 
   const refreshMembers = useCallback(() => {
     if (!currentChurch) return Promise.resolve(undefined);

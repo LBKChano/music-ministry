@@ -165,7 +165,7 @@ export default function ProfileScreen() {
 
   const displayName = currentMember?.name || user?.email?.split('@')[0] || 'User';
   const displayEmail = currentMember?.email || user?.email || '';
-  const isAdmin = currentChurch?.admin_id === user?.id;
+  const isAdmin = currentChurch?.admin_id === user?.id || currentMember?.is_admin;
   const userRole = isAdmin ? 'Admin' : 'Member';
 
   const today = new Date();

@@ -54,7 +54,7 @@ export default function ListItem({ listId }: { listId: string }) {
         friction={2}
         enableTrackpadTwoFingerGesture
         rightThreshold={40}
-        renderRightActions={RightAction}
+        renderRightActions={(prog, drag) => <RightAction prog={prog} drag={drag} />}
         overshootRight={false}
         enableContextMenu
       >

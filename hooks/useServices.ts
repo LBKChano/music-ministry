@@ -6,9 +6,14 @@ import type { Tables, TablesInsert } from '@/lib/supabase/types';
 
 type Service = Tables<'services'>;
 type Assignment = Tables<'assignments'>;
+type ChurchMember = Pick<Tables<'church_members'>, 'name' | 'email'>;
+type ServiceComment = Tables<'service_comments'> & {
+  church_members?: ChurchMember | null;
+};
 
 export interface ServiceWithAssignments extends Service {
   assignments: Assignment[];
+  service_comments: ServiceComment[];
 }
 
 export function useServices(churchId: string | null) {
@@ -45,7 +50,14 @@ export function useServices(churchId: string | null) {
         .from('services')
         .select(`
           *,
-          assignments (*)
+          assignments (*),
+          service_comments (
+            *,
+            church_members (
+              name,
+              email
+            )
+          )
         `)
         .eq('church_id', churchId)
         .order('date', { ascending: true });
@@ -61,6 +73,9 @@ export function useServices(churchId: string | null) {
       const servicesWithAssignments: ServiceWithAssignments[] = (servicesData || []).map(service => ({
         ...service,
         assignments: service.assignments || [],
+        service_comments: [...(service.service_comments || [])].sort((a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        ),
       }));
 
       console.log('Fetched services with assignments:', servicesWithAssignments.length, 'services');
@@ -371,6 +386,80 @@ export function useServices(churchId: string | null) {
     }
   }, []);
 
+  const addServiceComment = useCallback(async (
+    commentChurchId: string,
+    serviceId: string,
+    memberId: string,
+    commentText: string,
+    notifyMemberIds: string[] = []
+  ) => {
+    const trimmedComment = commentText.trim();
+    if (!commentChurchId || !serviceId || !memberId || !trimmedComment) {
+      console.error('Missing required service comment data');
+      return null;
+    }
+
+    try {
+      setError(null);
+
+      const { data, error: insertError } = await supabase
+        .from('service_comments')
+        .insert({
+          church_id: commentChurchId,
+          service_id: serviceId,
+          member_id: memberId,
+          comment_text: trimmedComment,
+        })
+        .select(`
+          *,
+          church_members (
+            name,
+            email
+          )
+        `)
+        .single();
+
+      if (insertError) {
+        console.error('Error adding service comment:', insertError);
+        setError(insertError.message);
+        return null;
+      }
+
+      setServices(prevServices =>
+        prevServices.map(service =>
+          service.id === serviceId
+            ? {
+              ...service,
+              service_comments: [...service.service_comments, data].sort((a, b) =>
+                new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              ),
+            }
+            : service
+        )
+      );
+
+      const uniqueNotifyMemberIds = Array.from(new Set(notifyMemberIds.filter(id => id && id !== memberId)));
+      if (uniqueNotifyMemberIds.length > 0) {
+        const { error: notifyError } = await supabase.functions.invoke('send-service-comment-notifications', {
+          body: {
+            serviceCommentId: data.id,
+            notifyMemberIds: uniqueNotifyMemberIds,
+          },
+        });
+
+        if (notifyError) {
+          console.error('Error sending service comment notifications:', notifyError);
+        }
+      }
+
+      return data;
+    } catch (err) {
+      console.error('Error in addServiceComment:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return null;
+    }
+  }, []);
+
   // Initial fetch — re-run when auth becomes ready or churchId changes
   useEffect(() => {
     fetchServices();
@@ -432,6 +521,19 @@ export function useServices(churchId: string | null) {
           fetchServicesRef.current();
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'service_comments',
+          filter: `church_id=eq.${churchId}`,
+        },
+        (payload) => {
+          console.log('Service comments realtime update:', payload.eventType);
+          fetchServicesRef.current();
+        }
+      )
       .subscribe((status) => {
         console.log('Realtime subscription status:', status);
       });
@@ -455,6 +557,7 @@ export function useServices(churchId: string | null) {
     updateAssignment,
     batchUpdateAssignments,
     deleteAssignment,
+    addServiceComment,
     refreshServices: fetchServices,
   };
 }

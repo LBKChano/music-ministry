@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.send-fill-in-notifications]
 verify_jwt = true
+
+[functions.send-service-comment-notifications]
+verify_jwt = true
+
+[functions.send-fill-in-accepted-notification]
+verify_jwt = true

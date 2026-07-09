@@ -1,6 +1,6 @@
 import React from "react";
 import { SymbolView, SymbolViewProps, SymbolWeight } from "expo-symbols";
-import { StyleProp, ViewStyle } from "react-native";
+import { Pressable, StyleProp, ViewStyle } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 // Comprehensive mapping from MaterialIcons / generic names → valid SF Symbol names.
@@ -403,12 +403,8 @@ class SafeSymbolView extends React.Component<
       );
     }
 
-    return (
+    const symbol = (
       <SymbolView
-        onPress={onPress}
-        onClick={onClick}
-        onMouseOver={onMouseOver}
-        onMouseLeave={onMouseLeave}
         testID={testID}
         accessibilityLabel={accessibilityLabel}
         weight={weight}
@@ -418,5 +414,18 @@ class SafeSymbolView extends React.Component<
         style={[{ width: size, height: size }, style]}
       />
     );
+
+    if (onPress || onClick || onMouseOver || onMouseLeave) {
+      return (
+        <Pressable
+          onPress={onPress}
+          {...({ onClick, onMouseOver, onMouseLeave } as any)}
+        >
+          {symbol}
+        </Pressable>
+      );
+    }
+
+    return symbol;
   }
 }

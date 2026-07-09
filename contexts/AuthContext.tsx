@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
-
-type Session = any;
 
 interface AuthContextType {
   session: Session | null;

@@ -4,7 +4,7 @@ import { useNotifications } from '@/contexts/NotificationContext';
 import { colors } from '@/styles/commonStyles';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Stack } from 'expo-router';
-import { useServices } from '@/hooks/useServices';
+import { useServices, type ServiceWithAssignments } from '@/hooks/useServices';
 import { IconSymbol } from '@/components/IconSymbol';
 import { NotificationBell } from "@/components/NotificationBell";
 import {
@@ -135,6 +135,61 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: colors.accent,
   },
+  commentsSection: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border + '50',
+    paddingTop: 12,
+    marginBottom: 12,
+  },
+  commentsTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  commentItem: {
+    backgroundColor: colors.background + '40',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 8,
+  },
+  commentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 4,
+  },
+  commentAuthor: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  commentDate: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  commentText: {
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 19,
+  },
+  addCommentButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: colors.primary + '12',
+    marginBottom: 12,
+  },
+  addCommentButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
+  },
   assignmentRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -226,6 +281,50 @@ const styles = StyleSheet.create({
   textArea: {
     height: 80,
     textAlignVertical: 'top',
+  },
+  commentInput: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  notifySection: {
+    marginBottom: 12,
+  },
+  notifyTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  notifyMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    gap: 10,
+  },
+  notifyCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifyCheckboxSelected: {
+    backgroundColor: colors.primary,
+  },
+  notifyMemberTextWrap: {
+    flex: 1,
+  },
+  notifyMemberName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  notifyMemberRole: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   modalButtons: {
     flexDirection: 'row',
@@ -363,7 +462,7 @@ export default function HomeScreen() {
   // Notification context — OneSignal handles token registration automatically
   const { requestPermission, hasPermission } = useNotifications();
 
-  const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate } = useServices(currentChurch?.id ?? null);
+  const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate, addServiceComment } = useServices(currentChurch?.id ?? null);
 
   const insets = useSafeAreaInsets();
 
@@ -372,13 +471,16 @@ export default function HomeScreen() {
   const [deleteServiceModalVisible, setDeleteServiceModalVisible] = useState(false);
   const [deleteAssignmentModalVisible, setDeleteAssignmentModalVisible] = useState(false);
   const [fillInRequestModalVisible, setFillInRequestModalVisible] = useState(false);
+  const [commentModalVisible, setCommentModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isCreatingFillInRequest, setIsCreatingFillInRequest] = useState(false);
+  const [isSavingServiceComment, setIsSavingServiceComment] = useState(false);
 
   const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
   const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
   const [assignmentToDelete, setAssignmentToDelete] = useState<{ serviceId: string; assignmentId: string } | null>(null);
+  const [selectedCommentService, setSelectedCommentService] = useState<ServiceWithAssignments | null>(null);
 
   const [newServiceDate, setNewServiceDate] = useState(new Date());
   const [newServiceType, setNewServiceType] = useState('');
@@ -388,6 +490,8 @@ export default function HomeScreen() {
   const [fillInAssignmentId, setFillInAssignmentId] = useState('');
   const [fillInServiceId, setFillInServiceId] = useState('');
   const [fillInRoleName, setFillInRoleName] = useState('');
+  const [serviceCommentText, setServiceCommentText] = useState('');
+  const [notifyCommentMemberIds, setNotifyCommentMemberIds] = useState<string[]>([]);
 
   // ── useEffect hooks (after all useState/useRef/other hooks) ──────────────
 
@@ -607,6 +711,84 @@ export default function HomeScreen() {
     setFillInRequestModalVisible(true);
   };
 
+  const getCommentNotifyOptions = useCallback((service: ServiceWithAssignments | null) => {
+    if (!service) return [];
+
+    const seen = new Set<string>();
+    return service.assignments
+      .filter(assignment => {
+        if (!assignment.member_id || assignment.member_id === currentMember?.id || seen.has(assignment.member_id)) {
+          return false;
+        }
+        seen.add(assignment.member_id);
+        return true;
+      })
+      .map(assignment => {
+        const member = members.find(m => m.id === assignment.member_id);
+        return {
+          id: assignment.member_id as string,
+          name: assignment.person_name || member?.name || member?.email || 'Assigned member',
+          role: assignment.role,
+        };
+      });
+  }, [currentMember?.id, members]);
+
+  const openCommentModal = (service: ServiceWithAssignments) => {
+    console.log('User tapped add service comment button');
+    setSelectedCommentService(service);
+    setServiceCommentText('');
+    setNotifyCommentMemberIds([]);
+    setCommentModalVisible(true);
+  };
+
+  const toggleNotifyCommentMember = (memberId: string) => {
+    setNotifyCommentMemberIds(prev =>
+      prev.includes(memberId)
+        ? prev.filter(id => id !== memberId)
+        : [...prev, memberId]
+    );
+  };
+
+  const handleAddServiceComment = async () => {
+    if (isSavingServiceComment) return;
+
+    if (!currentChurch || !currentMember || !selectedCommentService) {
+      Alert.alert('Error', 'Missing service information. Please try again.');
+      return;
+    }
+
+    if (!serviceCommentText.trim()) {
+      Alert.alert('Error', 'Please enter a comment.');
+      return;
+    }
+
+    setIsSavingServiceComment(true);
+    try {
+      const result = await addServiceComment(
+        currentChurch.id,
+        selectedCommentService.id,
+        currentMember.id,
+        serviceCommentText,
+        notifyCommentMemberIds,
+      );
+
+      if (result) {
+        Alert.alert('Success', notifyCommentMemberIds.length > 0 ? 'Comment added and selected members were notified.' : 'Comment added.');
+        setCommentModalVisible(false);
+        setSelectedCommentService(null);
+        setServiceCommentText('');
+        setNotifyCommentMemberIds([]);
+      } else {
+        Alert.alert('Error', 'Failed to add comment. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error adding service comment:', error);
+      Alert.alert('Error', 'Failed to add comment. Please try again.');
+    } finally {
+      setIsSavingServiceComment(false);
+    }
+  };
+
   const handleCreateFillInRequest = async () => {
     console.log('User submitted fill-in request');
     if (isCreatingFillInRequest) {
@@ -778,11 +960,42 @@ export default function HomeScreen() {
                       />
                     </TouchableOpacity>
                   )}
-                </View>
-                <Text style={styles.serviceDateTime}>{dateTimeDisplay}</Text>
-                {service.notes ? <Text style={styles.serviceNotes}>{service.notes}</Text> : null}
+	                </View>
+	                <Text style={styles.serviceDateTime}>{dateTimeDisplay}</Text>
+	                {service.notes ? <Text style={styles.serviceNotes}>{service.notes}</Text> : null}
 
-                {serviceFillInRequests.map(request => {
+	                {service.service_comments.length > 0 && (
+	                  <View style={styles.commentsSection}>
+	                    <Text style={styles.commentsTitle}>Comments</Text>
+	                    {service.service_comments.map(comment => {
+	                      const authorName = comment.church_members?.name || comment.church_members?.email || 'Member';
+	                      const createdAt = new Date(comment.created_at);
+	                      const createdAtText = isNaN(createdAt.getTime())
+	                        ? ''
+	                        : createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+	                      return (
+	                        <View key={comment.id} style={styles.commentItem}>
+	                          <View style={styles.commentHeader}>
+	                            <Text style={styles.commentAuthor}>{authorName}</Text>
+	                            {createdAtText ? <Text style={styles.commentDate}>{createdAtText}</Text> : null}
+	                          </View>
+	                          <Text style={styles.commentText}>{comment.comment_text}</Text>
+	                        </View>
+	                      );
+	                    })}
+	                  </View>
+	                )}
+
+	                <TouchableOpacity
+	                  style={styles.addCommentButton}
+	                  onPress={() => openCommentModal(service)}
+	                >
+	                  <IconSymbol ios_icon_name="bubble.left.fill" android_material_icon_name="chat" size={16} color={colors.primary} />
+	                  <Text style={styles.addCommentButtonText}>Add Comment</Text>
+	                </TouchableOpacity>
+
+	                {serviceFillInRequests.map(request => {
                   const requestingMemberDisplayName = request.requesting_member_name || request.requesting_member_email;
                   const isMyRequest = currentMember?.id === request.requesting_member_id;
                   const canAccept = currentMember?.memberRoles?.some(r => r.role_name === request.role_name) ?? false;
@@ -937,9 +1150,85 @@ export default function HomeScreen() {
             </View>
           </View>
         </View>
-      </Modal>
+	      </Modal>
 
-      {/* Fill-In Request Modal */}
+	      {/* Add Comment Modal */}
+	      <Modal
+	        visible={commentModalVisible}
+	        transparent
+	        animationType="fade"
+	        onRequestClose={() => setCommentModalVisible(false)}
+	      >
+	        <View style={styles.modalOverlay}>
+	          <View style={styles.modalContent}>
+	            <Text style={styles.modalTitle}>Add Comment</Text>
+	            <TextInput
+	              style={[styles.input, styles.commentInput]}
+	              placeholder="Songs, notes, or details for this service..."
+	              placeholderTextColor={colors.textSecondary}
+	              value={serviceCommentText}
+	              onChangeText={setServiceCommentText}
+	              multiline
+	            />
+
+	            {getCommentNotifyOptions(selectedCommentService).length > 0 && (
+	              <View style={styles.notifySection}>
+	                <Text style={styles.notifyTitle}>Notify assigned members</Text>
+	                {getCommentNotifyOptions(selectedCommentService).map(option => {
+	                  const selected = notifyCommentMemberIds.includes(option.id);
+	                  return (
+	                    <TouchableOpacity
+	                      key={option.id}
+	                      style={styles.notifyMemberRow}
+	                      onPress={() => toggleNotifyCommentMember(option.id)}
+	                    >
+	                      <View style={[
+	                        styles.notifyCheckbox,
+	                        selected && styles.notifyCheckboxSelected,
+	                      ]}>
+	                        {selected && (
+	                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="done" size={14} color="#fff" />
+	                        )}
+	                      </View>
+	                      <View style={styles.notifyMemberTextWrap}>
+	                        <Text style={styles.notifyMemberName}>{option.name}</Text>
+	                        <Text style={styles.notifyMemberRole}>{option.role}</Text>
+	                      </View>
+	                    </TouchableOpacity>
+	                  );
+	                })}
+	              </View>
+	            )}
+
+	            <View style={styles.modalButtons}>
+	              <TouchableOpacity
+	                style={[styles.modalButton, styles.cancelButton]}
+	                onPress={() => {
+	                  setCommentModalVisible(false);
+	                  setSelectedCommentService(null);
+	                  setServiceCommentText('');
+	                  setNotifyCommentMemberIds([]);
+	                }}
+	              >
+	                <Text style={styles.buttonText}>Cancel</Text>
+	              </TouchableOpacity>
+	              <TouchableOpacity
+	                style={[styles.modalButton, styles.saveButton]}
+	                onPress={handleAddServiceComment}
+	                disabled={isSavingServiceComment}
+	              >
+	                {isSavingServiceComment ? (
+	                  <ActivityIndicator size="small" color="#fff" />
+	                ) : (
+	                  <Text style={styles.buttonText}>Save</Text>
+	                )}
+	              </TouchableOpacity>
+	            </View>
+	          </View>
+	        </View>
+	      </Modal>
+
+	      {/* Fill-In Request Modal */}
       <Modal
         visible={fillInRequestModalVisible}
         transparent

@@ -115,6 +115,7 @@ export default function ChurchScreen() {
   const [editMemberEmail, setEditMemberEmail] = useState('');
   const [editMemberName, setEditMemberName] = useState('');
   const [editMemberRoles, setEditMemberRoles] = useState<string[]>([]);
+  const [editMemberIsAdmin, setEditMemberIsAdmin] = useState(false);
   const [newServiceName, setNewServiceName] = useState('');
   const [newServiceDay, setNewServiceDay] = useState(0);
   const [newServiceTime, setNewServiceTime] = useState('09:00');
@@ -141,8 +142,10 @@ export default function ChurchScreen() {
   const [specialServices, setSpecialServices] = useState<SpecialService[]>([]);
   const [showAddSpecialService, setShowAddSpecialService] = useState(false);
   const [specialServiceDate, setSpecialServiceDate] = useState(new Date());
+  const [draftSpecialServiceDate, setDraftSpecialServiceDate] = useState(new Date());
   const [specialServiceName, setSpecialServiceName] = useState('');
   const [specialServiceTime, setSpecialServiceTime] = useState(new Date());
+  const [draftSpecialServiceTime, setDraftSpecialServiceTime] = useState(new Date());
   const [specialServiceNotes, setSpecialServiceNotes] = useState('');
   const [specialServiceRoles, setSpecialServiceRoles] = useState<string[]>([]);
   const [showSpecialServiceTimePicker, setShowSpecialServiceTimePicker] = useState(false);
@@ -153,7 +156,9 @@ export default function ChurchScreen() {
   const [showAdHocServiceModal, setShowAdHocServiceModal] = useState(false);
   const [adHocServiceName, setAdHocServiceName] = useState('');
   const [adHocServiceDate, setAdHocServiceDate] = useState(new Date());
+  const [draftAdHocServiceDate, setDraftAdHocServiceDate] = useState(new Date());
   const [adHocServiceTime, setAdHocServiceTime] = useState(new Date());
+  const [draftAdHocServiceTime, setDraftAdHocServiceTime] = useState(new Date());
   const [adHocServiceNotes, setAdHocServiceNotes] = useState('');
   const [adHocServiceRoles, setAdHocServiceRoles] = useState<string[]>([]);
   const [showAdHocDatePicker, setShowAdHocDatePicker] = useState(false);
@@ -233,6 +238,7 @@ export default function ChurchScreen() {
     setEditMemberEmail(member.email);
     setEditMemberName(member.name || '');
     setEditMemberRoles(member.memberRoles?.map(r => r.role_name) || []);
+    setEditMemberIsAdmin(member.is_admin || member.member_id === currentChurch?.admin_id);
     setEditMemberModalVisible(true);
   };
 
@@ -242,7 +248,9 @@ export default function ChurchScreen() {
       return;
     }
 
-    const updates: { name?: string; email?: string } = {};
+    const member = (members ?? []).find(m => m.id === memberToEdit);
+    const isChurchOwner = member?.member_id === currentChurch.admin_id;
+    const updates: { name?: string; email?: string; is_admin?: boolean } = {};
     
     if (editMemberEmail.trim()) {
       updates.email = editMemberEmail.trim();
@@ -250,11 +258,11 @@ export default function ChurchScreen() {
     if (editMemberName.trim()) {
       updates.name = editMemberName.trim();
     }
+    updates.is_admin = isChurchOwner ? true : editMemberIsAdmin;
 
     const success = await updateMember(memberToEdit, currentChurch.id, updates);
     
     if (success) {
-      const member = (members ?? []).find(m => m.id === memberToEdit);
       const currentRoleNames = member?.memberRoles?.map(r => r.role_name) || [];
       
       console.log('Current roles:', currentRoleNames);
@@ -287,6 +295,7 @@ export default function ChurchScreen() {
       setEditMemberEmail('');
       setEditMemberName('');
       setEditMemberRoles([]);
+      setEditMemberIsAdmin(false);
       setEditMemberModalVisible(false);
     }
   };
@@ -1318,12 +1327,13 @@ export default function ChurchScreen() {
                   </View>
                 ) : (
                   <View style={styles.membersList}>
-                    {(members ?? []).map((member) => {
-                      const displayName = member.name || member.email;
-                      const displayRoles = member.memberRoles && member.memberRoles.length > 0
-                        ? member.memberRoles.map(r => r.role_name).join(', ')
-                        : 'No roles assigned';
-                      return (
+	                    {(members ?? []).map((member) => {
+	                      const displayName = member.name || member.email;
+	                      const displayRoles = member.memberRoles && member.memberRoles.length > 0
+	                        ? member.memberRoles.map(r => r.role_name).join(', ')
+	                        : 'No roles assigned';
+	                      const isMemberAdmin = member.is_admin || member.member_id === currentChurch?.admin_id;
+	                      return (
                         <View
                           key={member.id}
                           style={[styles.memberCard, { backgroundColor: colors.cardBackground }]}
@@ -1343,10 +1353,17 @@ export default function ChurchScreen() {
                               <Text style={[styles.memberEmail, { color: colors.textSecondary }]}>
                                 {member.email}
                               </Text>
-                              <Text style={[styles.memberRole, { color: colors.primary }]}>
-                                {displayRoles}
-                              </Text>
-                            </View>
+	                              <Text style={[styles.memberRole, { color: colors.primary }]}>
+	                                {displayRoles}
+	                              </Text>
+	                              {isMemberAdmin && (
+	                                <View style={styles.memberAdminBadge}>
+	                                  <Text style={styles.memberAdminBadgeText}>
+	                                    {member.member_id === currentChurch?.admin_id ? 'Owner Admin' : 'Scheduling Admin'}
+	                                  </Text>
+	                                </View>
+	                              )}
+	                            </View>
                           </View>
                           <View style={styles.memberActions}>
                             <TouchableOpacity
@@ -1863,9 +1880,9 @@ export default function ChurchScreen() {
                 onChangeText={setEditMemberName}
               />
 
-              <View style={styles.pickerContainer}>
-                <Text style={[styles.label, { color: colors.text }]}>Roles (select multiple)</Text>
-                {(churchRoles ?? []).length > 0 ? (
+	              <View style={styles.pickerContainer}>
+	                <Text style={[styles.label, { color: colors.text }]}>Roles (select multiple)</Text>
+	                {(churchRoles ?? []).length > 0 ? (
                   <View style={styles.roleCheckboxContainer}>
                     {(churchRoles ?? []).map((role) => {
                       const isSelected = (editMemberRoles ?? []).includes(role.name);
@@ -1902,10 +1919,26 @@ export default function ChurchScreen() {
                   <Text style={[styles.helperText, { color: colors.textSecondary }]}>
                     Add roles in the Roles tab first
                   </Text>
-                )}
-              </View>
+	                )}
+	              </View>
 
-              <View style={styles.modalButtons}>
+	              <View style={[styles.adminToggleRow, { borderColor: colors.border }]}>
+	                <View style={styles.adminToggleTextWrap}>
+	                  <Text style={[styles.adminToggleTitle, { color: colors.text }]}>Scheduling Admin</Text>
+	                  <Text style={[styles.adminToggleDescription, { color: colors.textSecondary }]}>
+	                    Can manage schedules, roles, members, notifications, and auto-assignments.
+	                  </Text>
+	                </View>
+	                <Switch
+	                  value={editMemberIsAdmin}
+	                  onValueChange={setEditMemberIsAdmin}
+	                  disabled={(members ?? []).find(m => m.id === memberToEdit)?.member_id === currentChurch?.admin_id}
+	                  trackColor={{ false: colors.border, true: colors.primary + '80' }}
+	                  thumbColor={editMemberIsAdmin ? colors.primary : '#f4f3f4'}
+	                />
+	              </View>
+
+	              <View style={styles.modalButtons}>
                 <TouchableOpacity
                   style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
                   onPress={() => {
@@ -1913,9 +1946,10 @@ export default function ChurchScreen() {
                     setEditMemberModalVisible(false);
                     setMemberToEdit(null);
                     setEditMemberEmail('');
-                    setEditMemberName('');
-                    setEditMemberRoles([]);
-                  }}
+	                    setEditMemberName('');
+	                    setEditMemberRoles([]);
+	                    setEditMemberIsAdmin(false);
+	                  }}
                 >
                   <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
                 </TouchableOpacity>
@@ -2384,64 +2418,98 @@ export default function ChurchScreen() {
                     value={specialServiceName}
                     onChangeText={setSpecialServiceName}
                   />
-                  <Text style={[styles.label, { color: colors.text }]}>Date</Text>
-                  <TouchableOpacity
-                    style={[styles.dateButton, { backgroundColor: colors.cardBackground, borderColor: colors.border, borderWidth: 1 }]}
-                    onPress={() => setShowSpecialServiceDatePicker(true)}
-                  >
+	                  <Text style={[styles.label, { color: colors.text }]}>Date</Text>
+	                  <TouchableOpacity
+	                    style={[styles.dateButton, { backgroundColor: colors.cardBackground, borderColor: colors.border, borderWidth: 1 }]}
+	                    onPress={() => {
+	                      setDraftSpecialServiceDate(specialServiceDate);
+	                      setShowSpecialServiceDatePicker(true);
+	                    }}
+	                  >
                     <Text style={[styles.dateButtonText, { color: colors.text }]}>
                       {specialServiceDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </Text>
                   </TouchableOpacity>
-                  {showSpecialServiceDatePicker && (
-                    <View style={{
-                      backgroundColor: '#ffffff',
-                      borderRadius: 12,
-                      overflow: 'hidden',
-                      marginVertical: 8,
-                    }}>
-                      <DateTimePicker
-                        value={specialServiceDate}
-                        mode="date"
-                        display="spinner"
-                        themeVariant="light"
-                        textColor="#000000"
-                        onChange={(event, date) => {
-                          setShowSpecialServiceDatePicker(false);
-                          if (date) setSpecialServiceDate(date);
-                        }}
-                      />
-                    </View>
-                  )}
-                  <Text style={[styles.label, { color: colors.text }]}>Time</Text>
-                  <TouchableOpacity
-                    style={[styles.dateButton, { backgroundColor: colors.cardBackground, borderColor: colors.border, borderWidth: 1 }]}
-                    onPress={() => setShowSpecialServiceTimePicker(true)}
-                  >
+	                  {showSpecialServiceDatePicker && (
+	                    <View style={styles.datePickerWrapper}>
+	                      <DateTimePicker
+	                        value={draftSpecialServiceDate}
+	                        mode="date"
+	                        display="spinner"
+	                        themeVariant="light"
+	                        textColor="#000000"
+	                        onChange={(event, date) => {
+	                          if (date) setDraftSpecialServiceDate(date);
+	                        }}
+	                      />
+	                      <View style={styles.pickerActionRow}>
+	                        <TouchableOpacity
+	                          style={[styles.pickerActionButton, styles.pickerCancelButton]}
+	                          onPress={() => {
+	                            setDraftSpecialServiceDate(specialServiceDate);
+	                            setShowSpecialServiceDatePicker(false);
+	                          }}
+	                        >
+	                          <Text style={styles.pickerCancelText}>Cancel</Text>
+	                        </TouchableOpacity>
+	                        <TouchableOpacity
+	                          style={[styles.pickerActionButton, styles.pickerConfirmButton]}
+	                          onPress={() => {
+	                            setSpecialServiceDate(draftSpecialServiceDate);
+	                            setShowSpecialServiceDatePicker(false);
+	                          }}
+	                        >
+	                          <Text style={styles.pickerConfirmText}>Confirm</Text>
+	                        </TouchableOpacity>
+	                      </View>
+	                    </View>
+	                  )}
+	                  <Text style={[styles.label, { color: colors.text }]}>Time</Text>
+	                  <TouchableOpacity
+	                    style={[styles.dateButton, { backgroundColor: colors.cardBackground, borderColor: colors.border, borderWidth: 1 }]}
+	                    onPress={() => {
+	                      setDraftSpecialServiceTime(specialServiceTime);
+	                      setShowSpecialServiceTimePicker(true);
+	                    }}
+	                  >
                     <Text style={[styles.dateButtonText, { color: colors.text }]}>
                       {specialServiceTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                     </Text>
                   </TouchableOpacity>
-                  {showSpecialServiceTimePicker && (
-                    <View style={{
-                      backgroundColor: '#ffffff',
-                      borderRadius: 12,
-                      overflow: 'hidden',
-                      marginVertical: 8,
-                    }}>
-                      <DateTimePicker
-                        value={specialServiceTime}
-                        mode="time"
-                        display="spinner"
-                        themeVariant="light"
-                        textColor="#000000"
-                        onChange={(event, time) => {
-                          setShowSpecialServiceTimePicker(false);
-                          if (time) setSpecialServiceTime(time);
-                        }}
-                      />
-                    </View>
-                  )}
+	                  {showSpecialServiceTimePicker && (
+	                    <View style={styles.datePickerWrapper}>
+	                      <DateTimePicker
+	                        value={draftSpecialServiceTime}
+	                        mode="time"
+	                        display="spinner"
+	                        themeVariant="light"
+	                        textColor="#000000"
+	                        onChange={(event, time) => {
+	                          if (time) setDraftSpecialServiceTime(time);
+	                        }}
+	                      />
+	                      <View style={styles.pickerActionRow}>
+	                        <TouchableOpacity
+	                          style={[styles.pickerActionButton, styles.pickerCancelButton]}
+	                          onPress={() => {
+	                            setDraftSpecialServiceTime(specialServiceTime);
+	                            setShowSpecialServiceTimePicker(false);
+	                          }}
+	                        >
+	                          <Text style={styles.pickerCancelText}>Cancel</Text>
+	                        </TouchableOpacity>
+	                        <TouchableOpacity
+	                          style={[styles.pickerActionButton, styles.pickerConfirmButton]}
+	                          onPress={() => {
+	                            setSpecialServiceTime(draftSpecialServiceTime);
+	                            setShowSpecialServiceTimePicker(false);
+	                          }}
+	                        >
+	                          <Text style={styles.pickerConfirmText}>Confirm</Text>
+	                        </TouchableOpacity>
+	                      </View>
+	                    </View>
+	                  )}
                   <Text style={[styles.label, { color: colors.text }]}>Notes (optional)</Text>
                   <TextInput
                     style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.border, backgroundColor: colors.cardBackground }]}
@@ -2583,11 +2651,12 @@ export default function ChurchScreen() {
               />
 
               <TouchableOpacity
-                style={[styles.dateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
-                onPress={() => {
-                  console.log('User tapped date picker button');
-                  setShowSpecialServiceDatePicker(true);
-                }}
+	                style={[styles.dateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
+	                onPress={() => {
+	                  console.log('User tapped date picker button');
+	                  setDraftSpecialServiceDate(specialServiceDate);
+	                  setShowSpecialServiceDatePicker(true);
+	                }}
               >
                 <Text style={[styles.dateButtonText, { color: colors.text }]}>
                   Date: {formatDate(specialServiceDate.toISOString())}
@@ -2595,26 +2664,46 @@ export default function ChurchScreen() {
               </TouchableOpacity>
               {showSpecialServiceDatePicker && (
                 <View style={styles.datePickerWrapper}>
-                <DateTimePicker
-                  value={specialServiceDate}
-                  mode="date"
-                  display="spinner"
-                  themeVariant="light"
-                  onChange={(event, date) => {
-                    console.log('User selected date:', date);
-                    setShowSpecialServiceDatePicker(false);
-                    if (date) setSpecialServiceDate(date);
-                  }}
-                />
-                </View>
-              )}
+	                <DateTimePicker
+	                  value={draftSpecialServiceDate}
+	                  mode="date"
+	                  display="spinner"
+	                  themeVariant="light"
+	                  onChange={(event, date) => {
+	                    console.log('User selected date:', date);
+	                    if (date) setDraftSpecialServiceDate(date);
+	                  }}
+	                />
+	                <View style={styles.pickerActionRow}>
+	                  <TouchableOpacity
+	                    style={[styles.pickerActionButton, styles.pickerCancelButton]}
+	                    onPress={() => {
+	                      setDraftSpecialServiceDate(specialServiceDate);
+	                      setShowSpecialServiceDatePicker(false);
+	                    }}
+	                  >
+	                    <Text style={styles.pickerCancelText}>Cancel</Text>
+	                  </TouchableOpacity>
+	                  <TouchableOpacity
+	                    style={[styles.pickerActionButton, styles.pickerConfirmButton]}
+	                    onPress={() => {
+	                      setSpecialServiceDate(draftSpecialServiceDate);
+	                      setShowSpecialServiceDatePicker(false);
+	                    }}
+	                  >
+	                    <Text style={styles.pickerConfirmText}>Confirm</Text>
+	                  </TouchableOpacity>
+	                </View>
+	                </View>
+	              )}
 
               <TouchableOpacity
-                style={[styles.dateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
-                onPress={() => {
-                  console.log('User tapped time picker button');
-                  setShowSpecialServiceTimePicker(true);
-                }}
+	                style={[styles.dateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
+	                onPress={() => {
+	                  console.log('User tapped time picker button');
+	                  setDraftSpecialServiceTime(specialServiceTime);
+	                  setShowSpecialServiceTimePicker(true);
+	                }}
               >
                 <Text style={[styles.dateButtonText, { color: colors.text }]}>
                   Time: {formatTimeForDatabase(specialServiceTime)}
@@ -2622,19 +2711,38 @@ export default function ChurchScreen() {
               </TouchableOpacity>
               {showSpecialServiceTimePicker && (
                 <View style={styles.datePickerWrapper}>
-                <DateTimePicker
-                  value={specialServiceTime}
-                  mode="time"
-                  display="spinner"
-                  themeVariant="light"
-                  onChange={(event, date) => {
-                    console.log('User selected time:', date);
-                    setShowSpecialServiceTimePicker(false);
-                    if (date) setSpecialServiceTime(date);
-                  }}
-                />
-                </View>
-              )}
+	                <DateTimePicker
+	                  value={draftSpecialServiceTime}
+	                  mode="time"
+	                  display="spinner"
+	                  themeVariant="light"
+	                  onChange={(event, date) => {
+	                    console.log('User selected time:', date);
+	                    if (date) setDraftSpecialServiceTime(date);
+	                  }}
+	                />
+	                <View style={styles.pickerActionRow}>
+	                  <TouchableOpacity
+	                    style={[styles.pickerActionButton, styles.pickerCancelButton]}
+	                    onPress={() => {
+	                      setDraftSpecialServiceTime(specialServiceTime);
+	                      setShowSpecialServiceTimePicker(false);
+	                    }}
+	                  >
+	                    <Text style={styles.pickerCancelText}>Cancel</Text>
+	                  </TouchableOpacity>
+	                  <TouchableOpacity
+	                    style={[styles.pickerActionButton, styles.pickerConfirmButton]}
+	                    onPress={() => {
+	                      setSpecialServiceTime(draftSpecialServiceTime);
+	                      setShowSpecialServiceTimePicker(false);
+	                    }}
+	                  >
+	                    <Text style={styles.pickerConfirmText}>Confirm</Text>
+	                  </TouchableOpacity>
+	                </View>
+	                </View>
+	              )}
 
               <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>Select Roles</Text>
               <ScrollView style={{ maxHeight: 200, marginBottom: 16 }}>
@@ -2686,13 +2794,10 @@ export default function ChurchScreen() {
         <View style={styles.modalOverlay}>
           <ScrollView contentContainerStyle={styles.modalScrollContent}>
             <View style={[styles.modalContent, styles.singleServiceModalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-              <Text style={[styles.modalTitle, { color: colors.text, fontSize: 20, marginBottom: 6 }]}>Add Single Service</Text>
-              <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 12 }]}>
-                Create a one-time service that will appear in the Schedules tab and trigger reminder notifications
-              </Text>
+              <Text style={[styles.modalTitle, styles.singleServiceModalTitle, { color: colors.text }]}>Add Single Service</Text>
               
               <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                style={[styles.input, styles.singleServiceInput, { color: colors.text, borderColor: colors.border }]}
                 placeholder="Service Name (e.g., Special Prayer Meeting)"
                 placeholderTextColor={colors.textSecondary}
                 value={adHocServiceName}
@@ -2700,79 +2805,109 @@ export default function ChurchScreen() {
               />
 
               <TouchableOpacity
-                style={[styles.dateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
-                onPress={() => {
-                  console.log('User tapped ad-hoc date picker button');
-                  setShowAdHocDatePicker(true);
-                }}
+	                style={[styles.dateButton, styles.singleServiceDateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
+	                onPress={() => {
+	                  console.log('User tapped ad-hoc date picker button');
+	                  setDraftAdHocServiceDate(adHocServiceDate);
+	                  setShowAdHocDatePicker(true);
+	                }}
               >
                 <Text style={[styles.dateButtonText, { color: colors.text }]}>
                   Date: {adHocServiceDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </Text>
               </TouchableOpacity>
-              {showAdHocDatePicker && (
-                <View style={{
-                  backgroundColor: '#ffffff',
-                  borderRadius: 12,
-                  overflow: 'hidden',
-                  marginVertical: 8,
-                }}>
-                  <DateTimePicker
-                    value={adHocServiceDate}
-                    mode="date"
-                    display="spinner"
-                    themeVariant="light"
-                    textColor="#000000"
-                    onChange={(event, date) => {
-                      console.log('User selected ad-hoc date:', date);
-                      setShowAdHocDatePicker(false);
-                      if (date) setAdHocServiceDate(date);
-                    }}
-                  />
-                </View>
-              )}
+	              {showAdHocDatePicker && (
+	                <View style={styles.datePickerWrapper}>
+	                  <DateTimePicker
+	                    value={draftAdHocServiceDate}
+	                    mode="date"
+	                    display="spinner"
+	                    themeVariant="light"
+	                    textColor="#000000"
+	                    onChange={(event, date) => {
+	                      console.log('User selected ad-hoc date:', date);
+	                      if (date) setDraftAdHocServiceDate(date);
+	                    }}
+	                  />
+	                  <View style={styles.pickerActionRow}>
+	                    <TouchableOpacity
+	                      style={[styles.pickerActionButton, styles.pickerCancelButton]}
+	                      onPress={() => {
+	                        setDraftAdHocServiceDate(adHocServiceDate);
+	                        setShowAdHocDatePicker(false);
+	                      }}
+	                    >
+	                      <Text style={styles.pickerCancelText}>Cancel</Text>
+	                    </TouchableOpacity>
+	                    <TouchableOpacity
+	                      style={[styles.pickerActionButton, styles.pickerConfirmButton]}
+	                      onPress={() => {
+	                        setAdHocServiceDate(draftAdHocServiceDate);
+	                        setShowAdHocDatePicker(false);
+	                      }}
+	                    >
+	                      <Text style={styles.pickerConfirmText}>Confirm</Text>
+	                    </TouchableOpacity>
+	                  </View>
+	                </View>
+	              )}
 
               <TouchableOpacity
-                style={[styles.dateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
-                onPress={() => {
-                  console.log('User tapped ad-hoc time picker button');
-                  setShowAdHocTimePicker(true);
-                }}
+	                style={[styles.dateButton, styles.singleServiceDateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
+	                onPress={() => {
+	                  console.log('User tapped ad-hoc time picker button');
+	                  setDraftAdHocServiceTime(adHocServiceTime);
+	                  setShowAdHocTimePicker(true);
+	                }}
               >
                 <Text style={[styles.dateButtonText, { color: colors.text }]}>
                   Time: {adHocServiceTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                 </Text>
               </TouchableOpacity>
-              {showAdHocTimePicker && (
-                <View style={{
-                  backgroundColor: '#ffffff',
-                  borderRadius: 12,
-                  overflow: 'hidden',
-                  marginVertical: 8,
-                }}>
-                  <DateTimePicker
-                    value={adHocServiceTime}
-                    mode="time"
-                    display="spinner"
-                    themeVariant="light"
-                    textColor="#000000"
-                    onChange={(event, date) => {
-                      console.log('User selected ad-hoc time:', date);
-                      setShowAdHocTimePicker(false);
-                      if (date) setAdHocServiceTime(date);
-                    }}
-                  />
-                </View>
-              )}
+	              {showAdHocTimePicker && (
+	                <View style={styles.datePickerWrapper}>
+	                  <DateTimePicker
+	                    value={draftAdHocServiceTime}
+	                    mode="time"
+	                    display="spinner"
+	                    themeVariant="light"
+	                    textColor="#000000"
+	                    onChange={(event, date) => {
+	                      console.log('User selected ad-hoc time:', date);
+	                      if (date) setDraftAdHocServiceTime(date);
+	                    }}
+	                  />
+	                  <View style={styles.pickerActionRow}>
+	                    <TouchableOpacity
+	                      style={[styles.pickerActionButton, styles.pickerCancelButton]}
+	                      onPress={() => {
+	                        setDraftAdHocServiceTime(adHocServiceTime);
+	                        setShowAdHocTimePicker(false);
+	                      }}
+	                    >
+	                      <Text style={styles.pickerCancelText}>Cancel</Text>
+	                    </TouchableOpacity>
+	                    <TouchableOpacity
+	                      style={[styles.pickerActionButton, styles.pickerConfirmButton]}
+	                      onPress={() => {
+	                        setAdHocServiceTime(draftAdHocServiceTime);
+	                        setShowAdHocTimePicker(false);
+	                      }}
+	                    >
+	                      <Text style={styles.pickerConfirmText}>Confirm</Text>
+	                    </TouchableOpacity>
+	                  </View>
+	                </View>
+	              )}
 
-              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 10 }]}>Select Roles</Text>
-              <ScrollView style={{ maxHeight: 140, marginBottom: 12 }}>
+              <Text style={[styles.sectionTitle, styles.singleServiceSectionTitle, { color: colors.text }]}>Select Roles</Text>
+              <ScrollView style={styles.singleServiceRolesList}>
                 {(churchRoles ?? []).map(role => {
                   const isSelected = (adHocServiceRoles ?? []).includes(role.id);
                   return (
                     <TouchableOpacity
                       key={role.id}
-                      style={[styles.roleItem, { backgroundColor: colors.inputBackground }]}
+                      style={[styles.roleItem, styles.singleServiceRoleItem, { backgroundColor: colors.inputBackground }]}
                       onPress={() => toggleAdHocServiceRole(role.id)}
                     >
                       <Text style={[styles.roleItemText, { color: colors.text }]}>{role.name}</Text>
@@ -2791,7 +2926,7 @@ export default function ChurchScreen() {
               </ScrollView>
 
               <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border, minHeight: 60 }]}
+                style={[styles.input, styles.singleServiceInput, styles.singleServiceNotesInput, { color: colors.text, borderColor: colors.border }]}
                 placeholder="Notes (optional)"
                 placeholderTextColor={colors.textSecondary}
                 value={adHocServiceNotes}
@@ -2800,7 +2935,7 @@ export default function ChurchScreen() {
               />
 
               <TouchableOpacity 
-                style={[styles.primaryButton, { backgroundColor: colors.primary, marginTop: 14 }]} 
+                style={[styles.primaryButton, styles.singleServicePrimaryButton, { backgroundColor: colors.primary }]} 
                 onPress={handleCreateAdHocService}
                 disabled={isCreatingAdHocService}
               >
@@ -2811,7 +2946,7 @@ export default function ChurchScreen() {
                 )}
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.secondaryButton, { backgroundColor: '#e0e0e0', marginTop: 12 }]} 
+                style={[styles.secondaryButton, styles.singleServiceSecondaryButton, { backgroundColor: '#e0e0e0' }]} 
                 onPress={() => {
                   console.log('User cancelled ad-hoc service creation');
                   setShowAdHocServiceModal(false);
@@ -2839,6 +2974,34 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: 8,
     marginBottom: 8,
+  },
+  pickerActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+  },
+  pickerActionButton: {
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  pickerCancelButton: {
+    backgroundColor: '#e0e0e0',
+  },
+  pickerConfirmButton: {
+    backgroundColor: '#007AFF',
+  },
+  pickerCancelText: {
+    color: '#333',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  pickerConfirmText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
   },
   container: {
     flex: 1,
@@ -3037,12 +3200,47 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
+  memberAdminBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primary + '18',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginTop: 6,
+  },
+  memberAdminBadgeText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '700',
+  },
   memberActions: {
     flexDirection: 'row',
     gap: 8,
   },
   editIconButton: {
     padding: 8,
+  },
+  adminToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    gap: 12,
+  },
+  adminToggleTextWrap: {
+    flex: 1,
+  },
+  adminToggleTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  adminToggleDescription: {
+    fontSize: 12,
+    lineHeight: 16,
   },
   servicesList: {
     gap: 12,
@@ -3244,8 +3442,47 @@ const styles = StyleSheet.create({
   },
   singleServiceModalContent: {
     maxWidth: 500,
-    maxHeight: '86%',
-    padding: 18,
+    maxHeight: '78%',
+    padding: 16,
+  },
+  singleServiceModalTitle: {
+    fontSize: 20,
+    marginBottom: 12,
+  },
+  singleServiceInput: {
+    padding: 10,
+    marginBottom: 10,
+    fontSize: 15,
+  },
+  singleServiceDateButton: {
+    padding: 11,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  singleServiceSectionTitle: {
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  singleServiceRolesList: {
+    maxHeight: 96,
+    marginBottom: 10,
+  },
+  singleServiceRoleItem: {
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  singleServiceNotesInput: {
+    minHeight: 44,
+    textAlignVertical: 'top',
+  },
+  singleServicePrimaryButton: {
+    padding: 13,
+    marginTop: 4,
+  },
+  singleServiceSecondaryButton: {
+    padding: 13,
+    marginTop: 10,
   },
   modalTitle: {
     fontSize: 20,
