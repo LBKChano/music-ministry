@@ -53,11 +53,11 @@ async function sendOneSignalNotification(params: {
         },
       }
       : null,
-  ].filter(Boolean) as Array<{
+  ].filter(Boolean) as {
     label: string
     expectedRecipients: number
     target: Record<string, unknown>
-  }>
+  }[]
 
   for (const send of sends) {
     const response = await fetch('https://api.onesignal.com/notifications', {
@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
         .single(),
       supabase
         .from('churches')
-        .select('name')
+        .select('name, admin_id')
         .eq('id', fillInRequest.church_id)
         .single(),
     ])
@@ -161,6 +161,7 @@ Deno.serve(async (req) => {
     const requesterName = requestingMember?.name ?? requestingMember?.email ?? 'A member'
     const fillingMemberName = fillingMember?.name ?? fillingMember?.email ?? 'Someone'
     const churchName = church?.name ?? 'Your Church'
+    const churchOwnerUserId = church?.admin_id ?? null
 
     let serviceLabel = 'an upcoming service'
     if (fillInRequest.service_id) {
@@ -196,18 +197,43 @@ Deno.serve(async (req) => {
       }
     }
 
+    const { data: churchMembers } = await supabase
+      .from('church_members')
+      .select('id, member_id, is_admin')
+      .eq('church_id', fillInRequest.church_id)
+
+    const adminMemberIds = Array.from(new Set((churchMembers ?? [])
+      .filter((member: { id: string; member_id: string; is_admin: boolean }) =>
+        member.id !== fillInRequest.filled_by_member_id
+        && (member.is_admin || (churchOwnerUserId && member.member_id === churchOwnerUserId))
+      )
+      .map((member: { id: string }) => member.id)))
+
+    const recipientMemberIds = Array.from(new Set([
+      fillInRequest.requesting_member_id,
+      ...adminMemberIds,
+    ].filter((memberId): memberId is string => Boolean(memberId) && memberId !== fillInRequest.filled_by_member_id)))
+
+    if (recipientMemberIds.length === 0) {
+      return new Response(
+        JSON.stringify({ sent: 0, errors: [], message: 'No requester or admin recipients found' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const { data: subscriptionRows } = await supabase
       .from('onesignal_subscriptions')
       .select('member_id, subscription_id')
-      .eq('member_id', fillInRequest.requesting_member_id)
+      .in('member_id', recipientMemberIds)
 
     const subscriptionIds = (subscriptionRows ?? [])
       .map((row: { subscription_id: string | null }) => row.subscription_id)
       .filter((subscriptionId): subscriptionId is string => Boolean(subscriptionId))
-    const externalIds = subscriptionIds.length > 0 ? [] : [fillInRequest.requesting_member_id]
+    const memberIdsWithSubscriptions = new Set((subscriptionRows ?? []).map((row: { member_id: string }) => row.member_id))
+    const externalIds = recipientMemberIds.filter((memberId) => !memberIdsWithSubscriptions.has(memberId))
 
     const notificationTitle = `Fill-In Covered - ${churchName}`
-    const notificationBody = `${fillingMemberName} accepted your fill-in request for ${fillInRequest.role_name} on ${serviceLabel}.`
+    const notificationBody = `${fillingMemberName} accepted ${requesterName}'s fill-in request for ${fillInRequest.role_name} on ${serviceLabel}.`
     const notificationData = {
       type: 'fill_in_accepted',
       fillInRequestId: fillInRequest.id,
@@ -224,19 +250,29 @@ Deno.serve(async (req) => {
     })
 
     if (sent > 0) {
-      const { error: notificationHistoryError } = await supabase
-        .from('member_notifications')
-        .insert({
-          church_id: fillInRequest.church_id,
-          member_id: fillInRequest.requesting_member_id,
-          notification_type: 'fill_in_accepted',
-          title: notificationTitle,
-          body: notificationBody,
-          data: notificationData,
-        })
+      const notifiedMemberIds = new Set<string>()
+      if (successfulTargetLabels.includes('subscription_ids')) {
+        (subscriptionRows ?? []).forEach((row: { member_id: string }) => notifiedMemberIds.add(row.member_id))
+      }
+      if (successfulTargetLabels.includes('external_ids')) {
+        externalIds.forEach((memberId) => notifiedMemberIds.add(memberId))
+      }
 
-      if (notificationHistoryError) {
-        console.error('Error recording accepted fill-in notification:', notificationHistoryError)
+      if (notifiedMemberIds.size > 0) {
+        const { error: notificationHistoryError } = await supabase
+          .from('member_notifications')
+          .insert(Array.from(notifiedMemberIds).map(memberId => ({
+            church_id: fillInRequest.church_id,
+            member_id: memberId,
+            notification_type: 'fill_in_accepted',
+            title: notificationTitle,
+            body: notificationBody,
+            data: notificationData,
+          })))
+
+        if (notificationHistoryError) {
+          console.error('Error recording accepted fill-in notification:', notificationHistoryError)
+        }
       }
     }
 
@@ -244,11 +280,11 @@ Deno.serve(async (req) => {
       run_at: new Date().toISOString(),
       church_id: fillInRequest.church_id,
       service_id: fillInRequest.service_id,
-      members_found: 1,
+      members_found: recipientMemberIds.length,
       tokens_found: subscriptionIds.length,
       notifications_sent: sent,
       onesignal_response: JSON.stringify({ errors, successfulTargetLabels }),
-      notes: `fill-in accepted ${fillInRequest.id}; requester=${requesterName}; filledBy=${fillingMemberName}; externalFallback=${externalIds.length}`,
+      notes: `fill-in accepted ${fillInRequest.id}; requester=${requesterName}; filledBy=${fillingMemberName}; admins=${adminMemberIds.length}; externalFallback=${externalIds.length}`,
     })
 
     return new Response(

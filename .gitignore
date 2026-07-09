@@ -2,6 +2,7 @@ node_modules/
 
 .git/
 .expo/
+supabase/.temp/
 
 dist/
 web-build/

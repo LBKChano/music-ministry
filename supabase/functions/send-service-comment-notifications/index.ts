@@ -53,11 +53,11 @@ async function sendOneSignalNotification(params: {
         },
       }
       : null,
-  ].filter(Boolean) as Array<{
+  ].filter(Boolean) as {
     label: string
     expectedRecipients: number
     target: Record<string, unknown>
-  }>
+  }[]
 
   for (const send of sends) {
     const response = await fetch('https://api.onesignal.com/notifications', {
@@ -128,6 +128,8 @@ Deno.serve(async (req) => {
         service_id,
         member_id,
         comment_text,
+        song_type,
+        song_number,
         services (
           service_type,
           date,
@@ -185,8 +187,12 @@ Deno.serve(async (req) => {
     const author = Array.isArray(comment.church_members) ? comment.church_members[0] : comment.church_members
     const authorName = author?.name ?? author?.email ?? 'A member'
     const serviceLabel = service?.service_type ? `${service.service_type}` : 'a service'
-    const notificationTitle = `New comment for ${serviceLabel}`
-    const notificationBody = `${authorName}: ${truncateComment(comment.comment_text)}`
+    const songLabel = [
+      comment.song_type || 'Song',
+      comment.song_number ? `#${comment.song_number}` : null,
+    ].filter(Boolean).join(' ')
+    const notificationTitle = `Song added for ${serviceLabel}`
+    const notificationBody = `${authorName} added ${songLabel}: ${truncateComment(comment.comment_text)}`
 
     const { sent, errors, successfulTargetLabels } = await sendOneSignalNotification({
       externalIds: fallbackExternalIds,
@@ -203,7 +209,7 @@ Deno.serve(async (req) => {
     if (sent > 0) {
       const notifiedMemberIds = new Set<string>()
       if (successfulTargetLabels.includes('subscription_ids')) {
-        ;(subscriptionRows ?? []).forEach((row: { member_id: string }) => notifiedMemberIds.add(row.member_id))
+        (subscriptionRows ?? []).forEach((row: { member_id: string }) => notifiedMemberIds.add(row.member_id))
       }
       if (successfulTargetLabels.includes('external_ids')) {
         fallbackExternalIds.forEach((memberId) => notifiedMemberIds.add(memberId))

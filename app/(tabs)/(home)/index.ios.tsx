@@ -16,7 +16,10 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
+  Keyboard,
+  KeyboardAvoidingView,
   Platform,
+  Pressable,
   ActivityIndicator,
   Alert,
 } from 'react-native';
@@ -50,6 +53,8 @@ const createLocalDate = (dateString: string): Date => {
   return new Date(year, month - 1, day);
 };
 
+const SONG_TYPE_OPTIONS = ['Opening', 'Praise', 'Worship', 'Offering', 'Special', 'Closing', 'Other'];
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -77,6 +82,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 5,
+  },
+  headerBellSlot: {
+    position: 'absolute',
+    top: 10,
+    right: 16,
   },
   headerTitle: {
     fontSize: 32,
@@ -155,24 +165,52 @@ const styles = StyleSheet.create({
   },
   commentHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
     gap: 8,
     marginBottom: 4,
   },
-  commentAuthor: {
-    flex: 1,
+  songTypeBadge: {
+    backgroundColor: colors.primary + '18',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  songTypeText: {
     fontSize: 13,
     fontWeight: '700',
+    color: colors.primary,
+  },
+  songNumberBadge: {
+    backgroundColor: colors.accent + '18',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  songNumberText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.accent,
+  },
+  editSongButton: {
+    marginLeft: 'auto',
+    padding: 4,
+  },
+  commentAuthor: {
+    fontSize: 12,
+    fontWeight: '600',
     color: colors.text,
+    marginTop: 4,
   },
   commentDate: {
     fontSize: 12,
     color: colors.textSecondary,
+    marginTop: 4,
   },
   commentText: {
     fontSize: 14,
     color: colors.text,
     lineHeight: 19,
+    fontWeight: '600',
   },
   addCommentButton: {
     flexDirection: 'row',
@@ -248,6 +286,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  keyboardDismissArea: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
   modalContent: {
     backgroundColor: colors.cardBackground,
     borderRadius: 16,
@@ -285,6 +330,32 @@ const styles = StyleSheet.create({
   commentInput: {
     minHeight: 100,
     textAlignVertical: 'top',
+  },
+  songTypeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  songTypeOption: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: colors.inputBackground,
+  },
+  songTypeOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '18',
+  },
+  songTypeOptionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  songTypeOptionTextSelected: {
+    color: colors.primary,
   },
   notifySection: {
     marginBottom: 12,
@@ -462,7 +533,7 @@ export default function HomeScreen() {
   // Notification context — OneSignal handles token registration automatically
   const { requestPermission, hasPermission } = useNotifications();
 
-  const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate, addServiceComment } = useServices(currentChurch?.id ?? null);
+  const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate, addServiceComment, updateServiceComment } = useServices(currentChurch?.id ?? null);
 
   const insets = useSafeAreaInsets();
 
@@ -491,6 +562,9 @@ export default function HomeScreen() {
   const [fillInServiceId, setFillInServiceId] = useState('');
   const [fillInRoleName, setFillInRoleName] = useState('');
   const [serviceCommentText, setServiceCommentText] = useState('');
+  const [serviceSongType, setServiceSongType] = useState('Opening');
+  const [serviceSongNumber, setServiceSongNumber] = useState('');
+  const [editingServiceCommentId, setEditingServiceCommentId] = useState<string | null>(null);
   const [notifyCommentMemberIds, setNotifyCommentMemberIds] = useState<string[]>([]);
 
   // ── useEffect hooks (after all useState/useRef/other hooks) ──────────────
@@ -733,12 +807,51 @@ export default function HomeScreen() {
       });
   }, [currentMember?.id, members]);
 
+  const getMemberDisplayName = useCallback((memberId?: string | null, preferredName?: string | null) => {
+    if (preferredName?.trim()) return preferredName.trim();
+
+    if (memberId && memberId === currentMember?.id) {
+      return currentMember.name || currentMember.email || 'Member';
+    }
+
+    const member = members.find(m => m.id === memberId);
+    return member?.name || member?.email || 'Member';
+  }, [currentMember?.email, currentMember?.id, currentMember?.name, members]);
+
   const openCommentModal = (service: ServiceWithAssignments) => {
-    console.log('User tapped add service comment button');
+    console.log('User tapped add service song button');
     setSelectedCommentService(service);
     setServiceCommentText('');
+    setServiceSongType('Opening');
+    setServiceSongNumber('');
+    setEditingServiceCommentId(null);
     setNotifyCommentMemberIds([]);
     setCommentModalVisible(true);
+  };
+
+  const openEditCommentModal = (
+    service: ServiceWithAssignments,
+    comment: ServiceWithAssignments['service_comments'][number]
+  ) => {
+    console.log('User tapped edit service song button');
+    setSelectedCommentService(service);
+    setServiceCommentText(comment.comment_text);
+    setServiceSongType(comment.song_type || 'Song');
+    setServiceSongNumber(comment.song_number || '');
+    setEditingServiceCommentId(comment.id);
+    setNotifyCommentMemberIds([]);
+    setCommentModalVisible(true);
+  };
+
+  const closeCommentModal = () => {
+    Keyboard.dismiss();
+    setCommentModalVisible(false);
+    setSelectedCommentService(null);
+    setServiceCommentText('');
+    setServiceSongType('Opening');
+    setServiceSongNumber('');
+    setEditingServiceCommentId(null);
+    setNotifyCommentMemberIds([]);
   };
 
   const toggleNotifyCommentMember = (memberId: string) => {
@@ -758,32 +871,47 @@ export default function HomeScreen() {
     }
 
     if (!serviceCommentText.trim()) {
-      Alert.alert('Error', 'Please enter a comment.');
+      Alert.alert('Error', 'Please enter a song title or detail.');
       return;
     }
 
+    Keyboard.dismiss();
     setIsSavingServiceComment(true);
     try {
-      const result = await addServiceComment(
-        currentChurch.id,
-        selectedCommentService.id,
-        currentMember.id,
-        serviceCommentText,
-        notifyCommentMemberIds,
-      );
+      const result = editingServiceCommentId
+        ? await updateServiceComment(
+          editingServiceCommentId,
+          selectedCommentService.id,
+          serviceCommentText,
+          serviceSongType,
+          serviceSongNumber,
+        )
+        : await addServiceComment(
+          currentChurch.id,
+          selectedCommentService.id,
+          currentMember.id,
+          serviceCommentText,
+          notifyCommentMemberIds,
+          serviceSongType,
+          serviceSongNumber,
+        );
 
       if (result) {
-        Alert.alert('Success', notifyCommentMemberIds.length > 0 ? 'Comment added and selected members were notified.' : 'Comment added.');
-        setCommentModalVisible(false);
-        setSelectedCommentService(null);
-        setServiceCommentText('');
-        setNotifyCommentMemberIds([]);
+        Alert.alert(
+          'Success',
+          editingServiceCommentId
+            ? 'Song updated.'
+            : notifyCommentMemberIds.length > 0
+              ? 'Song added and selected members were notified.'
+              : 'Song added.'
+        );
+        closeCommentModal();
       } else {
-        Alert.alert('Error', 'Failed to add comment. Please try again.');
+        Alert.alert('Error', 'Failed to save song. Please try again.');
       }
     } catch (error) {
-      console.error('Error adding service comment:', error);
-      Alert.alert('Error', 'Failed to add comment. Please try again.');
+      console.error('Error saving service song:', error);
+      Alert.alert('Error', 'Failed to save song. Please try again.');
     } finally {
       setIsSavingServiceComment(false);
     }
@@ -914,9 +1042,10 @@ export default function HomeScreen() {
 
       <View style={[styles.headerContainer, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.headerTitle}>{churchName}</Text>
-                <NotificationBell />
-        
-<Text style={styles.headerSubtitle}>{upcomingText}</Text>
+        <View style={[styles.headerBellSlot, { top: insets.top + 8 }]}>
+          <NotificationBell />
+        </View>
+        <Text style={styles.headerSubtitle}>{upcomingText}</Text>
       </View>
 
       <ScrollView
@@ -960,43 +1089,67 @@ export default function HomeScreen() {
                       />
                     </TouchableOpacity>
                   )}
-	                </View>
-	                <Text style={styles.serviceDateTime}>{dateTimeDisplay}</Text>
-	                {service.notes ? <Text style={styles.serviceNotes}>{service.notes}</Text> : null}
+                  </View>
+                  <Text style={styles.serviceDateTime}>{dateTimeDisplay}</Text>
+                  {service.notes ? <Text style={styles.serviceNotes}>{service.notes}</Text> : null}
 
-	                {service.service_comments.length > 0 && (
-	                  <View style={styles.commentsSection}>
-	                    <Text style={styles.commentsTitle}>Comments</Text>
-	                    {service.service_comments.map(comment => {
-	                      const authorName = comment.church_members?.name || comment.church_members?.email || 'Member';
-	                      const createdAt = new Date(comment.created_at);
-	                      const createdAtText = isNaN(createdAt.getTime())
-	                        ? ''
-	                        : createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                  {service.service_comments.length > 0 && (
+                    <View style={styles.commentsSection}>
+                      <Text style={styles.commentsTitle}>Songs</Text>
+                      {service.service_comments.map(comment => {
+                        const authorName = getMemberDisplayName(
+                          comment.member_id,
+                          comment.church_members?.name || comment.church_members?.email
+                        );
+                        const canEditSong = isAdmin || currentMember?.id === comment.member_id;
+                        const createdAt = new Date(comment.created_at);
+                        const createdAtText = isNaN(createdAt.getTime())
+                          ? ''
+                          : createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-	                      return (
-	                        <View key={comment.id} style={styles.commentItem}>
-	                          <View style={styles.commentHeader}>
-	                            <Text style={styles.commentAuthor}>{authorName}</Text>
-	                            {createdAtText ? <Text style={styles.commentDate}>{createdAtText}</Text> : null}
-	                          </View>
-	                          <Text style={styles.commentText}>{comment.comment_text}</Text>
-	                        </View>
-	                      );
-	                    })}
-	                  </View>
-	                )}
+                        return (
+                          <View key={comment.id} style={styles.commentItem}>
+                            <View style={styles.commentHeader}>
+                              <View style={styles.songTypeBadge}>
+                                <Text style={styles.songTypeText}>{comment.song_type || 'Song'}</Text>
+                              </View>
+                              {comment.song_number ? (
+                                <View style={styles.songNumberBadge}>
+                                  <Text style={styles.songNumberText}>#{comment.song_number}</Text>
+                                </View>
+                              ) : null}
+                              {canEditSong ? (
+                                <TouchableOpacity
+                                  style={styles.editSongButton}
+                                  onPress={() => openEditCommentModal(service, comment)}
+                                >
+                                  <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={16} color={colors.primary} />
+                                </TouchableOpacity>
+                              ) : null}
+                            </View>
+                            <Text style={styles.commentText}>{comment.comment_text}</Text>
+                            <Text style={styles.commentAuthor}>
+                              Added by {authorName}{createdAtText ? ` - ${createdAtText}` : ''}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
 
-	                <TouchableOpacity
-	                  style={styles.addCommentButton}
-	                  onPress={() => openCommentModal(service)}
-	                >
-	                  <IconSymbol ios_icon_name="bubble.left.fill" android_material_icon_name="chat" size={16} color={colors.primary} />
-	                  <Text style={styles.addCommentButtonText}>Add Comment</Text>
-	                </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.addCommentButton}
+                    onPress={() => openCommentModal(service)}
+                  >
+                    <IconSymbol ios_icon_name="music.note.list" android_material_icon_name="queue-music" size={16} color={colors.primary} />
+                    <Text style={styles.addCommentButtonText}>Add Song</Text>
+                  </TouchableOpacity>
 
-	                {serviceFillInRequests.map(request => {
-                  const requestingMemberDisplayName = request.requesting_member_name || request.requesting_member_email;
+                  {serviceFillInRequests.map(request => {
+                  const requestingMemberDisplayName = getMemberDisplayName(
+                    request.requesting_member_id,
+                    request.requesting_member_name || request.requesting_member_email
+                  );
                   const isMyRequest = currentMember?.id === request.requesting_member_id;
                   const canAccept = currentMember?.memberRoles?.some(r => r.role_name === request.role_name) ?? false;
 
@@ -1150,85 +1303,111 @@ export default function HomeScreen() {
             </View>
           </View>
         </View>
-	      </Modal>
+        </Modal>
 
-	      {/* Add Comment Modal */}
-	      <Modal
-	        visible={commentModalVisible}
-	        transparent
-	        animationType="fade"
-	        onRequestClose={() => setCommentModalVisible(false)}
-	      >
-	        <View style={styles.modalOverlay}>
-	          <View style={styles.modalContent}>
-	            <Text style={styles.modalTitle}>Add Comment</Text>
-	            <TextInput
-	              style={[styles.input, styles.commentInput]}
-	              placeholder="Songs, notes, or details for this service..."
-	              placeholderTextColor={colors.textSecondary}
-	              value={serviceCommentText}
-	              onChangeText={setServiceCommentText}
-	              multiline
-	            />
+        {/* Add Song Modal */}
+        <Modal
+          visible={commentModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setCommentModalVisible(false)}
+        >
+          <KeyboardAvoidingView
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <Pressable style={styles.keyboardDismissArea} onPress={Keyboard.dismiss}>
+              <Pressable style={styles.modalContent} onPress={Keyboard.dismiss}>
+              <Text style={styles.modalTitle}>{editingServiceCommentId ? 'Edit Song' : 'Add Song'}</Text>
+              <Text style={styles.notifyTitle}>Song type</Text>
+              <View style={styles.songTypeGrid}>
+                {SONG_TYPE_OPTIONS.map(option => {
+                  const selected = serviceSongType === option;
+                  return (
+                    <TouchableOpacity
+                      key={option}
+                      style={[styles.songTypeOption, selected && styles.songTypeOptionSelected]}
+                      onPress={() => setServiceSongType(option)}
+                    >
+                      <Text style={[styles.songTypeOptionText, selected && styles.songTypeOptionTextSelected]}>
+                        {option}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <TextInput
+                style={styles.input}
+                placeholder="Song number (optional)"
+                placeholderTextColor={colors.textSecondary}
+                value={serviceSongNumber}
+                onChangeText={setServiceSongNumber}
+                keyboardType="default"
+                returnKeyType="next"
+              />
+              <TextInput
+                style={[styles.input, styles.commentInput]}
+                placeholder="Song title or details"
+                placeholderTextColor={colors.textSecondary}
+                value={serviceCommentText}
+                onChangeText={setServiceCommentText}
+                multiline
+              />
 
-	            {getCommentNotifyOptions(selectedCommentService).length > 0 && (
-	              <View style={styles.notifySection}>
-	                <Text style={styles.notifyTitle}>Notify assigned members</Text>
-	                {getCommentNotifyOptions(selectedCommentService).map(option => {
-	                  const selected = notifyCommentMemberIds.includes(option.id);
-	                  return (
-	                    <TouchableOpacity
-	                      key={option.id}
-	                      style={styles.notifyMemberRow}
-	                      onPress={() => toggleNotifyCommentMember(option.id)}
-	                    >
-	                      <View style={[
-	                        styles.notifyCheckbox,
-	                        selected && styles.notifyCheckboxSelected,
-	                      ]}>
-	                        {selected && (
-	                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="done" size={14} color="#fff" />
-	                        )}
-	                      </View>
-	                      <View style={styles.notifyMemberTextWrap}>
-	                        <Text style={styles.notifyMemberName}>{option.name}</Text>
-	                        <Text style={styles.notifyMemberRole}>{option.role}</Text>
-	                      </View>
-	                    </TouchableOpacity>
-	                  );
-	                })}
-	              </View>
-	            )}
+              {!editingServiceCommentId && getCommentNotifyOptions(selectedCommentService).length > 0 && (
+                <View style={styles.notifySection}>
+                  <Text style={styles.notifyTitle}>Notify assigned members</Text>
+                  {getCommentNotifyOptions(selectedCommentService).map(option => {
+                    const selected = notifyCommentMemberIds.includes(option.id);
+                    return (
+                      <TouchableOpacity
+                        key={option.id}
+                        style={styles.notifyMemberRow}
+                        onPress={() => toggleNotifyCommentMember(option.id)}
+                      >
+                        <View style={[
+                          styles.notifyCheckbox,
+                          selected && styles.notifyCheckboxSelected,
+                        ]}>
+                          {selected && (
+                            <IconSymbol ios_icon_name="checkmark" android_material_icon_name="done" size={14} color="#fff" />
+                          )}
+                        </View>
+                        <View style={styles.notifyMemberTextWrap}>
+                          <Text style={styles.notifyMemberName}>{option.name}</Text>
+                          <Text style={styles.notifyMemberRole}>{option.role}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
 
-	            <View style={styles.modalButtons}>
-	              <TouchableOpacity
-	                style={[styles.modalButton, styles.cancelButton]}
-	                onPress={() => {
-	                  setCommentModalVisible(false);
-	                  setSelectedCommentService(null);
-	                  setServiceCommentText('');
-	                  setNotifyCommentMemberIds([]);
-	                }}
-	              >
-	                <Text style={styles.buttonText}>Cancel</Text>
-	              </TouchableOpacity>
-	              <TouchableOpacity
-	                style={[styles.modalButton, styles.saveButton]}
-	                onPress={handleAddServiceComment}
-	                disabled={isSavingServiceComment}
-	              >
-	                {isSavingServiceComment ? (
-	                  <ActivityIndicator size="small" color="#fff" />
-	                ) : (
-	                  <Text style={styles.buttonText}>Save</Text>
-	                )}
-	              </TouchableOpacity>
-	            </View>
-	          </View>
-	        </View>
-	      </Modal>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton]}
+                  onPress={closeCommentModal}
+                >
+                  <Text style={styles.buttonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.saveButton]}
+                  onPress={handleAddServiceComment}
+                  disabled={isSavingServiceComment}
+                >
+                  {isSavingServiceComment ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.buttonText}>{editingServiceCommentId ? 'Update' : 'Save'}</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+              </Pressable>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Modal>
 
-	      {/* Fill-In Request Modal */}
+        {/* Fill-In Request Modal */}
       <Modal
         visible={fillInRequestModalVisible}
         transparent

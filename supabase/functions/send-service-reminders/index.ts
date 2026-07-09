@@ -40,14 +40,14 @@ async function sendOneSignalMessages(messages: OneSignalMessage[]) {
   const successfulReminderKeys = new Set<string>()
   const terminalReminderKeys = new Set<string>()
   const invalidSubscriptionIds = new Set<string>()
-  const notificationRows: Array<{
+  const notificationRows: {
     church_id: string
     member_id: string
     notification_type: string
     title: string
     body: string
     data: Record<string, string>
-  }> = []
+  }[] = []
 
   for (const message of messages) {
     const subscriptionIds = Array.from(new Set(message.subscriptionIds))

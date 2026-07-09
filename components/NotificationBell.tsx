@@ -273,21 +273,33 @@ function formatNotificationTime(value: string): string {
 
 const styles = StyleSheet.create({
   button: {
-    padding: 8,
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
   compactButton: {
-    padding: 4,
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
   bellContainer: {
     position: "relative",
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
   },
   bellIcon: {
     fontSize: 24,
+    lineHeight: 28,
+    textAlign: "center",
   },
   badge: {
     position: "absolute",
-    top: -4,
-    right: -4,
+    top: -6,
+    right: -6,
     backgroundColor: "#FF3B30",
     borderRadius: 8,
     width: 16,

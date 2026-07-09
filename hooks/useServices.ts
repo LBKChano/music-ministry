@@ -391,9 +391,13 @@ export function useServices(churchId: string | null) {
     serviceId: string,
     memberId: string,
     commentText: string,
-    notifyMemberIds: string[] = []
+    notifyMemberIds: string[] = [],
+    songType: string = 'Song',
+    songNumber?: string
   ) => {
     const trimmedComment = commentText.trim();
+    const normalizedSongType = songType.trim() || 'Song';
+    const normalizedSongNumber = songNumber?.trim() || null;
     if (!commentChurchId || !serviceId || !memberId || !trimmedComment) {
       console.error('Missing required service comment data');
       return null;
@@ -409,6 +413,8 @@ export function useServices(churchId: string | null) {
           service_id: serviceId,
           member_id: memberId,
           comment_text: trimmedComment,
+          song_type: normalizedSongType,
+          song_number: normalizedSongNumber,
         })
         .select(`
           *,
@@ -455,6 +461,69 @@ export function useServices(churchId: string | null) {
       return data;
     } catch (err) {
       console.error('Error in addServiceComment:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return null;
+    }
+  }, []);
+
+  const updateServiceComment = useCallback(async (
+    commentId: string,
+    serviceId: string,
+    commentText: string,
+    songType: string,
+    songNumber?: string
+  ) => {
+    const trimmedComment = commentText.trim();
+    const normalizedSongType = songType.trim() || 'Song';
+    const normalizedSongNumber = songNumber?.trim() || null;
+    if (!commentId || !serviceId || !trimmedComment) {
+      console.error('Missing required service comment update data');
+      return null;
+    }
+
+    try {
+      setError(null);
+
+      const { data, error: updateError } = await supabase
+        .from('service_comments')
+        .update({
+          comment_text: trimmedComment,
+          song_type: normalizedSongType,
+          song_number: normalizedSongNumber,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', commentId)
+        .select(`
+          *,
+          church_members (
+            name,
+            email
+          )
+        `)
+        .single();
+
+      if (updateError) {
+        console.error('Error updating service comment:', updateError);
+        setError(updateError.message);
+        return null;
+      }
+
+      setServices(prevServices =>
+        prevServices.map(service =>
+          service.id === serviceId
+            ? {
+              ...service,
+              service_comments: service.service_comments
+                .map(comment => comment.id === commentId ? data : comment)
+                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+            }
+            : service
+        )
+      );
+
+      return data;
+    } catch (err) {
+      console.error('Error in updateServiceComment:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
@@ -558,6 +627,7 @@ export function useServices(churchId: string | null) {
     batchUpdateAssignments,
     deleteAssignment,
     addServiceComment,
+    updateServiceComment,
     refreshServices: fetchServices,
   };
 }

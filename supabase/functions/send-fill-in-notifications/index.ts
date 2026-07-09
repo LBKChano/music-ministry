@@ -53,11 +53,11 @@ async function sendOneSignalNotification(params: {
         },
       }
       : null,
-  ].filter(Boolean) as Array<{
+  ].filter(Boolean) as {
     label: string
     expectedRecipients: number
     target: Record<string, unknown>
-  }>
+  }[]
 
   for (const send of sends) {
     const response = await fetch('https://api.onesignal.com/notifications', {
@@ -136,14 +136,15 @@ Deno.serve(async (req) => {
 
     const requestingMemberName = requestingMember?.name ?? 'A member'
 
-    // 3. Church name
+    // 3. Church name and admin owner
     const { data: church } = await supabase
       .from('churches')
-      .select('name')
+      .select('name, admin_id')
       .eq('id', fillInRequest.church_id)
       .single()
 
     const churchName = church?.name ?? 'Your Church'
+    const churchOwnerUserId = church?.admin_id ?? null
 
     // 4. Service date
     let serviceDateStr = 'an upcoming service'
@@ -170,6 +171,8 @@ Deno.serve(async (req) => {
     const stats = {
       matchingRoles: 0,
       eligibleMembers: 0,
+      adminMembers: 0,
+      totalRecipients: 0,
       subscriptions: 0,
     }
 
@@ -204,7 +207,24 @@ Deno.serve(async (req) => {
 
     stats.eligibleMembers = eligibleMemberIds.length
 
-    if (eligibleMemberIds.length === 0) {
+    const { data: churchMembers } = await supabase
+      .from('church_members')
+      .select('id, member_id, is_admin')
+      .eq('church_id', fillInRequest.church_id)
+
+    const adminMemberIds = Array.from(new Set((churchMembers ?? [])
+      .filter((member: { id: string; member_id: string; is_admin: boolean }) =>
+        member.id !== fillInRequest.requesting_member_id
+        && (member.is_admin || (churchOwnerUserId && member.member_id === churchOwnerUserId))
+      )
+      .map((member: { id: string }) => member.id)))
+
+    stats.adminMembers = adminMemberIds.length
+
+    const recipientMemberIds = Array.from(new Set([...eligibleMemberIds, ...adminMemberIds]))
+    stats.totalRecipients = recipientMemberIds.length
+
+    if (recipientMemberIds.length === 0) {
       await supabase.from('notification_log').insert({
         run_at: new Date().toISOString(),
         church_id: fillInRequest.church_id,
@@ -213,11 +233,11 @@ Deno.serve(async (req) => {
         tokens_found: 0,
         notifications_sent: 0,
         onesignal_response: '[]',
-        notes: `fill-in request ${fillInRequest.id}; no eligible members for role ${fillInRequest.role_name}; stats=${JSON.stringify(stats)}`,
+        notes: `fill-in request ${fillInRequest.id}; no eligible members/admins for role ${fillInRequest.role_name}; stats=${JSON.stringify(stats)}`,
       })
 
       return new Response(
-        JSON.stringify({ sent: 0, errors: [], message: 'No eligible members found for this role', stats }),
+        JSON.stringify({ sent: 0, errors: [], message: 'No eligible members or admins found for this request', stats }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -227,11 +247,11 @@ Deno.serve(async (req) => {
     const { data: subscriptionRows } = await supabase
       .from('onesignal_subscriptions')
       .select('member_id, subscription_id')
-      .in('member_id', eligibleMemberIds)
+      .in('member_id', recipientMemberIds)
 
     stats.subscriptions = subscriptionRows?.length ?? 0
     const memberIdsWithSubscriptions = new Set((subscriptionRows ?? []).map((row: { member_id: string }) => row.member_id))
-    const fallbackExternalIds = eligibleMemberIds.filter((memberId) => !memberIdsWithSubscriptions.has(memberId))
+    const fallbackExternalIds = recipientMemberIds.filter((memberId) => !memberIdsWithSubscriptions.has(memberId))
 
     // 7. Build notification content
     const notificationTitle = `Fill-In Needed — ${churchName}`
@@ -257,7 +277,7 @@ Deno.serve(async (req) => {
     if (sent > 0) {
       const notifiedMemberIds = new Set<string>()
       if (successfulTargetLabels.includes('subscription_ids')) {
-        ;(subscriptionRows ?? []).forEach((row: { member_id: string }) => notifiedMemberIds.add(row.member_id))
+        (subscriptionRows ?? []).forEach((row: { member_id: string }) => notifiedMemberIds.add(row.member_id))
       }
       if (successfulTargetLabels.includes('external_ids')) {
         fallbackExternalIds.forEach((memberId) => notifiedMemberIds.add(memberId))
@@ -290,7 +310,7 @@ Deno.serve(async (req) => {
       run_at: new Date().toISOString(),
       church_id: fillInRequest.church_id,
       service_id: fillInRequest.service_id,
-      members_found: eligibleMemberIds.length,
+      members_found: recipientMemberIds.length,
       tokens_found: subscriptionRows?.length ?? 0,
       notifications_sent: sent,
       onesignal_response: JSON.stringify({ errors, successfulTargetLabels }),
