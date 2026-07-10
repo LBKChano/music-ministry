@@ -12,7 +12,6 @@ import { useRouter, usePathname } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
-import { useTheme } from '@react-navigation/native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -41,14 +40,17 @@ interface FloatingTabBarProps {
 export default function FloatingTabBar({
   tabs,
   containerWidth,
-  borderRadius = 35,
+  borderRadius = 30,
   bottomMargin,
 }: FloatingTabBarProps) {
   const { width: screenWidth } = useWindowDimensions();
-  const resolvedContainerWidth = Math.max(1, containerWidth ?? screenWidth / 2.5);
+  const initialTabCount = tabs?.length ?? 0;
+  const defaultContainerWidth = initialTabCount >= 3
+    ? Math.min(screenWidth - 32, 380)
+    : Math.min(screenWidth - 40, 304);
+  const resolvedContainerWidth = Math.max(1, containerWidth ?? defaultContainerWidth);
   const router = useRouter();
   const pathname = usePathname();
-  const theme = useTheme();
 
   // ALL shared values must be declared unconditionally at the top — never inside
   // conditionals, loops, or after early returns. Reanimated crashes if hook order changes.
@@ -155,23 +157,17 @@ export default function FloatingTabBar({
 
   const blurContainerStyle = {
     ...styles.blurContainer,
-    borderWidth: 1.2,
-    borderColor: colors.primary,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
     ...Platform.select({
       ios: {
-        backgroundColor: theme.dark
-          ? 'rgba(15, 23, 42, 0.8)'
-          : 'rgba(255, 255, 255, 0.6)',
+        backgroundColor: 'rgba(255, 255, 255, 0.94)',
       },
       android: {
-        backgroundColor: theme.dark
-          ? 'rgba(15, 23, 42, 0.95)'
-          : 'rgba(255, 255, 255, 0.6)',
+        backgroundColor: 'rgba(255, 255, 255, 0.96)',
       },
       web: {
-        backgroundColor: theme.dark
-          ? 'rgba(15, 23, 42, 0.95)'
-          : 'rgba(255, 255, 255, 0.6)',
+        backgroundColor: 'rgba(255, 255, 255, 0.96)',
         backdropFilter: 'blur(10px)',
       },
     }),
@@ -179,9 +175,7 @@ export default function FloatingTabBar({
 
   const indicatorBaseStyle = {
     ...styles.indicator,
-    backgroundColor: theme.dark
-      ? 'rgba(96, 165, 250, 0.15)'
-      : 'rgba(30, 58, 138, 0.08)',
+    backgroundColor: colors.primary,
     width: `${tabWidthPercent}%` as `${number}%`,
   };
 
@@ -196,7 +190,7 @@ export default function FloatingTabBar({
           },
         ]}
       >
-        <BlurView intensity={80} style={[blurContainerStyle, { borderRadius }]}>
+        <BlurView intensity={55} style={[blurContainerStyle, { borderRadius }]}>
           <View style={styles.background} />
           <Animated.View style={[indicatorBaseStyle, indicatorStyle]} />
           <View style={styles.tabsContainer}>
@@ -208,12 +202,10 @@ export default function FloatingTabBar({
 
               const isActive = activeTabIndex === index;
               const iconColor = isActive
-                ? colors.primary
-                : theme.dark
-                ? '#98989D'
-                : '#64748B';
-              const labelColor = isActive ? colors.primary : theme.dark ? '#98989D' : '#64748B';
-              const labelWeight = isActive ? ('600' as const) : ('500' as const);
+                ? '#FFFFFF'
+                : '#334155';
+              const labelColor = isActive ? '#FFFFFF' : '#334155';
+              const labelWeight = isActive ? ('800' as const) : ('700' as const);
 
               return (
                 <React.Fragment key={tab.name}>
@@ -261,6 +253,11 @@ const styles = StyleSheet.create({
   container: {
     marginHorizontal: 20,
     alignSelf: 'center',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 12,
   },
   blurContainer: {
     overflow: 'hidden',
@@ -270,17 +267,17 @@ const styles = StyleSheet.create({
   },
   indicator: {
     position: 'absolute',
-    top: 4,
-    left: 2,
-    bottom: 4,
-    borderRadius: 27,
+    top: 6,
+    left: 4,
+    bottom: 6,
+    borderRadius: 24,
     width: '49%',
   },
   tabsContainer: {
     flexDirection: 'row',
-    height: 60,
+    height: 64,
     alignItems: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
   },
   tab: {
     flex: 1,
@@ -291,10 +288,10 @@ const styles = StyleSheet.create({
   tabContent: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    gap: 3,
   },
   tabLabel: {
-    fontSize: 9,
+    fontSize: 10,
     marginTop: 2,
   },
 });

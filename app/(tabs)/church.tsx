@@ -39,6 +39,18 @@ type MemberForAutoAssign = {
   memberRoles?: { role_id: string; role_name: string }[];
 };
 
+const DEFAULT_SONG_TYPE_OPTIONS = ['Opening', 'Praise', 'Worship', 'Offering', 'Special', 'Closing'];
+const OTHER_SONG_TYPE_OPTION = 'Other';
+
+const normalizeEditableSongTypeOptions = (options?: string[] | null) => {
+  const configuredOptions = options && options.length > 0 ? options : DEFAULT_SONG_TYPE_OPTIONS;
+  const cleaned = configuredOptions
+    .map(option => option.trim())
+    .filter(option => option && option !== OTHER_SONG_TYPE_OPTION);
+  const unique = Array.from(new Set(cleaned));
+  return unique.length > 0 ? unique : DEFAULT_SONG_TYPE_OPTIONS;
+};
+
 // Helper function to format date as YYYY-MM-DD in local timezone
 function formatDateForDatabase(date: Date): string {
   const year = date.getFullYear();
@@ -87,6 +99,7 @@ export default function ChurchScreen() {
     addMemberRole,
     removeMemberRole,
     updateNotificationSettings,
+    updateChurchSongTypes,
     signOut,
     refreshChurches,
     refreshMembers,
@@ -132,6 +145,10 @@ export default function ChurchScreen() {
   );
   const [customHourInput, setCustomHourInput] = useState('');
   const [isSavingNotifications, setIsSavingNotifications] = useState(false);
+  const [songTypeDraftOptions, setSongTypeDraftOptions] = useState<string[]>(() => (
+    normalizeEditableSongTypeOptions(currentChurch?.song_type_options)
+  ));
+  const [isSavingSongTypes, setIsSavingSongTypes] = useState(false);
 
   // Quarterly assignment states
   const [showPrepareQuarterModal, setShowPrepareQuarterModal] = useState(false);
@@ -179,6 +196,10 @@ export default function ChurchScreen() {
     }
   }, [notificationSettings]);
 
+  React.useEffect(() => {
+    setSongTypeDraftOptions(normalizeEditableSongTypeOptions(currentChurch?.song_type_options));
+  }, [currentChurch?.id, currentChurch?.song_type_options]);
+
   // Pull-to-refresh handler
   const onRefresh = React.useCallback(async () => {
     console.log('User pulled to refresh Church Management data');
@@ -200,6 +221,39 @@ export default function ChurchScreen() {
       setRefreshing(false);
     }
   }, [refreshChurches, refreshMembers, refreshRecurringServices, refreshChurchRoles, refreshNotificationSettings, refreshServicesHook, currentChurch]);
+
+  const toggleSongTypeDraftOption = (option: string) => {
+    setSongTypeDraftOptions(prev =>
+      prev.includes(option)
+        ? prev.filter(item => item !== option)
+        : [...prev, option]
+    );
+  };
+
+  const handleSaveSongTypes = async () => {
+    if (!currentChurch || isSavingSongTypes) return;
+
+    const nextOptions = DEFAULT_SONG_TYPE_OPTIONS.filter(option => songTypeDraftOptions.includes(option));
+    if (nextOptions.length === 0) {
+      Alert.alert('Error', 'Select at least one default song type.');
+      return;
+    }
+
+    setIsSavingSongTypes(true);
+    try {
+      const updatedChurch = await updateChurchSongTypes(currentChurch.id, nextOptions);
+      if (!updatedChurch) {
+        Alert.alert('Error', 'Could not save song types. Please try again.');
+        return;
+      }
+      Alert.alert('Success', 'Song types updated.');
+    } catch (err) {
+      console.error('Error saving song types:', err);
+      Alert.alert('Error', 'Could not save song types. Please try again.');
+    } finally {
+      setIsSavingSongTypes(false);
+    }
+  };
 
   if (!isAdmin) {
     console.log('[ChurchScreen] Non-admin user attempted to access church screen, redirecting');
@@ -1223,6 +1277,63 @@ export default function ChurchScreen() {
               />
               <Text style={styles.actionButtonText}>Add Single Service</Text>
             </TouchableOpacity>
+
+            <View style={[styles.songTypesCard, { backgroundColor: colors.cardBackground }]}>
+              <View style={styles.songTypesHeader}>
+                <IconSymbol
+                  ios_icon_name="music.note.list"
+                  android_material_icon_name="queue-music"
+                  size={24}
+                  color={colors.primary}
+                />
+                <View style={styles.songTypesHeaderText}>
+                  <Text style={[styles.songTypesTitle, { color: colors.text }]}>Song Types</Text>
+                  <Text style={[styles.songTypesDescription, { color: colors.textSecondary }]}>
+                    Choose the default song type buttons shown in schedules. Other is always available.
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.songTypeGrid}>
+                {DEFAULT_SONG_TYPE_OPTIONS.map(option => {
+                  const selected = songTypeDraftOptions.includes(option);
+                  return (
+                    <TouchableOpacity
+                      key={option}
+                      style={[
+                        styles.songTypeOption,
+                        { borderColor: colors.border, backgroundColor: colors.inputBackground },
+                        selected && { borderColor: colors.primary, backgroundColor: colors.primary + '18' },
+                      ]}
+                      onPress={() => toggleSongTypeDraftOption(option)}
+                    >
+                      <Text
+                        style={[
+                          styles.songTypeOptionText,
+                          { color: selected ? colors.primary : colors.textSecondary },
+                        ]}
+                      >
+                        {option}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.saveSongTypesButton,
+                  { backgroundColor: colors.primary },
+                  isSavingSongTypes && styles.disabledButton,
+                ]}
+                onPress={handleSaveSongTypes}
+                disabled={isSavingSongTypes}
+              >
+                {isSavingSongTypes ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.saveSongTypesButtonText}>Save Song Types</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -3147,6 +3258,60 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  songTypesCard: {
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 12,
+  },
+  songTypesHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 14,
+  },
+  songTypesHeaderText: {
+    flex: 1,
+  },
+  songTypesTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  songTypesDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  songTypeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  songTypeOption: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  songTypeOptionText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  saveSongTypesButton: {
+    minHeight: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  saveSongTypesButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  disabledButton: {
+    opacity: 0.65,
   },
   tabContainer: {
     flexDirection: 'row',
