@@ -133,17 +133,8 @@ const styles = StyleSheet.create({
   headerBellSlot: {
     width: 52,
     height: 52,
-    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.72)',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
-    elevation: 6,
   },
   headerEyebrow: {
     color: '#BFDBFE',
@@ -970,7 +961,7 @@ export default function HomeScreen() {
     if (normalizedType === OTHER_SONG_TYPE_OPTION) {
       return { selectedType: OTHER_SONG_TYPE_OPTION, customType: '' };
     }
-    if (DEFAULT_SONG_TYPE_OPTIONS.includes(normalizedType)) {
+    if (enabledSongTypeOptions.includes(normalizedType)) {
       return { selectedType: normalizedType, customType: '' };
     }
     return { selectedType: OTHER_SONG_TYPE_OPTION, customType: normalizedType };

@@ -29,6 +29,7 @@ import {
 } from "react-native";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useChurch } from "@/hooks/useChurch";
+import { IconSymbol } from "@/components/IconSymbol";
 import { supabase } from "@/lib/supabase/client";
 import type { Tables } from "@/lib/supabase/types";
 
@@ -218,9 +219,12 @@ export function NotificationBell({
       <>
         <TouchableOpacity onPress={handlePress} style={styles.compactButton}>
           <View style={styles.bellContainer}>
-            <Text style={[styles.bellIcon, { fontSize: size * 0.75 }]}>
-              {hasPermission ? "🔔" : "🔕"}
-            </Text>
+            <IconSymbol
+              ios_icon_name={hasPermission ? "bell.fill" : "bell.slash.fill"}
+              android_material_icon_name={hasPermission ? "notifications" : "notifications-off"}
+              size={Math.round(size * 0.82)}
+              color="#FFFFFF"
+            />
             {hasPermission && unreadCount > 0 && <NotificationBadge count={unreadCount} />}
           </View>
         </TouchableOpacity>
@@ -233,9 +237,12 @@ export function NotificationBell({
     <>
       <TouchableOpacity onPress={handlePress} style={styles.button}>
         <View style={styles.bellContainer}>
-          <Text style={[styles.bellIcon, { fontSize: size }]}>
-            {hasPermission ? "🔔" : "🔕"}
-          </Text>
+          <IconSymbol
+            ios_icon_name={hasPermission ? "bell.fill" : "bell.slash.fill"}
+            android_material_icon_name={hasPermission ? "notifications" : "notifications-off"}
+            size={size}
+            color="#FFFFFF"
+          />
           {hasPermission && unreadCount > 0 ? (
             <NotificationBadge count={unreadCount} />
           ) : !hasPermission ? (
@@ -273,39 +280,45 @@ function formatNotificationTime(value: string): string {
 
 const styles = StyleSheet.create({
   button: {
-    width: 44,
-    height: 44,
+    width: 52,
+    height: 52,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
   },
   compactButton: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
   },
   bellContainer: {
     position: "relative",
-    width: 28,
-    height: 28,
+    width: 30,
+    height: 30,
     alignItems: "center",
     justifyContent: "center",
-  },
-  bellIcon: {
-    fontSize: 24,
-    lineHeight: 28,
-    textAlign: "center",
   },
   badge: {
     position: "absolute",
-    top: -6,
-    right: -6,
+    top: -7,
+    right: -8,
     backgroundColor: "#FF3B30",
-    borderRadius: 8,
-    width: 16,
-    height: 16,
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
   },
   badgeText: {
     color: "#fff",

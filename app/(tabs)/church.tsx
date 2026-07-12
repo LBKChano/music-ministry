@@ -42,13 +42,24 @@ type MemberForAutoAssign = {
 const DEFAULT_SONG_TYPE_OPTIONS = ['Opening', 'Praise', 'Worship', 'Offering', 'Special', 'Closing'];
 const OTHER_SONG_TYPE_OPTION = 'Other';
 
-const normalizeEditableSongTypeOptions = (options?: string[] | null) => {
+const normalizeSongTypeLabel = (option: string) => option.trim().replace(/\s+/g, ' ');
+
+const normalizeEditableSongTypeOptions = (options?: string[] | null, fallbackToDefaults = true) => {
   const configuredOptions = options && options.length > 0 ? options : DEFAULT_SONG_TYPE_OPTIONS;
-  const cleaned = configuredOptions
-    .map(option => option.trim())
-    .filter(option => option && option !== OTHER_SONG_TYPE_OPTION);
-  const unique = Array.from(new Set(cleaned));
-  return unique.length > 0 ? unique : DEFAULT_SONG_TYPE_OPTIONS;
+  const seen = new Set<string>();
+  const cleaned: string[] = [];
+
+  configuredOptions.forEach(option => {
+    const normalized = normalizeSongTypeLabel(option);
+    const key = normalized.toLowerCase();
+    if (!normalized || key === OTHER_SONG_TYPE_OPTION.toLowerCase() || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    cleaned.push(normalized);
+  });
+
+  return cleaned.length > 0 || !fallbackToDefaults ? cleaned : DEFAULT_SONG_TYPE_OPTIONS;
 };
 
 // Helper function to format date as YYYY-MM-DD in local timezone
@@ -148,6 +159,7 @@ export default function ChurchScreen() {
   const [songTypeDraftOptions, setSongTypeDraftOptions] = useState<string[]>(() => (
     normalizeEditableSongTypeOptions(currentChurch?.song_type_options)
   ));
+  const [newSongTypeName, setNewSongTypeName] = useState('');
   const [isSavingSongTypes, setIsSavingSongTypes] = useState(false);
 
   // Quarterly assignment states
@@ -198,6 +210,7 @@ export default function ChurchScreen() {
 
   React.useEffect(() => {
     setSongTypeDraftOptions(normalizeEditableSongTypeOptions(currentChurch?.song_type_options));
+    setNewSongTypeName('');
   }, [currentChurch?.id, currentChurch?.song_type_options]);
 
   // Pull-to-refresh handler
@@ -222,20 +235,46 @@ export default function ChurchScreen() {
     }
   }, [refreshChurches, refreshMembers, refreshRecurringServices, refreshChurchRoles, refreshNotificationSettings, refreshServicesHook, currentChurch]);
 
-  const toggleSongTypeDraftOption = (option: string) => {
-    setSongTypeDraftOptions(prev =>
-      prev.includes(option)
-        ? prev.filter(item => item !== option)
-        : [...prev, option]
-    );
+  const handleAddSongType = () => {
+    const normalizedName = normalizeSongTypeLabel(newSongTypeName);
+    const normalizedKey = normalizedName.toLowerCase();
+
+    if (!normalizedName) {
+      Alert.alert('Error', 'Enter a song type name first.');
+      return;
+    }
+
+    if (normalizedKey === OTHER_SONG_TYPE_OPTION.toLowerCase()) {
+      Alert.alert('Already Available', 'Other is always available in the Schedules tab.');
+      setNewSongTypeName('');
+      return;
+    }
+
+    if (normalizedName.length > 40) {
+      Alert.alert('Error', 'Song type names must be 40 characters or fewer.');
+      return;
+    }
+
+    if (songTypeDraftOptions.some(option => option.toLowerCase() === normalizedKey)) {
+      Alert.alert('Already Added', 'That song type is already in the list.');
+      setNewSongTypeName('');
+      return;
+    }
+
+    setSongTypeDraftOptions(prev => [...prev, normalizedName]);
+    setNewSongTypeName('');
+  };
+
+  const handleRemoveSongType = (option: string) => {
+    setSongTypeDraftOptions(prev => prev.filter(item => item !== option));
   };
 
   const handleSaveSongTypes = async () => {
     if (!currentChurch || isSavingSongTypes) return;
 
-    const nextOptions = DEFAULT_SONG_TYPE_OPTIONS.filter(option => songTypeDraftOptions.includes(option));
+    const nextOptions = normalizeEditableSongTypeOptions(songTypeDraftOptions, false);
     if (nextOptions.length === 0) {
-      Alert.alert('Error', 'Select at least one default song type.');
+      Alert.alert('Error', 'Keep at least one song type.');
       return;
     }
 
@@ -1294,29 +1333,51 @@ export default function ChurchScreen() {
                 </View>
               </View>
               <View style={styles.songTypeGrid}>
-                {DEFAULT_SONG_TYPE_OPTIONS.map(option => {
-                  const selected = songTypeDraftOptions.includes(option);
-                  return (
+                {songTypeDraftOptions.map(option => (
+                  <View
+                    key={option}
+                    style={[
+                      styles.songTypeOption,
+                      styles.songTypeOptionRow,
+                      { borderColor: colors.primary, backgroundColor: colors.primary + '12' },
+                    ]}
+                  >
+                    <Text style={[styles.songTypeOptionText, { color: colors.primary }]}>
+                      {option}
+                    </Text>
                     <TouchableOpacity
-                      key={option}
-                      style={[
-                        styles.songTypeOption,
-                        { borderColor: colors.border, backgroundColor: colors.inputBackground },
-                        selected && { borderColor: colors.primary, backgroundColor: colors.primary + '18' },
-                      ]}
-                      onPress={() => toggleSongTypeDraftOption(option)}
+                      style={styles.removeSongTypeButton}
+                      onPress={() => handleRemoveSongType(option)}
+                      accessibilityLabel={`Remove ${option}`}
                     >
-                      <Text
-                        style={[
-                          styles.songTypeOptionText,
-                          { color: selected ? colors.primary : colors.textSecondary },
-                        ]}
-                      >
-                        {option}
-                      </Text>
+                      <IconSymbol
+                        ios_icon_name="xmark.circle.fill"
+                        android_material_icon_name="cancel"
+                        size={18}
+                        color={colors.primary}
+                      />
                     </TouchableOpacity>
-                  );
-                })}
+                  </View>
+                ))}
+              </View>
+              <View style={styles.addSongTypeRow}>
+                <TextInput
+                  style={[styles.addSongTypeInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }]}
+                  placeholder="Add song type"
+                  placeholderTextColor={colors.textSecondary}
+                  value={newSongTypeName}
+                  onChangeText={setNewSongTypeName}
+                  maxLength={40}
+                  returnKeyType="done"
+                  onSubmitEditing={handleAddSongType}
+                />
+                <TouchableOpacity
+                  style={[styles.addSongTypeButton, { backgroundColor: colors.primary }]}
+                  onPress={handleAddSongType}
+                >
+                  <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={18} color="#fff" />
+                  <Text style={styles.addSongTypeButtonText}>Add</Text>
+                </TouchableOpacity>
               </View>
               <TouchableOpacity
                 style={[
@@ -3294,8 +3355,47 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 10,
   },
+  songTypeOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   songTypeOptionText: {
     fontSize: 13,
+    fontWeight: '700',
+  },
+  removeSongTypeButton: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addSongTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
+  addSongTypeInput: {
+    flex: 1,
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    fontSize: 15,
+  },
+  addSongTypeButton: {
+    minHeight: 44,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  addSongTypeButtonText: {
+    color: '#fff',
+    fontSize: 14,
     fontWeight: '700',
   },
   saveSongTypesButton: {

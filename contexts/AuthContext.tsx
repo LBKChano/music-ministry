@@ -118,8 +118,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const deleteAccount = async () => {
     console.log('[AuthContext] deleteAccount called');
-    await supabase.rpc('delete_account');
-    // Auth state change listener will handle session clearing automatically
+    const { data, error } = await supabase.functions.invoke('delete-account', {
+      method: 'POST',
+    });
+
+    if (error) {
+      console.error('[AuthContext] deleteAccount function error:', error);
+      throw error;
+    }
+
+    const response = data as { error?: string } | null;
+    if (response?.error) {
+      throw new Error(response.error);
+    }
+
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('[AuthContext] signOut after deleteAccount failed:', err);
+    } finally {
+      setSession(null);
+    }
   };
 
   return (

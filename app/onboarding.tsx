@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,19 +13,36 @@ import {
   Alert,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@react-navigation/native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
 
+const PASSWORD_RESET_REDIRECT_URL = Linking.createURL('onboarding');
+
+const getAuthParamsFromUrl = (url: string) => {
+  const queryString = url.includes('?') ? url.split('?')[1]?.split('#')[0] ?? '' : '';
+  const hashString = url.includes('#') ? url.split('#')[1] ?? '' : '';
+  const params = new URLSearchParams(queryString);
+  const hashParams = new URLSearchParams(hashString);
+
+  hashParams.forEach((value, key) => {
+    params.set(key, value);
+  });
+
+  return params;
+};
+
 export default function OnboardingScreen() {
   const { colors: themeColors } = useTheme();
   const router = useRouter();
 
-  const [step, setStep] = useState<'welcome' | 'church' | 'admin' | 'adminLogin' | 'member' | 'memberSignup'>('welcome');
+  const [step, setStep] = useState<'welcome' | 'church' | 'admin' | 'adminLogin' | 'member' | 'memberSignup' | 'forgotPassword' | 'resetPassword'>('welcome');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Always reset to welcome step on mount so sign-out → re-open starts fresh
@@ -70,11 +87,168 @@ export default function OnboardingScreen() {
   const [memberEmail, setMemberEmail] = useState('');
   const [memberPassword, setMemberPassword] = useState('');
 
+  // Password reset data
+  const [resetEmail, setResetEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+
   // Member signup data
   const [memberSignupEmail, setMemberSignupEmail] = useState('');
   const [memberSignupPassword, setMemberSignupPassword] = useState('');
   const [memberSignupName, setMemberSignupName] = useState('');
   const [memberInvitationCode, setMemberInvitationCode] = useState('');
+
+  const handlePasswordRecoveryUrl = useCallback(async (url: string | null) => {
+    if (!url) return;
+
+    const params = getAuthParamsFromUrl(url);
+    const authError = params.get('error_description') ?? params.get('error');
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    const type = params.get('type');
+
+    if (authError) {
+      setStep('forgotPassword');
+      setError(authError.replace(/\+/g, ' '));
+      setMessage(null);
+      return;
+    }
+
+    if (type !== 'recovery' || !accessToken || !refreshToken) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    const { error: sessionError } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+
+    setLoading(false);
+
+    if (sessionError) {
+      console.error('Error setting password recovery session:', sessionError);
+      setStep('forgotPassword');
+      setError('That reset link is invalid or expired. Please request a new one.');
+      return;
+    }
+
+    setNewPassword('');
+    setConfirmNewPassword('');
+    setStep('resetPassword');
+    setMessage('Enter a new password for your account.');
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    Linking.getInitialURL()
+      .then((url) => {
+        if (mounted) {
+          handlePasswordRecoveryUrl(url).catch((err) => {
+            console.error('Error handling initial password recovery URL:', err);
+          });
+        }
+      })
+      .catch((err) => console.error('Error reading initial URL:', err));
+
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handlePasswordRecoveryUrl(url).catch((err) => {
+        console.error('Error handling password recovery URL:', err);
+      });
+    });
+
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, [handlePasswordRecoveryUrl]);
+
+  const openForgotPassword = (prefillEmail?: string) => {
+    setResetEmail(prefillEmail?.trim() ?? '');
+    setError(null);
+    setMessage(null);
+    setStep('forgotPassword');
+  };
+
+  const handleSendPasswordReset = async () => {
+    if (!resetEmail.trim()) {
+      setError('Please enter your email address');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
+        redirectTo: PASSWORD_RESET_REDIRECT_URL,
+      });
+
+      if (resetError) {
+        console.error('Error sending password reset email:', resetError);
+        setError(resetError.message);
+        return;
+      }
+
+      setMessage('Password reset email sent. Open the link in that email to set a new password.');
+    } catch (err) {
+      console.error('Unexpected password reset email error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to send password reset email');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!newPassword.trim() || !confirmNewPassword.trim()) {
+      setError('Please enter and confirm your new password');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        console.error('Error updating password:', updateError);
+        setError(updateError.message);
+        return;
+      }
+
+      await supabase.auth.signOut();
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setAdminLoginPassword('');
+      setMemberPassword('');
+      setStep('welcome');
+      setMessage('Password updated. Please log in with your new password.');
+    } catch (err) {
+      console.error('Unexpected update password error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update password');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleCreateChurchAndAdmin = async () => {
     console.log('User creating church and admin account');
@@ -415,11 +589,17 @@ export default function OnboardingScreen() {
   const memberStepSubtitle = 'Sign in with your member credentials';
   const memberSignupTitle = 'Create Member Account';
   const memberSignupSubtitle = 'Register with your church invitation code';
+  const forgotPasswordTitle = 'Reset Password';
+  const forgotPasswordSubtitle = 'Enter your account email and we will send you a reset link';
+  const resetPasswordTitle = 'Set New Password';
+  const resetPasswordSubtitle = 'Choose a new password for your account';
   const backButton = 'Back';
   const continueButton = 'Continue';
   const createButton = 'Create & Start';
   const loginButton = 'Login';
   const signupButton = 'Create Account';
+  const sendResetEmailButton = 'Send Reset Email';
+  const updatePasswordButton = 'Update Password';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -455,6 +635,12 @@ export default function OnboardingScreen() {
               <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
                 {welcomeSubtitle}
               </Text>
+
+              {message && (
+                <View style={styles.messageContainer}>
+                  <Text style={styles.messageText}>{message}</Text>
+                </View>
+              )}
 
               <View style={styles.buttonContainer}>
                 <TouchableOpacity
@@ -677,6 +863,16 @@ export default function OnboardingScreen() {
                   autoCorrect={false}
                 />
 
+                <TouchableOpacity
+                  style={styles.forgotPasswordButton}
+                  onPress={() => openForgotPassword(adminLoginEmail)}
+                  disabled={loading}
+                >
+                  <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>
+                    Forgot Password?
+                  </Text>
+                </TouchableOpacity>
+
                 {error && (
                   <View style={styles.errorContainer}>
                     <Text style={styles.errorText}>{error}</Text>
@@ -746,6 +942,16 @@ export default function OnboardingScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
+
+                <TouchableOpacity
+                  style={styles.forgotPasswordButton}
+                  onPress={() => openForgotPassword(memberEmail)}
+                  disabled={loading}
+                >
+                  <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>
+                    Forgot Password?
+                  </Text>
+                </TouchableOpacity>
 
                 {error && (
                   <View style={styles.errorContainer}>
@@ -876,6 +1082,132 @@ export default function OnboardingScreen() {
               </View>
             </View>
           )}
+
+          {/* Forgot Password Step */}
+          {step === 'forgotPassword' && (
+            <View style={styles.stepContainer}>
+              <Text style={[styles.title, { color: colors.text }]}>
+                {forgotPasswordTitle}
+              </Text>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                {forgotPasswordSubtitle}
+              </Text>
+
+              <View style={styles.formContainer}>
+                <TextInput
+                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                  placeholder="Email"
+                  placeholderTextColor={colors.textSecondary}
+                  value={resetEmail}
+                  onChangeText={setResetEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+
+                {message && (
+                  <View style={styles.messageContainer}>
+                    <Text style={styles.messageText}>{message}</Text>
+                  </View>
+                )}
+
+                {error && (
+                  <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                <View style={styles.navigationButtons}>
+                  <TouchableOpacity
+                    style={[styles.backButton, { borderColor: colors.border }]}
+                    onPress={() => {
+                      console.log('User tapped Back');
+                      setStep('welcome');
+                      setError(null);
+                      setMessage(null);
+                    }}
+                    disabled={loading}
+                  >
+                    <Text style={[styles.backButtonText, { color: colors.text }]}>
+                      {backButton}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.continueButton, { backgroundColor: colors.primary }]}
+                    onPress={handleSendPasswordReset}
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.continueButtonText}>{sendResetEmailButton}</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Password Recovery Step */}
+          {step === 'resetPassword' && (
+            <View style={styles.stepContainer}>
+              <Text style={[styles.title, { color: colors.text }]}>
+                {resetPasswordTitle}
+              </Text>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                {resetPasswordSubtitle}
+              </Text>
+
+              <View style={styles.formContainer}>
+                <TextInput
+                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                  placeholder="New Password"
+                  placeholderTextColor={colors.textSecondary}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+
+                <TextInput
+                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                  placeholder="Confirm New Password"
+                  placeholderTextColor={colors.textSecondary}
+                  value={confirmNewPassword}
+                  onChangeText={setConfirmNewPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+
+                {message && (
+                  <View style={styles.messageContainer}>
+                    <Text style={styles.messageText}>{message}</Text>
+                  </View>
+                )}
+
+                {error && (
+                  <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+                  onPress={handleUpdatePassword}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>{updatePasswordButton}</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -938,6 +1270,15 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     fontStyle: 'italic',
   },
+  forgotPasswordButton: {
+    alignItems: 'flex-end',
+    marginTop: -6,
+    marginBottom: 16,
+  },
+  forgotPasswordText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   buttonContainer: {
     width: '100%',
     maxWidth: 400,
@@ -998,6 +1339,17 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#c62828',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  messageContainer: {
+    backgroundColor: '#e8f5e9',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  messageText: {
+    color: '#2e7d32',
     fontSize: 14,
     textAlign: 'center',
   },
