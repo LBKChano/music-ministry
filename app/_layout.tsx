@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -17,6 +17,7 @@ import { NotificationProvider, useNotifications } from '@/contexts/NotificationC
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ChurchProvider, useChurch } from '@/contexts/ChurchContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { CustomSplashScreen } from '@/components/CustomSplashScreen';
 import { supabase } from '@/lib/supabase/client';
 
 // Force expo-router to always start at index, never restore cached navigation state
@@ -178,9 +179,7 @@ function RootLayoutNav() {
            * the user sees a clean loading screen instead of a flash of the wrong route.
            */}
           {!initialized && (
-            <View style={styles.loadingOverlay} pointerEvents="box-none">
-              <ActivityIndicator size="large" color="#ffffff" />
-            </View>
+            <CustomSplashScreen />
           )}
 
           {SystemBars ? <SystemBars style="auto" /> : null}
@@ -204,12 +203,3 @@ export default function RootLayout() {
     </ErrorBoundary>
   );
 }
-
-const styles = StyleSheet.create({
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#1a2332',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-});

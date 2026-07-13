@@ -208,8 +208,6 @@ export default function ProfileScreen() {
             <Text
               style={styles.profileHeaderTitle}
               numberOfLines={2}
-              adjustsFontSizeToFit
-              minimumFontScale={0.72}
             >
               {displayName}
             </Text>
@@ -486,7 +484,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#60A5FA',
   },
   profileHeaderTopRow: {
-    minHeight: 74,
+    minHeight: 92,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 14,
@@ -496,9 +494,9 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   profileHeaderAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
+    width: 58,
+    height: 58,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.16)',
@@ -514,8 +512,8 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   profileHeaderTitle: {
-    fontSize: 31,
-    lineHeight: 36,
+    fontSize: 36,
+    lineHeight: 41,
     fontWeight: '900',
     color: '#FFFFFF',
     textAlign: 'left',

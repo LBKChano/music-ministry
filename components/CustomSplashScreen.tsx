@@ -1,73 +1,53 @@
-
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
+import { ActivityIndicator, ImageBackground, StyleSheet, Text, View } from 'react-native';
+
+const splashArtwork = require('../assets/images/9b11f806-5921-4e61-9383-a2c0-50adf64dee7b.png');
 
 export function CustomSplashScreen() {
   return (
-    <View style={styles.container}>
-      <View style={styles.iconContainer}>
-        <IconSymbol 
-          ios_icon_name="building.2.fill" 
-          android_material_icon_name="account-balance"
-          size={80} 
-          color="#FFFFFF" 
+    <ImageBackground source={splashArtwork} resizeMode="cover" style={styles.container}>
+      <View style={styles.statusPanel}>
+        <ActivityIndicator
+          size="small"
+          color="#FFFFFF"
+          style={styles.loader}
         />
-        <IconSymbol 
-          ios_icon_name="music.note" 
-          android_material_icon_name="music-note"
-          size={60} 
-          color="#60A5FA" 
-          style={styles.musicNote}
-        />
+        <Text style={styles.statusText}>Preparing your ministry schedule</Text>
       </View>
-      <Text style={styles.title}>Church Scheduler</Text>
-      <Text style={styles.subtitle}>Worship Ministry Management</Text>
-      <ActivityIndicator 
-        size="large" 
-        color="#FFFFFF" 
-        style={styles.loader}
-      />
-    </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    ...StyleSheet.absoluteFillObject,
     flex: 1,
-    backgroundColor: colors.primary,
+    backgroundColor: '#06152F',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 24,
+    paddingBottom: 56,
+  },
+  statusPanel: {
+    minHeight: 44,
+    borderRadius: 22,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
-  },
-  iconContainer: {
-    position: 'relative',
-    width: 120,
-    height: 120,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 30,
-  },
-  musicNote: {
-    position: 'absolute',
-    top: -10,
-    right: -10,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#BFDBFE',
-    marginBottom: 40,
-    textAlign: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(6, 21, 47, 0.68)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
   },
   loader: {
-    marginTop: 20,
+    transform: [{ scale: 0.88 }],
+  },
+  statusText: {
+    color: '#EAF2FF',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
   },
 });
