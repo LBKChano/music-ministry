@@ -18,6 +18,12 @@ const ONESIGNAL_REST_API_KEY = ONESIGNAL_REST_API_KEY_NAMES
   .map(normalizeSecret)
   .find((value): value is string => Boolean(value))
 
+type SubscriptionRow = {
+  member_id: string
+  subscription_id: string | null
+  updated_at?: string | null
+}
+
 async function sendOneSignalNotification(params: {
   externalIds: string[]
   subscriptionIds: string[]
@@ -223,13 +229,12 @@ Deno.serve(async (req) => {
 
     const { data: subscriptionRows } = await supabase
       .from('onesignal_subscriptions')
-      .select('member_id, subscription_id')
+      .select('member_id, subscription_id, updated_at')
       .in('member_id', recipientMemberIds)
 
-    const subscriptionIds = (subscriptionRows ?? [])
-      .map((row: { subscription_id: string | null }) => row.subscription_id)
-      .filter((subscriptionId): subscriptionId is string => Boolean(subscriptionId))
-    const memberIdsWithSubscriptions = new Set((subscriptionRows ?? []).map((row: { member_id: string }) => row.member_id))
+    const latestSubscriptionRows = getLatestSubscriptionRows(subscriptionRows ?? [])
+    const subscriptionIds = latestSubscriptionRows.map((row) => row.subscription_id)
+    const memberIdsWithSubscriptions = new Set(latestSubscriptionRows.map((row) => row.member_id))
     const externalIds = recipientMemberIds.filter((memberId) => !memberIdsWithSubscriptions.has(memberId))
 
     const notificationTitle = `Fill-In Covered - ${churchName}`
@@ -252,7 +257,7 @@ Deno.serve(async (req) => {
     if (sent > 0) {
       const notifiedMemberIds = new Set<string>()
       if (successfulTargetLabels.includes('subscription_ids')) {
-        (subscriptionRows ?? []).forEach((row: { member_id: string }) => notifiedMemberIds.add(row.member_id))
+        latestSubscriptionRows.forEach((row) => notifiedMemberIds.add(row.member_id))
       }
       if (successfulTargetLabels.includes('external_ids')) {
         externalIds.forEach((memberId) => notifiedMemberIds.add(memberId))
@@ -299,6 +304,28 @@ Deno.serve(async (req) => {
     )
   }
 })
+
+function getLatestSubscriptionRows(rows: SubscriptionRow[]): { member_id: string; subscription_id: string }[] {
+  const latestByMember = new Map<string, SubscriptionRow>()
+
+  for (const row of rows) {
+    if (!row.member_id || !row.subscription_id) continue
+
+    const previous = latestByMember.get(row.member_id)
+    if (!previous || getSubscriptionUpdatedAt(row) > getSubscriptionUpdatedAt(previous)) {
+      latestByMember.set(row.member_id, row)
+    }
+  }
+
+  return Array.from(latestByMember.values()).map((row) => ({
+    member_id: row.member_id,
+    subscription_id: row.subscription_id!,
+  }))
+}
+
+function getSubscriptionUpdatedAt(row: SubscriptionRow): number {
+  return row.updated_at ? new Date(row.updated_at).getTime() : 0
+}
 
 function normalizeSecret(value?: string | null): string | undefined {
   if (!value) return undefined

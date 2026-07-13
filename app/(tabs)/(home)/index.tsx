@@ -651,7 +651,7 @@ export default function HomeScreen() {
   } = useChurch();
 
   // Notification context - OneSignal handles token registration automatically
-  const { requestPermission, hasPermission } = useNotifications();
+  const { requestPermission, hasPermission, loading: notificationLoading } = useNotifications();
 
   const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate, addServiceComment, updateServiceComment, deleteServiceComment } = useServices(currentChurch?.id ?? null);
 
@@ -697,14 +697,14 @@ export default function HomeScreen() {
 
   // Request notification permission on first load if not yet granted
   useEffect(() => {
-    if (!currentMember || hasPermission) return;
+    if (!currentMember || hasPermission || notificationLoading) return;
     console.log('[Notifications] Requesting OneSignal permission for member:', currentMember.id);
     requestPermission().then((granted) => {
       console.log('[Notifications] Permission result:', granted);
     }).catch((err) => {
       console.warn('[Notifications] Permission request error:', err);
     });
-  }, [currentMember, hasPermission, requestPermission]);
+  }, [currentMember, hasPermission, notificationLoading, requestPermission]);
 
   useEffect(() => {
     if (!commentModalVisible || serviceSongType === OTHER_SONG_TYPE_OPTION) return;

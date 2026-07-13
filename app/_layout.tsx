@@ -134,6 +134,16 @@ function RootLayoutNav() {
             console.warn('[Layout] Failed to save subscription ID:', error.message);
           } else {
             console.log('[Layout] Subscription ID saved for member:', currentMember.id);
+            supabase
+              .from('onesignal_subscriptions')
+              .delete()
+              .eq('member_id', currentMember.id)
+              .neq('subscription_id', onesignalSubscriptionId)
+              .then(({ error: cleanupError }) => {
+                if (cleanupError) {
+                  console.warn('[Layout] Failed to clean old subscription IDs:', cleanupError.message);
+                }
+              });
           }
         });
     }

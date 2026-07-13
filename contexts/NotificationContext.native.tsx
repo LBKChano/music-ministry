@@ -127,9 +127,6 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
 
       // Listen for notification events
       const foregroundHandler = (event: NotificationWillDisplayEvent) => {
-        // Display the notification
-        event.getNotification().display();
-
         const notification = event.getNotification();
         setLastNotification({
           title: notification.title,

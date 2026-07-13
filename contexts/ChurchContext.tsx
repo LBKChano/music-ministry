@@ -153,7 +153,10 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
 
       console.log('Fetched churches:', uniqueChurches.length);
       setChurches(uniqueChurches);
-      setCurrentChurch(prev => prev ?? (uniqueChurches.length > 0 ? uniqueChurches[0] : null));
+      setCurrentChurch(prev => {
+        const existingChurch = uniqueChurches.find(church => church.id === prev?.id);
+        return existingChurch ?? uniqueChurches[0] ?? null;
+      });
     } catch (err) {
       console.error('Error in fetchChurches:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');

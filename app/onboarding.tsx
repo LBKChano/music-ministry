@@ -21,6 +21,11 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
 
 const PASSWORD_RESET_REDIRECT_URL = Linking.createURL('onboarding');
+const SCHEDULES_ROUTE = '/(tabs)/(home)';
+const ONBOARDING_READY_RETRY_MS = 300;
+const ONBOARDING_READY_ATTEMPTS = 6;
+
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const getAuthParamsFromUrl = (url: string) => {
   const queryString = url.includes('?') ? url.split('?')[1]?.split('#')[0] ?? '' : '';
@@ -97,6 +102,50 @@ export default function OnboardingScreen() {
   const [memberSignupPassword, setMemberSignupPassword] = useState('');
   const [memberSignupName, setMemberSignupName] = useState('');
   const [memberInvitationCode, setMemberInvitationCode] = useState('');
+
+  const waitForChurchMembership = useCallback(async (churchId: string, userId: string) => {
+    for (let attempt = 0; attempt < ONBOARDING_READY_ATTEMPTS; attempt += 1) {
+      const { data, error: membershipError } = await supabase
+        .from('church_members')
+        .select('id')
+        .eq('church_id', churchId)
+        .eq('member_id', userId)
+        .maybeSingle();
+
+      if (data?.id) {
+        return true;
+      }
+
+      if (membershipError) {
+        console.warn('Membership readiness check failed:', membershipError.message);
+      }
+
+      await wait(ONBOARDING_READY_RETRY_MS);
+    }
+
+    return false;
+  }, []);
+
+  const finishOnboardingToSchedules = useCallback(async (churchId: string, userId: string) => {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError) {
+      console.warn('Unable to verify onboarding session:', sessionError.message);
+    }
+
+    if (!sessionData.session) {
+      setMessage('Account created. Please confirm your email, then log in to continue.');
+      setStep('welcome');
+      return;
+    }
+
+    const membershipReady = await waitForChurchMembership(churchId, userId);
+    if (!membershipReady) {
+      console.warn('Membership row was not visible before navigation. Continuing to schedules.');
+    }
+
+    router.replace(SCHEDULES_ROUTE);
+  }, [router, waitForChurchMembership]);
 
   const handlePasswordRecoveryUrl = useCallback(async (url: string | null) => {
     if (!url) return;
@@ -357,13 +406,13 @@ export default function OnboardingScreen() {
       }
 
       console.log('Admin added as member successfully:', memberResult.data);
-      console.log('Church and admin account created successfully — navigating to tabs');
+      console.log('Church and admin account created successfully — navigating to schedules');
 
       setLoading(false);
       // Explicitly navigate now that all DB operations are complete.
       // Do NOT rely on onAuthStateChange — it may fire before the church row
       // exists, causing it to redirect back to onboarding.
-      router.replace('/(tabs)');
+      await finishOnboardingToSchedules(churchResult.data.id, user.id);
     } catch (err) {
       console.error('Error in onboarding:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -563,9 +612,9 @@ export default function OnboardingScreen() {
 
       console.log('Member successfully joined church:', churchData.name);
       console.log('Member data:', memberData);
-      console.log('Member account created successfully — auth state change will navigate to tabs');
+      console.log('Member account created successfully — navigating to schedules');
       setLoading(false);
-      // Navigation is handled centrally by _layout.tsx watching session changes
+      await finishOnboardingToSchedules(churchData.id, user.id);
     } catch (err) {
       console.error('Unexpected error in member signup:', err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');

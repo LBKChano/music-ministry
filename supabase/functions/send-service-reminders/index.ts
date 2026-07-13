@@ -30,6 +30,12 @@ type OneSignalMessage = {
   data: Record<string, string>
 }
 
+type SubscriptionRow = {
+  member_id: string
+  subscription_id: string | null
+  updated_at?: string | null
+}
+
 async function sendOneSignalMessages(messages: OneSignalMessage[]) {
   if (!ONESIGNAL_REST_API_KEY) {
     throw new Error(`OneSignal REST API key is not configured. Set one of: ${ONESIGNAL_REST_API_KEY_NAMES.join(', ')}`)
@@ -223,15 +229,13 @@ Deno.serve(async (req) => {
     // 6. Get OneSignal subscription IDs for all relevant members
     const { data: subscriptionRows } = await supabase
       .from('onesignal_subscriptions')
-      .select('member_id, subscription_id')
+      .select('member_id, subscription_id, updated_at')
       .in('member_id', Array.from(allMemberIds))
 
-    const subscriptionMap = new Map<string, string[]>()
-    for (const row of (subscriptionRows ?? [])) {
-      if (!subscriptionMap.has(row.member_id)) subscriptionMap.set(row.member_id, [])
-      if (!subscriptionMap.get(row.member_id)!.includes(row.subscription_id)) {
-        subscriptionMap.get(row.member_id)!.push(row.subscription_id)
-      }
+    const latestSubscriptionRows = getLatestSubscriptionRows(subscriptionRows ?? [])
+    const subscriptionMap = new Map<string, string>()
+    for (const row of latestSubscriptionRows) {
+      subscriptionMap.set(row.member_id, row.subscription_id)
     }
 
     // 7. Check which reminders have already been sent (deduplication)
@@ -250,7 +254,7 @@ Deno.serve(async (req) => {
       churches: churchIds.length,
       services: services.length,
       assignedMembers: allMemberIds.size,
-      subscriptions: subscriptionRows?.length ?? 0,
+      subscriptions: latestSubscriptionRows.length,
       dueAssignments: 0,
       skippedNoSubscription: 0,
       skippedAlreadySent: 0,
@@ -289,7 +293,8 @@ Deno.serve(async (req) => {
         for (const assignment of (service.assignments ?? [])) {
           if (!assignment.member_id) continue
 
-          const subscriptionIds = subscriptionMap.get(assignment.member_id) ?? []
+          const subscriptionId = subscriptionMap.get(assignment.member_id) ?? null
+          const subscriptionIds = subscriptionId ? [subscriptionId] : []
 
           const reminderKey = `${service.id}:${assignment.member_id}:${windowHours}`
           if (sentKeys.has(reminderKey) || pendingSentKeys.has(reminderKey)) {
@@ -414,6 +419,28 @@ function formatDateInTimeZone(date: Date, timeZone: string): string {
 
   const values = new Map(parts.map((part) => [part.type, part.value]))
   return `${values.get('year')}-${values.get('month')}-${values.get('day')}`
+}
+
+function getLatestSubscriptionRows(rows: SubscriptionRow[]): { member_id: string; subscription_id: string }[] {
+  const latestByMember = new Map<string, SubscriptionRow>()
+
+  for (const row of rows) {
+    if (!row.member_id || !row.subscription_id) continue
+
+    const previous = latestByMember.get(row.member_id)
+    if (!previous || getSubscriptionUpdatedAt(row) > getSubscriptionUpdatedAt(previous)) {
+      latestByMember.set(row.member_id, row)
+    }
+  }
+
+  return Array.from(latestByMember.values()).map((row) => ({
+    member_id: row.member_id,
+    subscription_id: row.subscription_id!,
+  }))
+}
+
+function getSubscriptionUpdatedAt(row: SubscriptionRow): number {
+  return row.updated_at ? new Date(row.updated_at).getTime() : 0
 }
 
 function getTimeZoneOffsetMs(date: Date, timeZone: string): number {

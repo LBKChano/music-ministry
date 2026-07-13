@@ -18,6 +18,12 @@ const ONESIGNAL_REST_API_KEY = ONESIGNAL_REST_API_KEY_NAMES
   .map(normalizeSecret)
   .find((value): value is string => Boolean(value))
 
+type SubscriptionRow = {
+  member_id: string
+  subscription_id: string | null
+  updated_at?: string | null
+}
+
 async function sendOneSignalNotification(params: {
   externalIds: string[]
   subscriptionIds: string[]
@@ -246,11 +252,12 @@ Deno.serve(async (req) => {
     // device. Fall back to external_id aliases for members without a saved row.
     const { data: subscriptionRows } = await supabase
       .from('onesignal_subscriptions')
-      .select('member_id, subscription_id')
+      .select('member_id, subscription_id, updated_at')
       .in('member_id', recipientMemberIds)
 
-    stats.subscriptions = subscriptionRows?.length ?? 0
-    const memberIdsWithSubscriptions = new Set((subscriptionRows ?? []).map((row: { member_id: string }) => row.member_id))
+    const latestSubscriptionRows = getLatestSubscriptionRows(subscriptionRows ?? [])
+    stats.subscriptions = latestSubscriptionRows.length
+    const memberIdsWithSubscriptions = new Set(latestSubscriptionRows.map((row) => row.member_id))
     const fallbackExternalIds = recipientMemberIds.filter((memberId) => !memberIdsWithSubscriptions.has(memberId))
 
     // 7. Build notification content
@@ -263,7 +270,7 @@ Deno.serve(async (req) => {
     // 8. Send via OneSignal Push API
     const { sent, errors, successfulTargetLabels } = await sendOneSignalNotification({
       externalIds: fallbackExternalIds,
-      subscriptionIds: (subscriptionRows ?? []).map((row: { subscription_id: string }) => row.subscription_id),
+      subscriptionIds: latestSubscriptionRows.map((row) => row.subscription_id),
       title: notificationTitle,
       body: notificationBody,
       data: {
@@ -277,7 +284,7 @@ Deno.serve(async (req) => {
     if (sent > 0) {
       const notifiedMemberIds = new Set<string>()
       if (successfulTargetLabels.includes('subscription_ids')) {
-        (subscriptionRows ?? []).forEach((row: { member_id: string }) => notifiedMemberIds.add(row.member_id))
+        latestSubscriptionRows.forEach((row) => notifiedMemberIds.add(row.member_id))
       }
       if (successfulTargetLabels.includes('external_ids')) {
         fallbackExternalIds.forEach((memberId) => notifiedMemberIds.add(memberId))
@@ -311,7 +318,7 @@ Deno.serve(async (req) => {
       church_id: fillInRequest.church_id,
       service_id: fillInRequest.service_id,
       members_found: recipientMemberIds.length,
-      tokens_found: subscriptionRows?.length ?? 0,
+      tokens_found: latestSubscriptionRows.length,
       notifications_sent: sent,
       onesignal_response: JSON.stringify({ errors, successfulTargetLabels }),
       notes: `fill-in request ${fillInRequest.id}; role=${fillInRequest.role_name}; fallbackExternalIds=${fallbackExternalIds.length}; stats=${JSON.stringify(stats)}`,
@@ -332,6 +339,28 @@ Deno.serve(async (req) => {
 
 function normalizeRoleName(roleName: string): string {
   return roleName.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+function getLatestSubscriptionRows(rows: SubscriptionRow[]): { member_id: string; subscription_id: string }[] {
+  const latestByMember = new Map<string, SubscriptionRow>()
+
+  for (const row of rows) {
+    if (!row.member_id || !row.subscription_id) continue
+
+    const previous = latestByMember.get(row.member_id)
+    if (!previous || getSubscriptionUpdatedAt(row) > getSubscriptionUpdatedAt(previous)) {
+      latestByMember.set(row.member_id, row)
+    }
+  }
+
+  return Array.from(latestByMember.values()).map((row) => ({
+    member_id: row.member_id,
+    subscription_id: row.subscription_id!,
+  }))
+}
+
+function getSubscriptionUpdatedAt(row: SubscriptionRow): number {
+  return row.updated_at ? new Date(row.updated_at).getTime() : 0
 }
 
 function normalizeSecret(value?: string | null): string | undefined {
