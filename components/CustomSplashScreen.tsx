@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, ImageBackground, StyleSheet, Text, View } from 'react-native';
 
-const splashArtwork = require('../assets/images/9b11f806-5921-4e61-9383-a2c0-50adf64dee7b.png');
+const splashArtwork = require('../assets/images/9b11f806-5921-4e61-9383-a3f7e125c18f.png');
 
 export function CustomSplashScreen() {
   return (
