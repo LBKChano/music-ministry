@@ -1,7 +1,9 @@
 import { ActivityIndicator, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { useAuth } from '@/contexts/AuthContext';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { isPasswordRecoveryUrl } from '@/utils/passwordResetLinks';
 
 /**
  * Root index screen — the sole place that decides where to navigate.
@@ -15,17 +17,42 @@ import { useEffect } from 'react';
 export default function Index() {
   const { session, initialized } = useAuth();
   const router = useRouter();
+  const checkedInitialUrlRef = useRef(false);
 
   useEffect(() => {
     if (!initialized) return;
 
-    if (session) {
-      console.log('[Index] session found — navigating to /(tabs)');
-      router.replace('/(tabs)');
-    } else {
-      console.log('[Index] no session — navigating to /onboarding');
-      router.replace('/onboarding');
-    }
+    const routeAfterInitialUrlCheck = async () => {
+      if (!checkedInitialUrlRef.current) {
+        checkedInitialUrlRef.current = true;
+        const initialUrl = await Linking.getInitialURL().catch((err) => {
+          console.error('[Index] Error reading initial URL:', err);
+          return null;
+        });
+
+        if (isPasswordRecoveryUrl(initialUrl)) {
+          console.log('[Index] password recovery link found - navigating to reset password');
+          router.replace({
+            pathname: '/reset-password',
+            params: { recoveryUrl: encodeURIComponent(initialUrl ?? '') },
+          });
+          return;
+        }
+      }
+
+      if (session) {
+        console.log('[Index] session found — navigating to /(tabs)');
+        router.replace('/(tabs)');
+      } else {
+        console.log('[Index] no session — navigating to /onboarding');
+        router.replace('/onboarding');
+      }
+    };
+
+    routeAfterInitialUrlCheck().catch((err) => {
+      console.error('[Index] route check failed:', err);
+      router.replace(session ? '/(tabs)' : '/onboarding');
+    });
   }, [initialized, session, router]);
 
   // Show a loading indicator while auth initializes.

@@ -12,37 +12,25 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@react-navigation/native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
+import { getAuthParamsFromUrl, PASSWORD_RESET_REDIRECT_URL } from '@/utils/passwordResetLinks';
 
-const PASSWORD_RESET_REDIRECT_URL = Linking.createURL('onboarding');
 const SCHEDULES_ROUTE = '/(tabs)/(home)';
 const ONBOARDING_READY_RETRY_MS = 300;
 const ONBOARDING_READY_ATTEMPTS = 6;
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const getAuthParamsFromUrl = (url: string) => {
-  const queryString = url.includes('?') ? url.split('?')[1]?.split('#')[0] ?? '' : '';
-  const hashString = url.includes('#') ? url.split('#')[1] ?? '' : '';
-  const params = new URLSearchParams(queryString);
-  const hashParams = new URLSearchParams(hashString);
-
-  hashParams.forEach((value, key) => {
-    params.set(key, value);
-  });
-
-  return params;
-};
-
 export default function OnboardingScreen() {
   const { colors: themeColors } = useTheme();
   const router = useRouter();
+  const routeParams = useLocalSearchParams<{ passwordReset?: string }>();
 
   const [step, setStep] = useState<'welcome' | 'church' | 'admin' | 'adminLogin' | 'member' | 'memberSignup' | 'forgotPassword' | 'resetPassword'>('welcome');
   const [loading, setLoading] = useState(false);
@@ -53,7 +41,11 @@ export default function OnboardingScreen() {
   // Always reset to welcome step on mount so sign-out → re-open starts fresh
   useEffect(() => {
     setStep('welcome');
-  }, []);
+    if (routeParams.passwordReset === 'complete') {
+      setMessage('Password updated. Please log in with your new password.');
+      setError(null);
+    }
+  }, [routeParams.passwordReset]);
 
   // Safety timeout: if loading stays true for 8s (e.g. navigation fails), reset it
   useEffect(() => {

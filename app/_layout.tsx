@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Platform } from 'react-native';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useColorScheme } from 'react-native';
@@ -66,12 +66,26 @@ try {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const router = useRouter();
+  const segments = useSegments();
   const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
-  const { initialized } = useAuth();
+  const { initialized, session } = useAuth();
   const { currentMember } = useChurch();
   const { hasPermission, onesignalSubscriptionId } = useNotifications();
+
+  useEffect(() => {
+    if (!initialized || session) return;
+
+    const rootSegment = segments[0];
+    const isPublicRoute = rootSegment === 'onboarding' || rootSegment === 'reset-password';
+
+    if (!isPublicRoute) {
+      console.log('[Layout] no session on protected route - navigating to onboarding');
+      router.replace('/onboarding');
+    }
+  }, [initialized, router, segments, session]);
 
   // Keep OneSignal's user alias in sync with the app member. This runs again
   // after permission/subscription changes so a fresh install cannot miss linking.
@@ -165,6 +179,7 @@ function RootLayoutNav() {
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+            <Stack.Screen name="reset-password" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen
               name="notification-preferences"

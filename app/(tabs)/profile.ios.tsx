@@ -4,7 +4,7 @@ import { colors } from "@/styles/commonStyles";
 import React, { useState, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, ActivityIndicator, Animated } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useChurch } from "@/hooks/useChurch";
 import { Calendar, DateData } from "react-native-calendars";
@@ -16,6 +16,7 @@ type ToastType = 'success' | 'error';
 
 export default function ProfileScreen() {
   const { user, loading, currentMember, currentChurch, signOut, deleteAccount, fetchMemberUnavailability, saveUnavailableDates } = useChurch();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -72,7 +73,7 @@ export default function ProfileScreen() {
       setDeleting(true);
       setShowDeleteModal(false);
       await deleteAccount();
-      // Auth guard will redirect to onboarding automatically
+      router.replace('/onboarding');
     } catch (error) {
       console.error('Error deleting account:', error);
       showToast('Failed to delete account. Please try again.', 'error');
@@ -86,10 +87,7 @@ export default function ProfileScreen() {
       setSigningOut(true);
       setShowSignOutModal(false);
       await signOut();
-      // Do NOT call router.replace here — the root layout's auth guard detects the
-      // session clearing and redirects to /onboarding automatically. Calling replace
-      // here as well causes a double-navigation crash on Android.
-      console.log('Sign out successful — auth guard will redirect to onboarding');
+      router.replace('/onboarding');
     } catch (error) {
       console.error('Error signing out:', error);
       setSigningOut(false);
