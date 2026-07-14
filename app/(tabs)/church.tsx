@@ -19,7 +19,8 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useChurch } from '@/hooks/useChurch';
 import { useServices } from '@/hooks/useServices';
-import { supabase } from '@/lib/supabase/client'; // used in handleAutoAssign
+import { supabase } from '@/lib/supabase/client';
+import type { Json } from '@/lib/supabase/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Clipboard from 'expo-clipboard';
 
@@ -32,12 +33,61 @@ interface SpecialService {
   selectedRoleIds: string[];
 }
 
-type MemberForAutoAssign = {
-  id: string;
-  name: string | null;
-  email: string;
-  memberRoles?: { role_id: string; role_name: string }[];
+type AutoAssignMode = 'fill_empty' | 'reassign_all';
+type AutoAssignRangeMode = 'next_30_days' | 'next_quarter' | 'selected_range' | 'visible_services';
+type AutoAssignPreviewAssignment = {
+  assignment_id: string;
+  service_id: string;
+  service_date: string;
+  service_time: string | null;
+  service_type: string;
+  role: string;
+  member_id: string;
+  person_name: string;
+  current_member_id: string | null;
+  current_person_name: string | null;
 };
+type AutoAssignUnavailableMember = {
+  member_id: string;
+  name: string;
+  email: string;
+};
+type AutoAssignSkippedSlot = {
+  assignment_id: string;
+  service_id: string;
+  service_date: string;
+  service_time: string | null;
+  service_type: string;
+  role: string;
+  reason: string;
+  unavailable_members: AutoAssignUnavailableMember[];
+};
+type AutoAssignResult = {
+  assigned_count: number;
+  open_slot_count: number;
+  skipped_count: number;
+  no_role_match_count: number;
+  unavailable_slot_count: number;
+  unavailable_candidate_count: number;
+  same_service_conflict_count: number;
+  cleared_count: number;
+  preview: AutoAssignPreviewAssignment[];
+  skipped_report: AutoAssignSkippedSlot[];
+};
+
+type AutoAssignRangeConfig = {
+  target_start_date: string | null;
+  target_end_date: string | null;
+  target_service_ids: string[] | null;
+  label: string;
+};
+
+const AUTO_ASSIGN_RANGE_OPTIONS: { mode: AutoAssignRangeMode; label: string }[] = [
+  { mode: 'next_30_days', label: 'Next 30 Days' },
+  { mode: 'next_quarter', label: 'Next Quarter' },
+  { mode: 'selected_range', label: 'Date Range' },
+  { mode: 'visible_services', label: 'Visible Services' },
+];
 
 const DEFAULT_SONG_TYPE_OPTIONS = ['Opening', 'Praise', 'Worship', 'Offering', 'Special', 'Closing'];
 const OTHER_SONG_TYPE_OPTION = 'Other';
@@ -70,19 +120,101 @@ function formatDateForDatabase(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function getStartOfLocalDay(date: Date): Date {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+function addDays(date: Date, days: number): Date {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+function addMonths(date: Date, months: number): Date {
+  const copy = new Date(date);
+  copy.setMonth(copy.getMonth() + months);
+  return copy;
+}
+
+function formatDateForDisplay(dateString: string): string {
+  const [year, month, day] = dateString.split('-').map(Number);
+  if (!year || !month || !day) return dateString;
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function formatPreviewTime(time?: string | null): string {
+  if (!time) return '';
+  const [hoursRaw, minutesRaw] = time.split(':');
+  const hours = Number(hoursRaw);
+  const minutes = Number(minutesRaw);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return time;
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+function normalizeAutoAssignPreview(preview: Json | undefined): AutoAssignPreviewAssignment[] {
+  if (!Array.isArray(preview)) return [];
+
+  return preview
+    .filter((item): item is Record<string, Json | undefined> => !!item && typeof item === 'object' && !Array.isArray(item))
+    .map(item => ({
+      assignment_id: String(item.assignment_id ?? ''),
+      service_id: String(item.service_id ?? ''),
+      service_date: String(item.service_date ?? ''),
+      service_time: typeof item.service_time === 'string' ? item.service_time : null,
+      service_type: String(item.service_type ?? ''),
+      role: String(item.role ?? ''),
+      member_id: String(item.member_id ?? ''),
+      person_name: String(item.person_name ?? ''),
+      current_member_id: typeof item.current_member_id === 'string' ? item.current_member_id : null,
+      current_person_name: typeof item.current_person_name === 'string' ? item.current_person_name : null,
+    }))
+    .filter(item => item.assignment_id && item.service_id && item.service_date && item.member_id);
+}
+
+function normalizeUnavailableMembers(members: Json | undefined): AutoAssignUnavailableMember[] {
+  if (!Array.isArray(members)) return [];
+
+  return members
+    .filter((item): item is Record<string, Json | undefined> => !!item && typeof item === 'object' && !Array.isArray(item))
+    .map(item => ({
+      member_id: String(item.member_id ?? ''),
+      name: String(item.name ?? ''),
+      email: String(item.email ?? ''),
+    }))
+    .filter(item => item.member_id);
+}
+
+function normalizeAutoAssignSkippedReport(report: Json | undefined): AutoAssignSkippedSlot[] {
+  if (!Array.isArray(report)) return [];
+
+  return report
+    .filter((item): item is Record<string, Json | undefined> => !!item && typeof item === 'object' && !Array.isArray(item))
+    .map(item => ({
+      assignment_id: String(item.assignment_id ?? ''),
+      service_id: String(item.service_id ?? ''),
+      service_date: String(item.service_date ?? ''),
+      service_time: typeof item.service_time === 'string' ? item.service_time : null,
+      service_type: String(item.service_type ?? ''),
+      role: String(item.role ?? ''),
+      reason: String(item.reason ?? 'No available member matched this slot'),
+      unavailable_members: normalizeUnavailableMembers(item.unavailable_members),
+    }))
+    .filter(item => item.assignment_id && item.service_id && item.service_date && item.role);
+}
+
 // Helper function to format time from Date object as HH:MM
 function formatTimeForDatabase(date: Date): string {
   const hours = String(date.getHours()).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
   return `${hours}:${minutes}`;
-}
-
-function normalizeRoleName(roleName: string): string {
-  return roleName.trim().replace(/\s+/g, ' ').toLowerCase();
-}
-
-function getMemberDisplayName(member: MemberForAutoAssign): string {
-  return member.name?.trim() || member.email;
 }
 
 export default function ChurchScreen() {
@@ -111,6 +243,7 @@ export default function ChurchScreen() {
     removeMemberRole,
     updateNotificationSettings,
     updateChurchSongTypes,
+    updateChurchAutoAssignSettings,
     signOut,
     refreshChurches,
     refreshMembers,
@@ -119,7 +252,7 @@ export default function ChurchScreen() {
     refreshNotificationSettings,
   } = useChurch();
 
-  const { services, batchUpdateAssignments, createServiceFromTemplate, refreshServices: refreshServicesHook } = useServices(currentChurch?.id || null);
+  const { services, createServiceFromTemplate, refreshServices: refreshServicesHook } = useServices(currentChurch?.id || null);
 
   const [activeTab, setActiveTab] = useState<'members' | 'services' | 'roles' | 'notifications'>('members');
   const [isCreateChurchModalVisible, setCreateChurchModalVisible] = useState(false);
@@ -179,7 +312,24 @@ export default function ChurchScreen() {
   const [specialServiceRoles, setSpecialServiceRoles] = useState<string[]>([]);
   const [showSpecialServiceTimePicker, setShowSpecialServiceTimePicker] = useState(false);
   const [showSpecialServiceDatePicker, setShowSpecialServiceDatePicker] = useState(false);
-  const [isAutoAssigning, setIsAutoAssigning] = useState(false);
+  const [autoAssignMode, setAutoAssignMode] = useState<AutoAssignMode | null>(null);
+  const [showAutoAssignModal, setShowAutoAssignModal] = useState(false);
+  const [pendingAutoAssignMode, setPendingAutoAssignMode] = useState<AutoAssignMode>('fill_empty');
+  const [autoAssignRangeMode, setAutoAssignRangeMode] = useState<AutoAssignRangeMode>('next_30_days');
+  const [autoAssignStartDate, setAutoAssignStartDate] = useState(() => getStartOfLocalDay(new Date()));
+  const [autoAssignEndDate, setAutoAssignEndDate] = useState(() => addDays(getStartOfLocalDay(new Date()), 30));
+  const [draftAutoAssignStartDate, setDraftAutoAssignStartDate] = useState(() => getStartOfLocalDay(new Date()));
+  const [draftAutoAssignEndDate, setDraftAutoAssignEndDate] = useState(() => addDays(getStartOfLocalDay(new Date()), 30));
+  const [showAutoAssignStartPicker, setShowAutoAssignStartPicker] = useState(false);
+  const [showAutoAssignEndPicker, setShowAutoAssignEndPicker] = useState(false);
+  const [autoAssignPreview, setAutoAssignPreview] = useState<AutoAssignResult | null>(null);
+  const [isGeneratingAutoAssignPreview, setIsGeneratingAutoAssignPreview] = useState(false);
+  const [isApplyingAutoAssign, setIsApplyingAutoAssign] = useState(false);
+  const isAutoAssigning = autoAssignMode !== null || isGeneratingAutoAssignPreview || isApplyingAutoAssign;
+  const [allowMultipleRolesSameService, setAllowMultipleRolesSameService] = useState(
+    currentChurch?.allow_member_multiple_roles_same_service ?? false
+  );
+  const [isSavingAutoAssignSettings, setIsSavingAutoAssignSettings] = useState(false);
 
   // Ad-hoc service modal states
   const [showAdHocServiceModal, setShowAdHocServiceModal] = useState(false);
@@ -212,6 +362,10 @@ export default function ChurchScreen() {
     setSongTypeDraftOptions(normalizeEditableSongTypeOptions(currentChurch?.song_type_options));
     setNewSongTypeName('');
   }, [currentChurch?.id, currentChurch?.song_type_options]);
+
+  React.useEffect(() => {
+    setAllowMultipleRolesSameService(currentChurch?.allow_member_multiple_roles_same_service ?? false);
+  }, [currentChurch?.id, currentChurch?.allow_member_multiple_roles_same_service]);
 
   // Pull-to-refresh handler
   const onRefresh = React.useCallback(async () => {
@@ -291,6 +445,25 @@ export default function ChurchScreen() {
       Alert.alert('Error', 'Could not save song types. Please try again.');
     } finally {
       setIsSavingSongTypes(false);
+    }
+  };
+
+  const handleToggleAllowMultipleRolesSameService = async (value: boolean) => {
+    if (!currentChurch || isSavingAutoAssignSettings) return;
+
+    setIsSavingAutoAssignSettings(true);
+    try {
+      const updatedChurch = await updateChurchAutoAssignSettings(currentChurch.id, value);
+      if (!updatedChurch) {
+        Alert.alert('Error', 'Could not save auto-assign settings. Please try again.');
+        return;
+      }
+      setAllowMultipleRolesSameService(updatedChurch.allow_member_multiple_roles_same_service);
+    } catch (err) {
+      console.error('Error saving auto-assign settings:', err);
+      Alert.alert('Error', 'Could not save auto-assign settings. Please try again.');
+    } finally {
+      setIsSavingAutoAssignSettings(false);
     }
   };
 
@@ -733,188 +906,221 @@ export default function ChurchScreen() {
     }
   };
 
-  const handleAutoAssign = async () => {
+  const formatAutoAssignMessage = (result: AutoAssignResult, mode: AutoAssignMode) => {
+    const intro = mode === 'reassign_all'
+      ? `${result.cleared_count} existing assignment${result.cleared_count !== 1 ? 's' : ''} cleared and rebuilt.`
+      : 'Existing assignments were kept.';
+
+    return [
+      'Auto-assignment completed!',
+      intro,
+      `${result.assigned_count} of ${result.open_slot_count} open slot${result.open_slot_count !== 1 ? 's' : ''} assigned`,
+      `${result.skipped_count} slot${result.skipped_count !== 1 ? 's' : ''} remain open`,
+      '',
+      'Skipped details:',
+      `${result.no_role_match_count} no matching role`,
+      `${result.unavailable_slot_count} blocked by unavailable dates`,
+      `${result.same_service_conflict_count} same-service conflicts`,
+    ].join('\n');
+  };
+
+  const normalizeAutoAssignResult = (row: {
+    assigned_count: number;
+    open_slot_count: number;
+    skipped_count: number;
+    no_role_match_count: number;
+    unavailable_slot_count: number;
+    unavailable_candidate_count: number;
+    same_service_conflict_count: number;
+    cleared_count: number;
+    preview?: Json;
+    skipped_report?: Json;
+  }): AutoAssignResult => ({
+    assigned_count: row.assigned_count ?? 0,
+    open_slot_count: row.open_slot_count ?? 0,
+    skipped_count: row.skipped_count ?? 0,
+    no_role_match_count: row.no_role_match_count ?? 0,
+    unavailable_slot_count: row.unavailable_slot_count ?? 0,
+    unavailable_candidate_count: row.unavailable_candidate_count ?? 0,
+    same_service_conflict_count: row.same_service_conflict_count ?? 0,
+    cleared_count: row.cleared_count ?? 0,
+    preview: normalizeAutoAssignPreview(row.preview),
+    skipped_report: normalizeAutoAssignSkippedReport(row.skipped_report),
+  });
+
+  const getAutoAssignRangeConfig = (): AutoAssignRangeConfig | null => {
+    const today = getStartOfLocalDay(new Date());
+    const todayString = formatDateForDatabase(today);
+
+    if (autoAssignRangeMode === 'next_30_days') {
+      return {
+        target_start_date: todayString,
+        target_end_date: formatDateForDatabase(addDays(today, 30)),
+        target_service_ids: null,
+        label: 'next 30 days',
+      };
+    }
+
+    if (autoAssignRangeMode === 'next_quarter') {
+      return {
+        target_start_date: todayString,
+        target_end_date: formatDateForDatabase(addMonths(today, 3)),
+        target_service_ids: null,
+        label: 'next quarter',
+      };
+    }
+
+    if (autoAssignRangeMode === 'selected_range') {
+      const startDate = getStartOfLocalDay(autoAssignStartDate);
+      const endDate = getStartOfLocalDay(autoAssignEndDate);
+
+      if (endDate < startDate) {
+        Alert.alert('Invalid Range', 'The end date must be on or after the start date.');
+        return null;
+      }
+
+      return {
+        target_start_date: formatDateForDatabase(startDate),
+        target_end_date: formatDateForDatabase(endDate),
+        target_service_ids: null,
+        label: `${formatDateForDisplay(formatDateForDatabase(startDate))} to ${formatDateForDisplay(formatDateForDatabase(endDate))}`,
+      };
+    }
+
+    const visibleServiceIds = services
+      .filter(service => service.date >= todayString)
+      .map(service => service.id);
+
+    if (visibleServiceIds.length === 0) {
+      Alert.alert('No Visible Services', 'There are no visible upcoming services to auto-assign.');
+      return null;
+    }
+
+    return {
+      target_start_date: null,
+      target_end_date: null,
+      target_service_ids: visibleServiceIds,
+      label: `${visibleServiceIds.length} visible upcoming service${visibleServiceIds.length !== 1 ? 's' : ''}`,
+    };
+  };
+
+  const openAutoAssignModal = (mode: AutoAssignMode) => {
     if (!currentChurch) {
       Alert.alert('Error', 'No church selected');
       return;
     }
 
-    console.log('User tapped Auto-Assign button');
-    setIsAutoAssigning(true);
+    const today = getStartOfLocalDay(new Date());
+    setPendingAutoAssignMode(mode);
+    setAutoAssignRangeMode('next_30_days');
+    setAutoAssignStartDate(today);
+    setAutoAssignEndDate(addDays(today, 30));
+    setDraftAutoAssignStartDate(today);
+    setDraftAutoAssignEndDate(addDays(today, 30));
+    setShowAutoAssignStartPicker(false);
+    setShowAutoAssignEndPicker(false);
+    setAutoAssignPreview(null);
+    setShowAutoAssignModal(true);
+  };
+
+  const requestAutoAssignPreview = async () => {
+    if (!currentChurch) {
+      Alert.alert('Error', 'No church selected');
+      return;
+    }
+
+    const range = getAutoAssignRangeConfig();
+    if (!range) return;
+
+    console.log('Generating auto-assign preview:', {
+      mode: pendingAutoAssignMode,
+      rangeMode: autoAssignRangeMode,
+      range,
+    });
+
+    setIsGeneratingAutoAssignPreview(true);
+    setAutoAssignPreview(null);
 
     try {
-      const churchMembers = members ?? [];
-      const churchServices = (services ?? [])
-        .filter(service => service.church_id === currentChurch.id)
-        .sort((a, b) => {
-          const dateCompare = a.date.localeCompare(b.date);
-          if (dateCompare !== 0) return dateCompare;
-          return (a.time ?? '').localeCompare(b.time ?? '');
-        });
+      const { data, error: rpcError } = await supabase.rpc('auto_assign_service_slots', {
+        target_church_id: currentChurch.id,
+        assignment_mode: pendingAutoAssignMode,
+        dry_run: true,
+        target_start_date: range.target_start_date,
+        target_end_date: range.target_end_date,
+        target_service_ids: range.target_service_ids,
+      });
 
-      if (churchServices.length === 0) {
-        Alert.alert('Info', 'No scheduled services found for this church');
+      if (rpcError) {
+        console.error('Error generating auto-assign preview:', rpcError);
+        Alert.alert('Error', rpcError.message || 'Could not generate the assignment preview.');
         return;
       }
 
-      // Build member-by-role map once, normalized so spacing/case differences
-      // between role setup and service slots do not block assignment.
-      const membersByRole: Record<string, MemberForAutoAssign[]> = {};
-      (members ?? []).forEach(member => {
-        if (member.memberRoles && member.memberRoles.length > 0) {
-          member.memberRoles.forEach(memberRole => {
-            const normalizedRole = normalizeRoleName(memberRole.role_name);
-            if (!membersByRole[normalizedRole]) {
-              membersByRole[normalizedRole] = [];
-            }
-            membersByRole[normalizedRole].push(member);
-          });
-        }
-      });
-
-      // Fetch all unavailability in a single query. Include all member IDs;
-      // guard against empty array to avoid Supabase .in() error.
-      const memberIds = churchMembers.map(m => m.id);
-      console.log('Fetching all member unavailability in one query for', memberIds.length, 'members...');
-
-      const memberUnavailability: Record<string, Set<string>> = {};
-      churchMembers.forEach(member => {
-        memberUnavailability[member.id] = new Set();
-      });
-
-      if (memberIds.length > 0) {
-        const { data: allUnavailability, error: unavailError } = await supabase
-          .from('member_unavailability')
-          .select('member_id, unavailable_date')
-          .in('member_id', memberIds);
-
-        if (unavailError) {
-          console.error('Error fetching unavailability:', unavailError);
-          Alert.alert('Error', 'Failed to fetch member availability');
-          setIsAutoAssigning(false);
-          return;
-        }
-
-        (allUnavailability || []).forEach(unavail => {
-          if (!memberUnavailability[unavail.member_id]) {
-            memberUnavailability[unavail.member_id] = new Set();
-          }
-          memberUnavailability[unavail.member_id].add(unavail.unavailable_date);
-        });
-
-        console.log('Unavailability data loaded:', (allUnavailability || []).length, 'unavailability records for', memberIds.length, 'members');
+      const result = data?.[0] ? normalizeAutoAssignResult(data[0]) : null;
+      if (result) {
+        setAutoAssignPreview(result);
       } else {
-        console.log('No members found, skipping unavailability fetch');
-      }
-
-      // Start from existing assignments so auto-assign distributes total load,
-      // not only the new assignments created during this button press.
-      const assignmentCounts: Record<string, number> = {};
-      const lastAssignedDateByMember: Record<string, string> = {};
-      churchMembers.forEach(member => {
-        assignmentCounts[member.id] = 0;
-      });
-      churchServices.forEach(service => {
-        (service.assignments ?? []).forEach(assignment => {
-          if (!assignment.member_id) return;
-          assignmentCounts[assignment.member_id] = (assignmentCounts[assignment.member_id] ?? 0) + 1;
-          const lastDate = lastAssignedDateByMember[assignment.member_id];
-          if (!lastDate || service.date > lastDate) {
-            lastAssignedDateByMember[assignment.member_id] = service.date;
-          }
-        });
-      });
-
-      const assignmentUpdates: { id: string; member_id: string; person_name: string }[] = [];
-      let skippedCount = 0;
-      let unavailableSkippedCount = 0;
-      let noRoleMatchSkippedCount = 0;
-      let sameServiceSkippedCount = 0;
-
-      for (const service of churchServices) {
-        const serviceDate = service.date;
-        const assignedMemberIdsForService = new Set<string>(
-          (service.assignments ?? [])
-            .map(assignment => assignment.member_id)
-            .filter((memberId): memberId is string => Boolean(memberId))
-        );
-        
-        for (const assignment of (service.assignments ?? [])) {
-          if (!assignment.member_id && assignment.role) {
-            const roleCandidates = membersByRole[normalizeRoleName(assignment.role)] ?? [];
-            if (roleCandidates.length === 0) {
-              skippedCount++;
-              noRoleMatchSkippedCount++;
-              continue;
-            }
-
-            const availableMembers = roleCandidates.filter(member => {
-              const isUnavailable = memberUnavailability[member.id]?.has(serviceDate);
-              const alreadyAssignedToService = assignedMemberIdsForService.has(member.id);
-              if (isUnavailable) unavailableSkippedCount++;
-              if (alreadyAssignedToService) sameServiceSkippedCount++;
-              return !isUnavailable && !alreadyAssignedToService;
-            });
-            
-            if (availableMembers.length > 0) {
-              availableMembers.sort((a, b) => {
-                const loadCompare = (assignmentCounts[a.id] || 0) - (assignmentCounts[b.id] || 0);
-                if (loadCompare !== 0) return loadCompare;
-
-                const lastDateCompare = (lastAssignedDateByMember[a.id] ?? '').localeCompare(lastAssignedDateByMember[b.id] ?? '');
-                if (lastDateCompare !== 0) return lastDateCompare;
-
-                return getMemberDisplayName(a).localeCompare(getMemberDisplayName(b));
-              });
-
-              const selectedMember = availableMembers[0];
-              
-              assignmentUpdates.push({
-                id: assignment.id,
-                member_id: selectedMember.id,
-                person_name: getMemberDisplayName(selectedMember),
-              });
-              
-              assignmentCounts[selectedMember.id] = (assignmentCounts[selectedMember.id] || 0) + 1;
-              lastAssignedDateByMember[selectedMember.id] = serviceDate;
-              assignedMemberIdsForService.add(selectedMember.id);
-            } else {
-              skippedCount++;
-            }
-          }
-        }
-      }
-
-      // OPTIMIZATION 5: Batch update all assignments at once
-      console.log('Batch updating', assignmentUpdates.length, 'assignments...');
-      if (assignmentUpdates.length > 0) {
-        const success = await batchUpdateAssignments(assignmentUpdates);
-        
-        if (success) {
-          console.log('Auto-assignment completed:', {
-            assigned: assignmentUpdates.length,
-            skipped: skippedCount,
-            noRoleMatchSkippedCount,
-            unavailableSkippedCount,
-            sameServiceSkippedCount,
-          });
-          Alert.alert(
-            'Success',
-            `Auto-assignment completed!\n${assignmentUpdates.length} slots assigned\n${skippedCount} slots remain open`
-          );
-        } else {
-          Alert.alert('Error', 'Some assignments failed to update');
-        }
-      } else if (skippedCount > 0) {
-        Alert.alert('Info', `${skippedCount} open slot${skippedCount !== 1 ? 's' : ''} could not be assigned because no eligible members were available`);
-      } else {
-        Alert.alert('Info', 'No open slots to assign');
+        Alert.alert('Info', 'No assignment preview was returned.');
       }
     } catch (err) {
-      console.error('Error in auto-assign:', err);
+      console.error('Error generating auto-assign preview:', err);
+      Alert.alert('Error', 'Could not generate the assignment preview.');
+    } finally {
+      setIsGeneratingAutoAssignPreview(false);
+    }
+  };
+
+  const applyAutoAssignPreview = async () => {
+    if (!currentChurch) {
+      Alert.alert('Error', 'No church selected');
+      return;
+    }
+
+    if (!autoAssignPreview) {
+      Alert.alert('Preview Required', 'Generate a preview before saving assignments.');
+      return;
+    }
+
+    const range = getAutoAssignRangeConfig();
+    if (!range) return;
+
+    console.log('Applying auto-assign preview:', {
+      mode: pendingAutoAssignMode,
+      rangeMode: autoAssignRangeMode,
+      range,
+    });
+
+    setAutoAssignMode(pendingAutoAssignMode);
+    setIsApplyingAutoAssign(true);
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc('auto_assign_service_slots', {
+        target_church_id: currentChurch.id,
+        assignment_mode: pendingAutoAssignMode,
+        dry_run: false,
+        target_start_date: range.target_start_date,
+        target_end_date: range.target_end_date,
+        target_service_ids: range.target_service_ids,
+      });
+
+      if (rpcError) {
+        console.error('Error applying auto-assign RPC:', rpcError);
+        Alert.alert('Error', rpcError.message || 'Auto-assignment failed');
+        return;
+      }
+
+      const result = data?.[0] ? normalizeAutoAssignResult(data[0]) : autoAssignPreview;
+      await refreshServicesHook();
+      setShowAutoAssignModal(false);
+      setAutoAssignPreview(null);
+      Alert.alert('Success', formatAutoAssignMessage(result, pendingAutoAssignMode));
+    } catch (err) {
+      console.error('Error applying auto-assign:', err);
       Alert.alert('Error', 'Auto-assignment failed');
     } finally {
-      setIsAutoAssigning(false);
+      setAutoAssignMode(null);
+      setIsApplyingAutoAssign(false);
     }
   };
 
@@ -1282,12 +1488,33 @@ export default function ChurchScreen() {
               />
               <Text style={styles.actionButtonText}>Prepare Next Quarter</Text>
             </TouchableOpacity>
+            <View style={[styles.autoAssignSettingsCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+              <View style={styles.autoAssignSettingsText}>
+                <Text style={[styles.autoAssignSettingsTitle, { color: colors.text }]}>
+                  Allow one member in multiple roles
+                </Text>
+                <Text style={[styles.autoAssignSettingsDescription, { color: colors.textSecondary }]}>
+                  When enabled, auto-assign can schedule the same person for more than one role in the same service.
+                </Text>
+              </View>
+              {isSavingAutoAssignSettings ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Switch
+                  value={allowMultipleRolesSameService}
+                  onValueChange={handleToggleAllowMultipleRolesSameService}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor="#fff"
+                  disabled={isSavingAutoAssignSettings}
+                />
+              )}
+            </View>
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: colors.primary, marginTop: 12 }]}
-              onPress={handleAutoAssign}
+              onPress={() => openAutoAssignModal('fill_empty')}
               disabled={isAutoAssigning}
             >
-              {isAutoAssigning ? (
+              {autoAssignMode === 'fill_empty' ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <>
@@ -1297,7 +1524,30 @@ export default function ChurchScreen() {
                     size={24}
                     color="#fff"
                   />
-                  <Text style={styles.actionButtonText}>Auto-Assign Members</Text>
+                  <Text style={styles.actionButtonText}>Fill Empty Slots</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                styles.reassignButton,
+                { marginTop: 12, opacity: isAutoAssigning ? 0.6 : 1 },
+              ]}
+              onPress={() => openAutoAssignModal('reassign_all')}
+              disabled={isAutoAssigning}
+            >
+              {autoAssignMode === 'reassign_all' ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <IconSymbol
+                    ios_icon_name="arrow.triangle.2.circlepath"
+                    android_material_icon_name="sync"
+                    size={24}
+                    color="#fff"
+                  />
+                  <Text style={styles.actionButtonText}>Reassign All Upcoming Slots</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -2461,6 +2711,302 @@ export default function ChurchScreen() {
         </View>
       </Modal>
 
+      {/* Auto Assign Preview Modal */}
+      <Modal
+        visible={showAutoAssignModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          if (!isApplyingAutoAssign) {
+            setShowAutoAssignModal(false);
+            setAutoAssignPreview(null);
+          }
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <ScrollView contentContainerStyle={styles.modalScrollContent}>
+            <View style={[styles.modalContent, styles.autoAssignModalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                {pendingAutoAssignMode === 'reassign_all' ? 'Preview Reassign All' : 'Preview Fill Empty Slots'}
+              </Text>
+              <Text style={[styles.autoAssignDescription, { color: colors.textSecondary }]}>
+                {pendingAutoAssignMode === 'reassign_all'
+                  ? 'This preview clears assignments in the selected range and rebuilds them before anything is saved.'
+                  : 'This preview keeps current assignments and fills only open slots before anything is saved.'}
+              </Text>
+
+              <Text style={[styles.label, { color: colors.text }]}>Assignment Range</Text>
+              <View style={styles.autoAssignRangeGrid}>
+                {AUTO_ASSIGN_RANGE_OPTIONS.map(option => {
+                  const isSelected = autoAssignRangeMode === option.mode;
+                  return (
+                    <TouchableOpacity
+                      key={option.mode}
+                      style={[
+                        styles.autoAssignRangeChip,
+                        { borderColor: isSelected ? colors.primary : colors.border, backgroundColor: isSelected ? colors.primary : colors.inputBackground },
+                      ]}
+                      onPress={() => {
+                        setAutoAssignRangeMode(option.mode);
+                        setAutoAssignPreview(null);
+                      }}
+                      disabled={isGeneratingAutoAssignPreview || isApplyingAutoAssign}
+                    >
+                      <Text style={[styles.autoAssignRangeChipText, { color: isSelected ? '#fff' : colors.text }]}>
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {autoAssignRangeMode === 'selected_range' && (
+                <View style={styles.autoAssignDateRange}>
+                  <TouchableOpacity
+                    style={[styles.dateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
+                    onPress={() => {
+                      setDraftAutoAssignStartDate(autoAssignStartDate);
+                      setShowAutoAssignStartPicker(true);
+                      setShowAutoAssignEndPicker(false);
+                    }}
+                  >
+                    <Text style={[styles.dateButtonText, { color: colors.text }]}>
+                      Start: {autoAssignStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </Text>
+                  </TouchableOpacity>
+                  {showAutoAssignStartPicker && (
+                    <View style={styles.datePickerWrapper}>
+                      <DateTimePicker
+                        value={draftAutoAssignStartDate}
+                        mode="date"
+                        display="spinner"
+                        themeVariant="light"
+                        textColor="#000000"
+                        onChange={(event, date) => {
+                          if (date) setDraftAutoAssignStartDate(getStartOfLocalDay(date));
+                        }}
+                      />
+                      <View style={styles.pickerActionRow}>
+                        <TouchableOpacity
+                          style={[styles.pickerActionButton, styles.pickerCancelButton]}
+                          onPress={() => {
+                            setDraftAutoAssignStartDate(autoAssignStartDate);
+                            setShowAutoAssignStartPicker(false);
+                          }}
+                        >
+                          <Text style={styles.pickerCancelText}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.pickerActionButton, styles.pickerConfirmButton]}
+                          onPress={() => {
+                            setAutoAssignStartDate(draftAutoAssignStartDate);
+                            setShowAutoAssignStartPicker(false);
+                            setAutoAssignPreview(null);
+                          }}
+                        >
+                          <Text style={styles.pickerConfirmText}>Confirm</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    style={[styles.dateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
+                    onPress={() => {
+                      setDraftAutoAssignEndDate(autoAssignEndDate);
+                      setShowAutoAssignEndPicker(true);
+                      setShowAutoAssignStartPicker(false);
+                    }}
+                  >
+                    <Text style={[styles.dateButtonText, { color: colors.text }]}>
+                      End: {autoAssignEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </Text>
+                  </TouchableOpacity>
+                  {showAutoAssignEndPicker && (
+                    <View style={styles.datePickerWrapper}>
+                      <DateTimePicker
+                        value={draftAutoAssignEndDate}
+                        mode="date"
+                        display="spinner"
+                        themeVariant="light"
+                        textColor="#000000"
+                        onChange={(event, date) => {
+                          if (date) setDraftAutoAssignEndDate(getStartOfLocalDay(date));
+                        }}
+                      />
+                      <View style={styles.pickerActionRow}>
+                        <TouchableOpacity
+                          style={[styles.pickerActionButton, styles.pickerCancelButton]}
+                          onPress={() => {
+                            setDraftAutoAssignEndDate(autoAssignEndDate);
+                            setShowAutoAssignEndPicker(false);
+                          }}
+                        >
+                          <Text style={styles.pickerCancelText}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.pickerActionButton, styles.pickerConfirmButton]}
+                          onPress={() => {
+                            setAutoAssignEndDate(draftAutoAssignEndDate);
+                            setShowAutoAssignEndPicker(false);
+                            setAutoAssignPreview(null);
+                          }}
+                        >
+                          <Text style={styles.pickerConfirmText}>Confirm</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[
+                  styles.primaryButton,
+                  styles.autoAssignPreviewButton,
+                  { backgroundColor: colors.primary },
+                  isGeneratingAutoAssignPreview && styles.disabledButton,
+                ]}
+                onPress={requestAutoAssignPreview}
+                disabled={isGeneratingAutoAssignPreview || isApplyingAutoAssign}
+              >
+                {isGeneratingAutoAssignPreview ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Generate Preview</Text>
+                )}
+              </TouchableOpacity>
+
+              {autoAssignPreview && (
+                <View style={styles.autoAssignPreviewPanel}>
+                  <View style={styles.autoAssignStatsGrid}>
+                    <View style={[styles.autoAssignStat, { backgroundColor: colors.inputBackground }]}>
+                      <Text style={[styles.autoAssignStatValue, { color: colors.primary }]}>{autoAssignPreview.assigned_count}</Text>
+                      <Text style={[styles.autoAssignStatLabel, { color: colors.textSecondary }]}>Will assign</Text>
+                    </View>
+                    <View style={[styles.autoAssignStat, { backgroundColor: colors.inputBackground }]}>
+                      <Text style={[styles.autoAssignStatValue, { color: colors.text }]}>{autoAssignPreview.open_slot_count}</Text>
+                      <Text style={[styles.autoAssignStatLabel, { color: colors.textSecondary }]}>Slots checked</Text>
+                    </View>
+                    <View style={[styles.autoAssignStat, { backgroundColor: colors.inputBackground }]}>
+                      <Text style={[styles.autoAssignStatValue, { color: '#B45309' }]}>{autoAssignPreview.skipped_count}</Text>
+                      <Text style={[styles.autoAssignStatLabel, { color: colors.textSecondary }]}>Left open</Text>
+                    </View>
+                    {pendingAutoAssignMode === 'reassign_all' && (
+                      <View style={[styles.autoAssignStat, { backgroundColor: colors.inputBackground }]}>
+                        <Text style={[styles.autoAssignStatValue, { color: '#C2410C' }]}>{autoAssignPreview.cleared_count}</Text>
+                        <Text style={[styles.autoAssignStatLabel, { color: colors.textSecondary }]}>Will clear</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <Text style={[styles.autoAssignPreviewTitle, { color: colors.text }]}>
+                    Schedule Preview
+                  </Text>
+                  {autoAssignPreview.preview.length === 0 ? (
+                    <Text style={[styles.autoAssignEmptyText, { color: colors.textSecondary }]}>
+                      No assignment changes found for this range.
+                    </Text>
+                  ) : (
+                    <View style={styles.autoAssignPreviewList}>
+                      {autoAssignPreview.preview.map(item => (
+                        <View
+                          key={item.assignment_id}
+                          style={[styles.autoAssignPreviewItem, { borderColor: colors.border, backgroundColor: colors.inputBackground }]}
+                        >
+                          <Text style={[styles.autoAssignPreviewService, { color: colors.text }]}>
+                            {formatDateForDisplay(item.service_date)}
+                            {formatPreviewTime(item.service_time) ? ` • ${formatPreviewTime(item.service_time)}` : ''}
+                            {' • '}
+                            {item.service_type}
+                          </Text>
+                          <Text style={[styles.autoAssignPreviewMember, { color: colors.text }]}>
+                            {item.person_name} will be assigned to {item.role}
+                          </Text>
+                          {item.current_person_name && item.current_person_name !== item.person_name && (
+                            <Text style={[styles.autoAssignPreviewReplacement, { color: colors.textSecondary }]}>
+                              Replaces {item.current_person_name}
+                            </Text>
+                          )}
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {autoAssignPreview.skipped_report.length > 0 && (
+                    <View style={styles.autoAssignSkippedPanel}>
+                      <Text style={[styles.autoAssignPreviewTitle, { color: colors.text }]}>
+                        Skipped Slots
+                      </Text>
+                      {autoAssignPreview.skipped_report.map(item => {
+                        const unavailableNames = item.unavailable_members
+                          .map(member => member.name || member.email)
+                          .filter(Boolean);
+
+                        return (
+                          <View
+                            key={item.assignment_id}
+                            style={[styles.autoAssignSkippedItem, { borderColor: colors.border, backgroundColor: '#FFF7ED' }]}
+                          >
+                            <Text style={[styles.autoAssignPreviewService, { color: colors.text }]}>
+                              {formatDateForDisplay(item.service_date)}
+                              {formatPreviewTime(item.service_time) ? ` • ${formatPreviewTime(item.service_time)}` : ''}
+                              {' • '}
+                              {item.service_type}
+                            </Text>
+                            <Text style={[styles.autoAssignSkippedRole, { color: colors.text }]}>
+                              {item.role}
+                            </Text>
+                            <Text style={[styles.autoAssignSkipText, { color: colors.textSecondary }]}>
+                              {item.reason}
+                            </Text>
+                            {unavailableNames.length > 0 && (
+                              <Text style={[styles.autoAssignUnavailableText, { color: colors.textSecondary }]}>
+                                Unavailable: {unavailableNames.join(', ')}
+                              </Text>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              )}
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
+                  onPress={() => {
+                    setShowAutoAssignModal(false);
+                    setAutoAssignPreview(null);
+                  }}
+                  disabled={isApplyingAutoAssign}
+                >
+                  <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.modalButton,
+                    { backgroundColor: pendingAutoAssignMode === 'reassign_all' ? '#C2410C' : colors.primary },
+                    (!autoAssignPreview || isApplyingAutoAssign) && styles.disabledButton,
+                  ]}
+                  onPress={applyAutoAssignPreview}
+                  disabled={!autoAssignPreview || isApplyingAutoAssign}
+                >
+                  {isApplyingAutoAssign ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.saveButtonText}>
+                      {pendingAutoAssignMode === 'reassign_all' ? 'Confirm Reassign' : 'Confirm Fill'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
       {/* Prepare Quarter Modal - TWO-STEP WORKFLOW */}
       <Modal visible={showPrepareQuarterModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -3315,6 +3861,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 12,
   },
+  reassignButton: {
+    backgroundColor: '#7C2D12',
+    borderWidth: 1,
+    borderColor: '#FDBA74',
+  },
   actionButtonText: {
     color: '#fff',
     fontSize: 16,
@@ -3673,6 +4224,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  autoAssignSettingsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 12,
+    gap: 12,
+  },
+  autoAssignSettingsText: {
+    flex: 1,
+  },
+  autoAssignSettingsTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  autoAssignSettingsDescription: {
+    fontSize: 12,
+    lineHeight: 17,
+  },
   errorContainer: {
     margin: 16,
     padding: 12,
@@ -3748,6 +4320,116 @@ const styles = StyleSheet.create({
   singleServiceSecondaryButton: {
     padding: 13,
     marginTop: 10,
+  },
+  autoAssignModalContent: {
+    maxWidth: 520,
+    maxHeight: '86%',
+    padding: 18,
+  },
+  autoAssignDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  autoAssignRangeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  autoAssignRangeChip: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  autoAssignRangeChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  autoAssignDateRange: {
+    gap: 10,
+    marginBottom: 12,
+  },
+  autoAssignPreviewButton: {
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  autoAssignPreviewPanel: {
+    gap: 12,
+  },
+  autoAssignSkippedPanel: {
+    gap: 8,
+  },
+  autoAssignStatsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  autoAssignStat: {
+    flexGrow: 1,
+    flexBasis: '45%',
+    borderRadius: 8,
+    padding: 10,
+  },
+  autoAssignStatValue: {
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  autoAssignStatLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  autoAssignPreviewTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  autoAssignPreviewList: {
+    gap: 8,
+  },
+  autoAssignPreviewItem: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+  },
+  autoAssignPreviewService: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  autoAssignPreviewMember: {
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 19,
+  },
+  autoAssignPreviewReplacement: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  autoAssignSkippedItem: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+  },
+  autoAssignSkippedRole: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  autoAssignEmptyText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  autoAssignSkipText: {
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  autoAssignUnavailableText: {
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+    fontWeight: '700',
   },
   modalTitle: {
     fontSize: 20,

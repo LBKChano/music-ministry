@@ -98,6 +98,7 @@ export type Database = {
       }
       churches: {
         Row: {
+          allow_member_multiple_roles_same_service: boolean
           admin_id: string
           created_at: string
           id: string
@@ -107,6 +108,7 @@ export type Database = {
           invitation_code: string
         }
         Insert: {
+          allow_member_multiple_roles_same_service?: boolean
           admin_id: string
           created_at?: string
           id?: string
@@ -116,6 +118,7 @@ export type Database = {
           invitation_code?: string
         }
         Update: {
+          allow_member_multiple_roles_same_service?: boolean
           admin_id?: string
           created_at?: string
           id?: string
@@ -655,6 +658,42 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      auto_assign_service_slots: {
+        Args: {
+          target_church_id: string
+          assignment_mode?: string
+          dry_run?: boolean
+          target_start_date?: string | null
+          target_end_date?: string | null
+          target_service_ids?: string[] | null
+        }
+        Returns: {
+          assigned_count: number
+          open_slot_count: number
+          skipped_count: number
+          no_role_match_count: number
+          unavailable_slot_count: number
+          unavailable_candidate_count: number
+          same_service_conflict_count: number
+          cleared_count: number
+          preview: Json
+          skipped_report: Json
+        }[]
+      }
+      accept_fill_in_request: {
+        Args: {
+          target_request_id: string
+          target_filled_by_member_id: string
+        }
+        Returns: Database["public"]["Tables"]["fill_in_requests"]["Row"]
+      }
+      claim_onesignal_subscription: {
+        Args: {
+          target_member_id: string
+          target_subscription_id: string
+        }
+        Returns: Database["public"]["Tables"]["onesignal_subscriptions"]["Row"]
+      }
       delete_account: {
         Args: Record<PropertyKey, never>
         Returns: unknown
@@ -663,6 +702,13 @@ export type Database = {
         Args: {
           target_church_id: string
           options: string[]
+        }
+        Returns: Database["public"]["Tables"]["churches"]["Row"]
+      }
+      update_church_auto_assign_settings: {
+        Args: {
+          target_church_id: string
+          allow_multiple_roles_same_service: boolean
         }
         Returns: Database["public"]["Tables"]["churches"]["Row"]
       }

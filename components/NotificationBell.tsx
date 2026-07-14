@@ -107,6 +107,30 @@ export function NotificationBell({
     }
   }, [currentMember?.id, fetchNotifications, isWeb, loading]);
 
+  React.useEffect(() => {
+    if (loading || isWeb || !currentMember?.id) return;
+
+    const channel = supabase
+      .channel(`member-notifications-${currentMember.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "member_notifications",
+          filter: `member_id=eq.${currentMember.id}`,
+        },
+        () => {
+          fetchNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentMember?.id, fetchNotifications, isWeb, loading]);
+
   if (loading || isWeb) return null;
 
   const handlePress = async () => {

@@ -1,5 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { Platform } from 'react-native';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -65,6 +66,7 @@ interface ChurchContextValue {
   fetchNotificationSettings: (churchId: string) => Promise<void>;
   updateNotificationSettings: (churchId: string, notificationHours: number[], enabled: boolean) => Promise<boolean>;
   updateChurchSongTypes: (churchId: string, songTypeOptions: string[]) => Promise<Church | null>;
+  updateChurchAutoAssignSettings: (churchId: string, allowMultipleRolesSameService: boolean) => Promise<Church | null>;
   createFillInRequest: (assignmentId: string, serviceId: string, churchId: string, requestingMemberId: string, roleName: string, reason?: string) => Promise<FillInRequest | null>;
   acceptFillInRequest: (requestId: string, filledByMemberId: string, churchId: string) => Promise<boolean>;
   cancelFillInRequest: (requestId: string, churchId: string) => Promise<boolean>;
@@ -82,8 +84,48 @@ interface ChurchContextValue {
 
 const ChurchContext = createContext<ChurchContextValue | null>(null);
 
+async function clearCurrentDeviceNotificationIdentity(memberId?: string | null) {
+  if (!memberId || Platform.OS === 'web') return;
+
+  let subscriptionId: string | null = null;
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { OneSignal } = require('react-native-onesignal') as {
+      OneSignal: {
+        logout?: () => void;
+        User: {
+          removeTag?: (key: string) => void;
+          pushSubscription: {
+            getIdAsync: () => Promise<string | null>;
+          };
+        };
+      };
+    };
+
+    subscriptionId = await OneSignal.User.pushSubscription.getIdAsync();
+    OneSignal.User.removeTag?.('member_id');
+    OneSignal.User.removeTag?.('church_id');
+    OneSignal.logout?.();
+  } catch (err) {
+    console.warn('[Notifications] Failed to clear OneSignal identity:', err);
+  }
+
+  if (!subscriptionId) return;
+
+  const { error } = await supabase
+    .from('onesignal_subscriptions')
+    .delete()
+    .eq('member_id', memberId)
+    .eq('subscription_id', subscriptionId);
+
+  if (error) {
+    console.warn('[Notifications] Failed to remove current device subscription:', error.message);
+  }
+}
+
 export function ChurchProvider({ children }: { children: React.ReactNode }) {
-  const { session, initialized, deleteAccount } = useAuth();
+  const { session, initialized, deleteAccount: authDeleteAccount } = useAuth();
   const [churches, setChurches] = useState<Church[]>([]);
   const [currentChurch, setCurrentChurch] = useState<Church | null>(null);
   const [members, setMembers] = useState<ChurchMemberWithRoles[]>([]);
@@ -874,6 +916,32 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const updateChurchAutoAssignSettings = useCallback(async (churchId: string, allowMultipleRolesSameService: boolean): Promise<Church | null> => {
+    console.log('Updating church auto-assign settings:', { churchId, allowMultipleRolesSameService });
+    try {
+      setError(null);
+
+      const { data, error: updateError } = await supabase.rpc('update_church_auto_assign_settings', {
+        target_church_id: churchId,
+        allow_multiple_roles_same_service: allowMultipleRolesSameService,
+      });
+
+      if (updateError) {
+        console.error('Error updating church auto-assign settings:', updateError);
+        setError(updateError.message);
+        return null;
+      }
+
+      setChurches(prev => prev.map(church => church.id === churchId ? data : church));
+      setCurrentChurch(prev => prev?.id === churchId ? data : prev);
+      return data;
+    } catch (err) {
+      console.error('Error in updateChurchAutoAssignSettings:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return null;
+    }
+  }, []);
+
   const removeMemberUnavailability = useCallback(async (unavailabilityId: string) => {
     console.log('Removing unavailability:', unavailabilityId);
     try {
@@ -967,6 +1035,10 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
       const { data, error: insertError } = await supabase.from('fill_in_requests').insert(newRequest).select().single();
       if (insertError) {
         console.error('Error creating fill-in request:', insertError);
+        if (insertError.code === '23505') {
+          setError('A fill-in request is already open for this assignment.');
+          return null;
+        }
         setError(insertError.message);
         return null;
       }
@@ -998,56 +1070,14 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     try {
       setError(null);
 
-      const { data: fillInRequest, error: fetchRequestError } = await supabase
-        .from('fill_in_requests')
-        .select('assignment_id, requesting_member_id, role_name, status')
-        .eq('id', requestId)
-        .single();
+      const { data: fillInRequest, error: acceptError } = await supabase.rpc('accept_fill_in_request', {
+        target_request_id: requestId,
+        target_filled_by_member_id: filledByMemberId,
+      });
 
-      if (fetchRequestError || !fillInRequest) {
-        console.error('Error fetching fill-in request:', fetchRequestError);
-        setError('Fill-in request not found');
-        return false;
-      }
-
-      if (fillInRequest.status !== 'pending') {
-        setError('This fill-in request has already been processed');
-        return false;
-      }
-
-      const { data: fillingMember, error: fetchMemberError } = await supabase
-        .from('church_members')
-        .select('id, name, email')
-        .eq('id', filledByMemberId)
-        .single();
-
-      if (fetchMemberError || !fillingMember) {
-        console.error('Error fetching filling member:', fetchMemberError);
-        setError('Member not found');
-        return false;
-      }
-
-      const personName = fillingMember.name ?? fillingMember.email;
-
-      const { error: updateAssignmentError } = await supabase
-        .from('assignments')
-        .update({ member_id: filledByMemberId, person_name: personName })
-        .eq('id', fillInRequest.assignment_id);
-
-      if (updateAssignmentError) {
-        console.error('Error updating assignment:', updateAssignmentError);
-        setError('Failed to update assignment. You may not have permission to accept this request.');
-        return false;
-      }
-
-      const { error: updateRequestError } = await supabase
-        .from('fill_in_requests')
-        .update({ status: 'filled', filled_by_member_id: filledByMemberId, updated_at: new Date().toISOString() })
-        .eq('id', requestId);
-
-      if (updateRequestError) {
-        console.error('Error updating fill-in request:', updateRequestError);
-        setError('Failed to mark fill-in request as filled.');
+      if (acceptError || !fillInRequest) {
+        console.error('Error accepting fill-in request:', acceptError);
+        setError(acceptError?.message ?? 'Failed to accept fill-in request.');
         return false;
       }
 
@@ -1098,6 +1128,8 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     console.log('Signing out user');
     try {
+      await clearCurrentDeviceNotificationIdentity(currentMember?.id);
+
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('Error signing out:', error);
@@ -1115,7 +1147,26 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
       console.error('Error in signOut:', err);
       throw err;
     }
-  }, []);
+  }, [currentMember?.id]);
+
+  const deleteAccount = useCallback(async () => {
+    console.log('Deleting user account');
+    try {
+      await clearCurrentDeviceNotificationIdentity(currentMember?.id);
+      await authDeleteAccount();
+      setChurches([]);
+      setCurrentChurch(null);
+      setMembers([]);
+      setRecurringServices([]);
+      setChurchRoles([]);
+      setCurrentMember(null);
+      setNotificationSettings(null);
+      setFillInRequests([]);
+    } catch (err) {
+      console.error('Error in deleteAccount:', err);
+      throw err;
+    }
+  }, [authDeleteAccount, currentMember?.id]);
 
   useEffect(() => {
     if (currentChurch) {
@@ -1236,6 +1287,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     fetchNotificationSettings,
     updateNotificationSettings,
     updateChurchSongTypes,
+    updateChurchAutoAssignSettings,
     createFillInRequest,
     acceptFillInRequest,
     cancelFillInRequest,

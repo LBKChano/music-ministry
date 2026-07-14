@@ -87,6 +87,28 @@ function RootLayoutNav() {
     }
   }, [initialized, router, segments, session]);
 
+  useEffect(() => {
+    if (!initialized || session || currentMember?.id || Platform.OS === 'web') return;
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { OneSignal } = require('react-native-onesignal') as {
+        OneSignal: {
+          logout?: () => void;
+          User: {
+            removeTag?: (key: string) => void;
+          };
+        };
+      };
+      OneSignal.User.removeTag?.('member_id');
+      OneSignal.User.removeTag?.('church_id');
+      OneSignal.logout?.();
+      console.log('[Layout] Cleared OneSignal user after sign out');
+    } catch (err) {
+      console.warn('[Layout] Failed to clear OneSignal user after sign out:', err);
+    }
+  }, [currentMember?.id, initialized, session]);
+
   // Keep OneSignal's user alias in sync with the app member. This runs again
   // after permission/subscription changes so a fresh install cannot miss linking.
   useEffect(() => {
@@ -135,30 +157,15 @@ function RootLayoutNav() {
     if (currentMember?.id && onesignalSubscriptionId && Platform.OS !== 'web') {
       console.log('[Layout] Saving OneSignal subscription ID to Supabase for member:', currentMember.id);
       supabase
-        .from('onesignal_subscriptions')
-        .upsert(
-          {
-            member_id: currentMember.id,
-            subscription_id: onesignalSubscriptionId,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'subscription_id' }
-        )
+        .rpc('claim_onesignal_subscription', {
+          target_member_id: currentMember.id,
+          target_subscription_id: onesignalSubscriptionId,
+        })
         .then(({ error }) => {
           if (error) {
             console.warn('[Layout] Failed to save subscription ID:', error.message);
           } else {
             console.log('[Layout] Subscription ID saved for member:', currentMember.id);
-            supabase
-              .from('onesignal_subscriptions')
-              .delete()
-              .eq('member_id', currentMember.id)
-              .neq('subscription_id', onesignalSubscriptionId)
-              .then(({ error: cleanupError }) => {
-                if (cleanupError) {
-                  console.warn('[Layout] Failed to clean old subscription IDs:', cleanupError.message);
-                }
-              });
           }
         });
     }
