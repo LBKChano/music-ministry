@@ -2724,8 +2724,8 @@ export default function ChurchScreen() {
         }}
       >
         <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalScrollContent}>
-            <View style={[styles.modalContent, styles.autoAssignModalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+          <View style={[styles.modalContent, styles.autoAssignModalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+            <View style={[styles.autoAssignModalHeader, { borderBottomColor: colors.border }]}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>
                 {pendingAutoAssignMode === 'reassign_all' ? 'Preview Reassign All' : 'Preview Fill Empty Slots'}
               </Text>
@@ -2734,7 +2734,15 @@ export default function ChurchScreen() {
                   ? 'This preview clears assignments in the selected range and rebuilds them before anything is saved.'
                   : 'This preview keeps current assignments and fills only open slots before anything is saved.'}
               </Text>
+            </View>
 
+            <ScrollView
+              style={styles.autoAssignModalBody}
+              contentContainerStyle={styles.autoAssignModalBodyContent}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator
+            >
               <Text style={[styles.label, { color: colors.text }]}>Assignment Range</Text>
               <View style={styles.autoAssignRangeGrid}>
                 {AUTO_ASSIGN_RANGE_OPTIONS.map(option => {
@@ -2873,7 +2881,9 @@ export default function ChurchScreen() {
                 {isGeneratingAutoAssignPreview ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.primaryButtonText}>Generate Preview</Text>
+                  <Text style={styles.primaryButtonText}>
+                    {autoAssignPreview ? 'Regenerate Preview' : 'Generate Preview'}
+                  </Text>
                 )}
               </TouchableOpacity>
 
@@ -2972,38 +2982,38 @@ export default function ChurchScreen() {
                   )}
                 </View>
               )}
+            </ScrollView>
 
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
-                  onPress={() => {
-                    setShowAutoAssignModal(false);
-                    setAutoAssignPreview(null);
-                  }}
-                  disabled={isApplyingAutoAssign}
-                >
-                  <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.modalButton,
-                    { backgroundColor: pendingAutoAssignMode === 'reassign_all' ? '#C2410C' : colors.primary },
-                    (!autoAssignPreview || isApplyingAutoAssign) && styles.disabledButton,
-                  ]}
-                  onPress={applyAutoAssignPreview}
-                  disabled={!autoAssignPreview || isApplyingAutoAssign}
-                >
-                  {isApplyingAutoAssign ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.saveButtonText}>
-                      {pendingAutoAssignMode === 'reassign_all' ? 'Confirm Reassign' : 'Confirm Fill'}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
+            <View style={[styles.modalButtons, styles.autoAssignModalFooter, { borderTopColor: colors.border }]}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
+                onPress={() => {
+                  setShowAutoAssignModal(false);
+                  setAutoAssignPreview(null);
+                }}
+                disabled={isApplyingAutoAssign}
+              >
+                <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  { backgroundColor: pendingAutoAssignMode === 'reassign_all' ? '#C2410C' : colors.primary },
+                  (!autoAssignPreview || isApplyingAutoAssign) && styles.disabledButton,
+                ]}
+                onPress={applyAutoAssignPreview}
+                disabled={!autoAssignPreview || isApplyingAutoAssign}
+              >
+                {isApplyingAutoAssign ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.saveButtonText}>
+                    {pendingAutoAssignMode === 'reassign_all' ? 'Confirm Reassign' : 'Confirm Fill'}
+                  </Text>
+                )}
+              </TouchableOpacity>
             </View>
-          </ScrollView>
+          </View>
         </View>
       </Modal>
 
@@ -4322,14 +4332,37 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   autoAssignModalContent: {
-    maxWidth: 520,
-    maxHeight: '86%',
-    padding: 18,
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: '78%',
+    padding: 0,
+    overflow: 'hidden',
+  },
+  autoAssignModalHeader: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  autoAssignModalBody: {
+    width: '100%',
+    flexShrink: 1,
+  },
+  autoAssignModalBodyContent: {
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 16,
+  },
+  autoAssignModalFooter: {
+    marginTop: 0,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   autoAssignDescription: {
     fontSize: 14,
     lineHeight: 20,
-    marginBottom: 16,
+    marginBottom: 0,
   },
   autoAssignRangeGrid: {
     flexDirection: 'row',
