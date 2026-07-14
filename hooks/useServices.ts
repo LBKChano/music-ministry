@@ -568,6 +568,39 @@ export function useServices(churchId: string | null) {
     }
   }, []);
 
+  const notifyServiceComments = useCallback(async (
+    serviceCommentIds: string[],
+    notifyMemberIds: string[] = []
+  ) => {
+    const uniqueCommentIds = Array.from(new Set(serviceCommentIds.filter(Boolean)));
+    const uniqueNotifyMemberIds = Array.from(new Set(notifyMemberIds.filter(Boolean)));
+
+    if (uniqueCommentIds.length === 0 || uniqueNotifyMemberIds.length === 0) {
+      return true;
+    }
+
+    try {
+      const { error: notifyError } = await supabase.functions.invoke('send-service-comment-notifications', {
+        body: {
+          serviceCommentIds: uniqueCommentIds,
+          notifyMemberIds: uniqueNotifyMemberIds,
+        },
+      });
+
+      if (notifyError) {
+        console.error('Error sending service comment notifications:', notifyError);
+        setError(notifyError.message);
+        return false;
+      }
+
+      return true;
+    } catch (err) {
+      console.error('Error in notifyServiceComments:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, []);
+
   // Initial fetch — re-run when auth becomes ready or churchId changes
   useEffect(() => {
     fetchServices();
@@ -668,6 +701,7 @@ export function useServices(churchId: string | null) {
     addServiceComment,
     updateServiceComment,
     deleteServiceComment,
+    notifyServiceComments,
     refreshServices: fetchServices,
   };
 }

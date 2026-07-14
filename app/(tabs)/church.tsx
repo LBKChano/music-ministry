@@ -14,7 +14,8 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Stack, Redirect } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useChurch } from '@/hooks/useChurch';
@@ -218,6 +219,7 @@ function formatTimeForDatabase(date: Date): string {
 }
 
 export default function ChurchScreen() {
+  const insets = useSafeAreaInsets();
 
   const {
     churches,
@@ -1318,32 +1320,101 @@ export default function ChurchScreen() {
   const noMembersText = 'No members yet';
   const inviteMembersText = 'Share your invitation code with members to join';
   const signOutText = 'Sign Out';
+  const churchHeaderTitle = currentChurch?.name || 'Church Management';
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen
         options={{
-          title: 'Church Management',
-          headerStyle: { backgroundColor: colors.primary },
-          headerTintColor: '#fff',
-          headerRight: () => (
+          headerShown: false,
+        }}
+      />
+
+      <LinearGradient
+        colors={['#0F172A', '#1E3A8A', '#2563EB']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.churchHeaderContainer, { paddingTop: insets.top + 14 }]}
+      >
+        <View style={styles.headerAccentPanel} />
+        <View style={styles.headerAccentLine} />
+        <View style={styles.churchHeaderTopRow}>
+          <View style={styles.churchHeaderTextWrap}>
+            <Text style={styles.headerEyebrow}>Church</Text>
+            <Text
+              style={styles.churchHeaderTitle}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.74}
+            >
+              {churchHeaderTitle}
+            </Text>
+          </View>
+          <View style={styles.churchHeaderActions}>
             <TouchableOpacity
+              style={styles.churchHeaderIconButton}
               onPress={() => {
-                console.log('User tapped Sign Out');
-                setSignOutModalVisible(true);
+                console.log('User tapped Create Church from header');
+                setCreateChurchModalVisible(true);
               }}
-              style={styles.signOutButton}
+              accessibilityLabel="Add church"
             >
               <IconSymbol
-                ios_icon_name="arrow.right.square"
-                android_material_icon_name="logout"
+                ios_icon_name="plus"
+                android_material_icon_name="add"
                 size={24}
                 color="#fff"
               />
             </TouchableOpacity>
-          ),
-        }}
-      />
+            <TouchableOpacity
+              style={styles.churchHeaderIconButton}
+              onPress={() => {
+                console.log('User tapped Sign Out');
+                setSignOutModalVisible(true);
+              }}
+              accessibilityLabel="Sign out"
+            >
+              <IconSymbol
+                ios_icon_name="arrow.right.square"
+                android_material_icon_name="logout"
+                size={23}
+                color="#fff"
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+        {currentChurch ? (
+          <TouchableOpacity
+            style={styles.churchHeaderInvitationPill}
+            onPress={copyInvitationCode}
+            accessibilityLabel="Copy invitation code"
+          >
+            <IconSymbol
+              ios_icon_name="ticket"
+              android_material_icon_name="local-offer"
+              size={19}
+              color="#FFFFFF"
+            />
+            <View style={styles.churchHeaderInvitationText}>
+              <Text style={styles.churchHeaderInvitationLabel}>Invitation Code</Text>
+              <Text style={styles.churchHeaderInvitationCode} numberOfLines={1}>
+                {currentChurch.invitation_code}
+              </Text>
+            </View>
+            <IconSymbol
+              ios_icon_name="doc.on.doc"
+              android_material_icon_name="file-copy"
+              size={17}
+              color="#DBEAFE"
+            />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.churchHeaderEmptyPill}>
+            <IconSymbol ios_icon_name="building.2" android_material_icon_name="home" size={17} color="#FFFFFF" />
+            <Text style={styles.churchHeaderEmptyText} numberOfLines={1}>Create a church to get started</Text>
+          </View>
+        )}
+      </LinearGradient>
 
       <ScrollView 
         style={styles.scrollView}
@@ -1361,20 +1432,6 @@ export default function ChurchScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Churches</Text>
-            <TouchableOpacity
-              style={[styles.addButton, { backgroundColor: colors.primary }]}
-              onPress={() => {
-                console.log('User tapped Create Church');
-                setCreateChurchModalVisible(true);
-              }}
-            >
-              <IconSymbol
-                ios_icon_name="plus"
-                android_material_icon_name="add"
-                size={20}
-                color="#fff"
-              />
-            </TouchableOpacity>
           </View>
 
           {(churches ?? []).length === 0 ? (
@@ -1424,48 +1481,6 @@ export default function ChurchScreen() {
           )}
         </View>
 
-        {/* Invitation Code Display */}
-        {currentChurch && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Invitation Code</Text>
-            </View>
-            <View style={[styles.invitationCodeCard, { backgroundColor: colors.cardBackground }]}>
-              <View style={styles.invitationCodeContent}>
-                <IconSymbol
-                  ios_icon_name="ticket"
-                  android_material_icon_name="local-offer"
-                  size={32}
-                  color={colors.primary}
-                />
-                <View style={styles.invitationCodeDetails}>
-                  <Text style={[styles.invitationCodeLabel, { color: colors.textSecondary }]}>
-                    Share this code with members:
-                  </Text>
-                  <Text style={[styles.invitationCode, { color: colors.primary }]}>
-                    {currentChurch.invitation_code}
-                  </Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                style={[styles.copyButton, { backgroundColor: colors.primary }]}
-                onPress={copyInvitationCode}
-              >
-                <IconSymbol
-                  ios_icon_name="doc.on.doc"
-                  android_material_icon_name="file-copy"
-                  size={20}
-                  color="#fff"
-                />
-                <Text style={styles.copyButtonText}>Copy</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={[styles.helperText, { color: colors.textSecondary }]}>
-              Members can use this code when creating their account to automatically join your church
-            </Text>
-          </View>
-        )}
-
         {/* Quarterly Assignment Buttons */}
         {currentChurch && (
           <View style={styles.section}>
@@ -1488,27 +1503,6 @@ export default function ChurchScreen() {
               />
               <Text style={styles.actionButtonText}>Prepare Next Quarter</Text>
             </TouchableOpacity>
-            <View style={[styles.autoAssignSettingsCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
-              <View style={styles.autoAssignSettingsText}>
-                <Text style={[styles.autoAssignSettingsTitle, { color: colors.text }]}>
-                  Allow one member in multiple roles
-                </Text>
-                <Text style={[styles.autoAssignSettingsDescription, { color: colors.textSecondary }]}>
-                  When enabled, auto-assign can schedule the same person for more than one role in the same service.
-                </Text>
-              </View>
-              {isSavingAutoAssignSettings ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Switch
-                  value={allowMultipleRolesSameService}
-                  onValueChange={handleToggleAllowMultipleRolesSameService}
-                  trackColor={{ false: colors.border, true: colors.primary }}
-                  thumbColor="#fff"
-                  disabled={isSavingAutoAssignSettings}
-                />
-              )}
-            </View>
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: colors.primary, marginTop: 12 }]}
               onPress={() => openAutoAssignModal('fill_empty')}
@@ -1566,6 +1560,27 @@ export default function ChurchScreen() {
               />
               <Text style={styles.actionButtonText}>Add Single Service</Text>
             </TouchableOpacity>
+            <View style={[styles.autoAssignSettingsCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+              <View style={styles.autoAssignSettingsText}>
+                <Text style={[styles.autoAssignSettingsTitle, { color: colors.text }]}>
+                  Allow one member in multiple roles
+                </Text>
+                <Text style={[styles.autoAssignSettingsDescription, { color: colors.textSecondary }]}>
+                  When enabled, auto-assign can schedule the same person for more than one role in the same service.
+                </Text>
+              </View>
+              {isSavingAutoAssignSettings ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Switch
+                  value={allowMultipleRolesSameService}
+                  onValueChange={handleToggleAllowMultipleRolesSameService}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor="#fff"
+                  disabled={isSavingAutoAssignSettings}
+                />
+              )}
+            </View>
 
             <View style={[styles.songTypesCard, { backgroundColor: colors.cardBackground }]}>
               <View style={styles.songTypesHeader}>
@@ -3691,7 +3706,7 @@ export default function ChurchScreen() {
           </ScrollView>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -3733,6 +3748,127 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+  },
+  churchHeaderContainer: {
+    paddingBottom: 22,
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  headerAccentPanel: {
+    position: 'absolute',
+    right: -24,
+    top: 18,
+    width: 132,
+    height: 74,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
+    transform: [{ rotate: '-12deg' }],
+  },
+  headerAccentLine: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 0,
+    height: 3,
+    borderRadius: 3,
+    backgroundColor: '#60A5FA',
+  },
+  churchHeaderTopRow: {
+    minHeight: 88,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
+  },
+  churchHeaderTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  headerEyebrow: {
+    color: '#BFDBFE',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 5,
+  },
+  churchHeaderTitle: {
+    fontSize: 34,
+    lineHeight: 39,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textAlign: 'left',
+  },
+  churchHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  churchHeaderIconButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.28)',
+  },
+  churchHeaderInvitationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    borderRadius: 16,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.24)',
+  },
+  churchHeaderInvitationText: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  churchHeaderInvitationLabel: {
+    color: '#BFDBFE',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  churchHeaderInvitationCode: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    lineHeight: 21,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+  },
+  churchHeaderEmptyPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    borderRadius: 16,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.24)',
+  },
+  churchHeaderEmptyText: {
+    flexShrink: 1,
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
   },
   centerContainer: {
     flex: 1,
@@ -3792,9 +3928,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  signOutButton: {
-    marginRight: 16,
-  },
   emptyState: {
     padding: 32,
     alignItems: 'center',
@@ -3820,42 +3953,6 @@ const styles = StyleSheet.create({
   },
   churchName: {
     fontSize: 16,
-    fontWeight: '600',
-  },
-  invitationCodeCard: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  invitationCodeContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 12,
-  },
-  invitationCodeDetails: {
-    flex: 1,
-  },
-  invitationCodeLabel: {
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  invitationCode: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    letterSpacing: 2,
-  },
-  copyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  copyButtonText: {
-    color: '#fff',
-    fontSize: 14,
     fontWeight: '600',
   },
   helperText: {

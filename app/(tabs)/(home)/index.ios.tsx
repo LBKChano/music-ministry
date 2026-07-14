@@ -57,6 +57,13 @@ const createLocalDate = (dateString: string): Date => {
 const DEFAULT_SONG_TYPE_OPTIONS = ['Opening', 'Praise', 'Worship', 'Offering', 'Special', 'Closing'];
 const OTHER_SONG_TYPE_OPTION = 'Other';
 
+type PendingServiceSong = {
+  id: string;
+  commentText: string;
+  songType: string;
+  songNumber: string;
+};
+
 const normalizeSongTypeOptions = (options?: string[] | null) => {
   const cleaned = (options ?? DEFAULT_SONG_TYPE_OPTIONS)
     .map(option => option.trim())
@@ -452,6 +459,76 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  pendingSongsSection: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    backgroundColor: colors.background + '60',
+  },
+  pendingSongsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  pendingSongsCount: {
+    minWidth: 24,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    textAlign: 'center',
+    overflow: 'hidden',
+    backgroundColor: colors.primary + '18',
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  pendingSongItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border + '60',
+  },
+  pendingSongTextWrap: {
+    flex: 1,
+  },
+  pendingSongTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  pendingSongMeta: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  pendingSongRemoveButton: {
+    padding: 6,
+  },
+  pendingSongsEmpty: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  queueSongButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: colors.primary + '12',
+  },
+  queueSongButtonText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: '800',
+  },
   notifySection: {
     marginBottom: 12,
   },
@@ -628,7 +705,7 @@ export default function HomeScreen() {
   // Notification context — OneSignal handles token registration automatically
   const { requestPermission, hasPermission, loading: notificationLoading } = useNotifications();
 
-  const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate, addServiceComment, updateServiceComment, deleteServiceComment } = useServices(currentChurch?.id ?? null);
+  const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate, addServiceComment, updateServiceComment, deleteServiceComment, notifyServiceComments } = useServices(currentChurch?.id ?? null);
 
   const insets = useSafeAreaInsets();
 
@@ -662,6 +739,7 @@ export default function HomeScreen() {
   const [serviceSongNumber, setServiceSongNumber] = useState('');
   const [editingServiceCommentId, setEditingServiceCommentId] = useState<string | null>(null);
   const [notifyCommentMemberIds, setNotifyCommentMemberIds] = useState<string[]>([]);
+  const [pendingServiceSongs, setPendingServiceSongs] = useState<PendingServiceSong[]>([]);
 
   const enabledSongTypeOptions = useMemo(
     () => normalizeSongTypeOptions(currentChurch?.song_type_options),
@@ -949,6 +1027,7 @@ export default function HomeScreen() {
     setServiceSongNumber('');
     setEditingServiceCommentId(null);
     setNotifyCommentMemberIds([]);
+    setPendingServiceSongs([]);
     setCommentModalVisible(true);
   };
 
@@ -965,6 +1044,7 @@ export default function HomeScreen() {
     setServiceSongNumber(comment.song_number || '');
     setEditingServiceCommentId(comment.id);
     setNotifyCommentMemberIds([]);
+    setPendingServiceSongs([]);
     setCommentModalVisible(true);
   };
 
@@ -978,6 +1058,7 @@ export default function HomeScreen() {
     setServiceSongNumber('');
     setEditingServiceCommentId(null);
     setNotifyCommentMemberIds([]);
+    setPendingServiceSongs([]);
   };
 
   const toggleNotifyCommentMember = (memberId: string) => {
@@ -988,6 +1069,63 @@ export default function HomeScreen() {
     );
   };
 
+  const buildSongDraftFromForm = (): Omit<PendingServiceSong, 'id'> | null => {
+    const commentText = serviceCommentText.trim();
+    if (!commentText) {
+      Alert.alert('Error', 'Please enter a song title or detail.');
+      return null;
+    }
+
+    const songType = serviceSongType === OTHER_SONG_TYPE_OPTION
+      ? serviceSongOtherType.trim()
+      : serviceSongType.trim();
+
+    if (!songType) {
+      Alert.alert('Error', 'Please describe the song type.');
+      return null;
+    }
+
+    return {
+      commentText,
+      songType,
+      songNumber: serviceSongNumber.trim(),
+    };
+  };
+
+  const hasSongDraftInForm = () => (
+    serviceCommentText.trim().length > 0
+    || serviceSongNumber.trim().length > 0
+    || (serviceSongType === OTHER_SONG_TYPE_OPTION && serviceSongOtherType.trim().length > 0)
+  );
+
+  const resetSongFormFields = () => {
+    setServiceCommentText('');
+    setServiceSongNumber('');
+    if (serviceSongType === OTHER_SONG_TYPE_OPTION) {
+      setServiceSongOtherType('');
+    }
+  };
+
+  const handleQueueServiceSong = () => {
+    if (editingServiceCommentId) return;
+
+    const draft = buildSongDraftFromForm();
+    if (!draft) return;
+
+    setPendingServiceSongs(prev => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        ...draft,
+      },
+    ]);
+    resetSongFormFields();
+  };
+
+  const handleRemovePendingServiceSong = (songId: string) => {
+    setPendingServiceSongs(prev => prev.filter(song => song.id !== songId));
+  };
+
   const handleAddServiceComment = async () => {
     if (isSavingServiceComment) return;
 
@@ -996,54 +1134,81 @@ export default function HomeScreen() {
       return;
     }
 
-    if (!serviceCommentText.trim()) {
-      Alert.alert('Error', 'Please enter a song title or detail.');
-      return;
-    }
+    const currentDraft = hasSongDraftInForm() || editingServiceCommentId
+      ? buildSongDraftFromForm()
+      : null;
+    if ((hasSongDraftInForm() || editingServiceCommentId) && !currentDraft) return;
 
-    const songTypeToSave = serviceSongType === OTHER_SONG_TYPE_OPTION
-      ? serviceSongOtherType.trim()
-      : serviceSongType.trim();
+    const songsToSave = editingServiceCommentId
+      ? currentDraft
+        ? [{ id: editingServiceCommentId, ...currentDraft }]
+        : []
+      : [
+        ...pendingServiceSongs,
+        ...(currentDraft ? [{ id: 'current', ...currentDraft }] : []),
+      ];
 
-    if (!songTypeToSave) {
-      Alert.alert('Error', 'Please describe the song type.');
+    if (songsToSave.length === 0) {
+      Alert.alert('Error', 'Please add at least one song before posting.');
       return;
     }
 
     Keyboard.dismiss();
     setIsSavingServiceComment(true);
     try {
-      const result = editingServiceCommentId
-        ? await updateServiceComment(
+      if (editingServiceCommentId) {
+        const song = songsToSave[0];
+        const result = await updateServiceComment(
           editingServiceCommentId,
           selectedCommentService.id,
-          serviceCommentText,
-          songTypeToSave,
-          serviceSongNumber,
-        )
-        : await addServiceComment(
-          currentChurch.id,
-          selectedCommentService.id,
-          currentMember.id,
-          serviceCommentText,
-          notifyCommentMemberIds,
-          songTypeToSave,
-          serviceSongNumber,
+          song.commentText,
+          song.songType,
+          song.songNumber,
         );
-
-      if (result) {
-        Alert.alert(
-          'Success',
-          editingServiceCommentId
-            ? 'Song updated.'
-            : notifyCommentMemberIds.length > 0
-              ? 'Song added and selected members were notified.'
-              : 'Song added.'
-        );
-        closeCommentModal();
+        if (!result) {
+          Alert.alert('Error', 'Failed to save song. Please try again.');
+          return;
+        }
       } else {
-        Alert.alert('Error', 'Failed to save song. Please try again.');
+        const savedCommentIds: string[] = [];
+        let notificationsSent = true;
+        for (const song of songsToSave) {
+          const result = await addServiceComment(
+            currentChurch.id,
+            selectedCommentService.id,
+            currentMember.id,
+            song.commentText,
+            [],
+            song.songType,
+            song.songNumber,
+          );
+          if (!result) {
+            Alert.alert('Error', 'Failed to save every song. Please try again.');
+            return;
+          }
+          savedCommentIds.push(result.id);
+        }
+
+        if (notifyCommentMemberIds.length > 0) {
+          notificationsSent = await notifyServiceComments(savedCommentIds, notifyCommentMemberIds);
+        }
+
+        if (!notificationsSent) {
+          Alert.alert('Partial Success', 'Songs were added, but notifications could not be sent.');
+          closeCommentModal();
+          return;
+        }
       }
+
+      Alert.alert(
+        'Success',
+        editingServiceCommentId
+          ? 'Song updated.'
+          : notifyCommentMemberIds.length > 0
+            ? `${songsToSave.length === 1 ? 'Song' : 'Songs'} added and selected members were notified.`
+            : `${songsToSave.length === 1 ? 'Song' : 'Songs'} added.`
+      );
+      closeCommentModal();
     } catch (error) {
       console.error('Error saving service song:', error);
       Alert.alert('Error', 'Failed to save song. Please try again.');
@@ -1575,6 +1740,44 @@ export default function HomeScreen() {
                     onSubmitEditing={Keyboard.dismiss}
                   />
 
+                  {!editingServiceCommentId && (
+                    <View style={styles.pendingSongsSection}>
+                      <View style={styles.pendingSongsHeader}>
+                        <Text style={styles.notifyTitle}>Songs to post</Text>
+                        <Text style={styles.pendingSongsCount}>{pendingServiceSongs.length}</Text>
+                      </View>
+                      {pendingServiceSongs.length > 0 ? (
+                        pendingServiceSongs.map(song => (
+                          <View key={song.id} style={styles.pendingSongItem}>
+                            <View style={styles.pendingSongTextWrap}>
+                              <Text style={styles.pendingSongTitle}>{song.commentText}</Text>
+                              <Text style={styles.pendingSongMeta}>
+                                {[song.songType, song.songNumber ? `#${song.songNumber}` : null].filter(Boolean).join(' ')}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              style={styles.pendingSongRemoveButton}
+                              onPress={() => handleRemovePendingServiceSong(song.id)}
+                              accessibilityLabel="Remove queued song"
+                            >
+                              <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color={colors.error} />
+                            </TouchableOpacity>
+                          </View>
+                        ))
+                      ) : (
+                        <Text style={styles.pendingSongsEmpty}>Add songs here before posting them together.</Text>
+                      )}
+                      <TouchableOpacity
+                        style={styles.queueSongButton}
+                        onPress={handleQueueServiceSong}
+                        disabled={isSavingServiceComment}
+                      >
+                        <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color={colors.primary} />
+                        <Text style={styles.queueSongButtonText}>Add Song to List</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
                   {!editingServiceCommentId && getCommentNotifyOptions(selectedCommentService).length > 0 && (
                     <View style={styles.notifySection}>
                       <Text style={styles.notifyTitle}>Notify assigned members</Text>
@@ -1619,7 +1822,13 @@ export default function HomeScreen() {
                       {isSavingServiceComment ? (
                         <ActivityIndicator size="small" color="#fff" />
                       ) : (
-                        <Text style={styles.buttonText}>{editingServiceCommentId ? 'Update' : 'Save'}</Text>
+                        <Text style={styles.buttonText}>
+                          {editingServiceCommentId
+                            ? 'Update'
+                            : pendingServiceSongs.length + (hasSongDraftInForm() ? 1 : 0) > 1
+                              ? `Post ${pendingServiceSongs.length + (hasSongDraftInForm() ? 1 : 0)} Songs`
+                              : 'Post Song'}
+                        </Text>
                       )}
                     </TouchableOpacity>
                   </View>

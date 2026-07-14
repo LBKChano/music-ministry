@@ -136,11 +136,11 @@ Deno.serve(async (req) => {
     // 2. Requesting member name
     const { data: requestingMember } = await supabase
       .from('church_members')
-      .select('name')
+      .select('name, email')
       .eq('id', fillInRequest.requesting_member_id)
       .single()
 
-    const requestingMemberName = requestingMember?.name ?? 'A member'
+    const requestingMemberName = requestingMember?.name?.trim() || requestingMember?.email || 'A member'
 
     // 3. Church name and admin owner
     const { data: church } = await supabase

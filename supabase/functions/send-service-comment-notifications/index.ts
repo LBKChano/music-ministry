@@ -101,11 +101,18 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { serviceCommentId, notifyMemberIds } = await req.json()
+    const { serviceCommentId, serviceCommentIds, notifyMemberIds } = await req.json()
 
-    if (!serviceCommentId) {
+    const requestedCommentIds = Array.isArray(serviceCommentIds)
+      ? serviceCommentIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : typeof serviceCommentId === 'string' && serviceCommentId.length > 0
+        ? [serviceCommentId]
+        : []
+    const uniqueCommentIds = Array.from(new Set(requestedCommentIds))
+
+    if (uniqueCommentIds.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'serviceCommentId is required' }),
+        JSON.stringify({ error: 'serviceCommentId or serviceCommentIds is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
@@ -126,7 +133,7 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
 
-    const { data: comment, error: commentError } = await supabase
+    const { data: comments, error: commentError } = await supabase
       .from('service_comments')
       .select(`
         id,
@@ -146,13 +153,27 @@ Deno.serve(async (req) => {
           email
         )
       `)
-      .eq('id', serviceCommentId)
-      .single()
+      .in('id', uniqueCommentIds)
+      .order('created_at', { ascending: true })
 
-    if (commentError || !comment) {
+    if (commentError || !comments || comments.length === 0) {
       return new Response(
         JSON.stringify({ error: 'Service comment not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    const comment = comments[0]
+    const allCommentsMatch = comments.every((item) =>
+      item.church_id === comment.church_id
+      && item.service_id === comment.service_id
+      && item.member_id === comment.member_id
+    )
+
+    if (!allCommentsMatch) {
+      return new Response(
+        JSON.stringify({ error: 'All service comments must belong to the same service and author' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
 
@@ -192,14 +213,18 @@ Deno.serve(async (req) => {
 
     const service = Array.isArray(comment.services) ? comment.services[0] : comment.services
     const author = Array.isArray(comment.church_members) ? comment.church_members[0] : comment.church_members
-    const authorName = author?.name ?? author?.email ?? 'A member'
+    const authorName = author?.name?.trim() || author?.email || 'A member'
     const serviceLabel = service?.service_type ? `${service.service_type}` : 'a service'
-    const songLabel = [
-      comment.song_type || 'Song',
-      comment.song_number ? `#${comment.song_number}` : null,
-    ].filter(Boolean).join(' ')
-    const notificationTitle = `Song added for ${serviceLabel}`
-    const notificationBody = `${authorName} added ${songLabel}: ${truncateComment(comment.comment_text)}`
+    const songLabels = comments.map((item) => [
+      item.song_type || 'Song',
+      item.song_number ? `#${item.song_number}` : null,
+    ].filter(Boolean).join(' '))
+    const notificationTitle = comments.length > 1
+      ? `Songs added for ${serviceLabel}`
+      : `Song added for ${serviceLabel}`
+    const notificationBody = comments.length > 1
+      ? `${authorName} added ${comments.length} songs: ${truncateComment(songLabels.slice(0, 3).join(', '))}${comments.length > 3 ? '...' : ''}`
+      : `${authorName} added ${songLabels[0]}: ${truncateComment(comment.comment_text)}`
 
     const { sent, errors, successfulTargetLabels } = await sendOneSignalNotification({
       externalIds: fallbackExternalIds,
@@ -210,6 +235,7 @@ Deno.serve(async (req) => {
         type: 'service_comment',
         serviceId: comment.service_id,
         serviceCommentId: comment.id,
+        serviceCommentCount: String(comments.length),
       },
     })
 
@@ -235,6 +261,7 @@ Deno.serve(async (req) => {
               type: 'service_comment',
               serviceId: comment.service_id,
               serviceCommentId: comment.id,
+              serviceCommentCount: String(comments.length),
             },
           })))
 
@@ -252,7 +279,7 @@ Deno.serve(async (req) => {
       tokens_found: latestSubscriptionRows.length,
       notifications_sent: sent,
       onesignal_response: JSON.stringify({ errors, successfulTargetLabels }),
-      notes: `service comment ${comment.id}; selected=${selectedMemberIds.length}; fallbackExternalIds=${fallbackExternalIds.length}`,
+      notes: `service comments ${uniqueCommentIds.join(',')}; selected=${selectedMemberIds.length}; fallbackExternalIds=${fallbackExternalIds.length}`,
     })
 
     return new Response(
