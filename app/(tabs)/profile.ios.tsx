@@ -163,7 +163,7 @@ export default function ProfileScreen() {
   const displayEmail = currentMember?.email || user?.email || '';
   const isAdmin = currentChurch?.admin_id === user?.id || currentMember?.is_admin;
   const userRole = isAdmin ? 'Admin' : 'Member';
-  const profileSubtitle = currentChurch?.name ? `${userRole} at ${currentChurch.name}` : userRole;
+  const profileSubtitle = userRole;
 
   const today = new Date();
   const minDateString = today.toISOString().split('T')[0];
@@ -209,6 +209,14 @@ export default function ProfileScreen() {
             >
               {displayName}
             </Text>
+            {currentChurch?.name ? (
+              <Text
+                style={styles.profileChurchTitle}
+                numberOfLines={2}
+              >
+                {currentChurch.name}
+              </Text>
+            ) : null}
           </View>
           <View style={styles.profileHeaderAvatar}>
             <IconSymbol
@@ -514,6 +522,14 @@ const styles = StyleSheet.create({
     lineHeight: 41,
     fontWeight: '900',
     color: '#FFFFFF',
+    textAlign: 'left',
+  },
+  profileChurchTitle: {
+    marginTop: 5,
+    fontSize: 24,
+    lineHeight: 29,
+    fontWeight: '900',
+    color: '#DBEAFE',
     textAlign: 'left',
   },
   headerMetaRow: {

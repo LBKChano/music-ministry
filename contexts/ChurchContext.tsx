@@ -18,6 +18,11 @@ type MemberRole = Tables<'member_roles'>;
 type NotificationSettings = Tables<'notification_settings'>;
 type FillInRequest = Tables<'fill_in_requests'>;
 
+const CHURCH_LOAD_RETRY_MS = 500;
+const CHURCH_LOAD_MAX_RETRIES = 4;
+
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export interface RecurringServiceWithRoles extends RecurringService {
   roles: string[];
 }
@@ -53,6 +58,7 @@ interface ChurchContextValue {
   deleteMember: (memberId: string, churchId: string) => Promise<boolean>;
   updateMember: (memberId: string, churchId: string, updates: { name?: string; role?: string; email?: string; is_admin?: boolean }) => Promise<boolean>;
   addRecurringService: (churchId: string, name: string, dayOfWeek: number, time: string, notes?: string, roles?: string[]) => Promise<RecurringService | null>;
+  updateRecurringService: (serviceId: string, churchId: string, updates: { name: string; day_of_week: number; time: string; notes?: string | null }, roles?: string[]) => Promise<RecurringService | null>;
   deleteRecurringService: (serviceId: string, churchId: string) => Promise<boolean>;
   addChurchRole: (churchId: string, name: string, description?: string) => Promise<ChurchRole | null>;
   deleteChurchRole: (roleId: string, churchId: string) => Promise<boolean>;
@@ -138,8 +144,8 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
   const user = session?.user ?? null;
   const [currentMember, setCurrentMember] = useState<ChurchMemberWithRoles | null>(null);
 
-  const fetchChurches = useCallback(async (userId: string) => {
-    console.log('Fetching churches for user:', userId);
+  const fetchChurches = useCallback(async (userId: string, attempt = 0) => {
+    console.log('Fetching churches for user:', userId, 'attempt:', attempt + 1);
     try {
       setLoading(true);
       setError(null);
@@ -192,6 +198,12 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
       const uniqueChurches = Array.from(
         new Map(allChurches.map(church => [church.id, church])).values(),
       );
+
+      if (uniqueChurches.length === 0 && attempt < CHURCH_LOAD_MAX_RETRIES) {
+        console.log('[ChurchContext] No churches visible yet; retrying church load');
+        await wait(CHURCH_LOAD_RETRY_MS);
+        return fetchChurches(userId, attempt + 1);
+      }
 
       console.log('Fetched churches:', uniqueChurches.length);
       setChurches(uniqueChurches);
@@ -605,6 +617,68 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
       return data;
     } catch (err) {
       console.error('Error in addRecurringService:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return null;
+    }
+  }, [fetchRecurringServices]);
+
+  const updateRecurringService = useCallback(async (
+    serviceId: string,
+    churchId: string,
+    updates: { name: string; day_of_week: number; time: string; notes?: string | null },
+    roles?: string[],
+  ) => {
+    console.log('Updating recurring service:', { serviceId, churchId, updates, roles });
+    try {
+      setError(null);
+      const { data, error: updateError } = await supabase
+        .from('recurring_services')
+        .update({
+          name: updates.name,
+          day_of_week: updates.day_of_week,
+          time: updates.time,
+          notes: updates.notes ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', serviceId)
+        .eq('church_id', churchId)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error('Error updating recurring service:', updateError);
+        setError(updateError.message);
+        return null;
+      }
+
+      const { error: deleteRolesError } = await supabase
+        .from('recurring_service_roles')
+        .delete()
+        .eq('recurring_service_id', serviceId);
+
+      if (deleteRolesError) {
+        console.error('Error clearing recurring service roles:', deleteRolesError);
+        setError(deleteRolesError.message);
+        return null;
+      }
+
+      if (roles && roles.length > 0) {
+        const roleInserts: TablesInsert<'recurring_service_roles'>[] = roles.map(roleName => ({
+          recurring_service_id: serviceId,
+          role_name: roleName,
+        }));
+        const { error: rolesError } = await supabase.from('recurring_service_roles').insert(roleInserts);
+        if (rolesError) {
+          console.error('Error updating recurring service roles:', rolesError);
+          setError(rolesError.message);
+          return null;
+        }
+      }
+
+      await fetchRecurringServices(churchId);
+      return data;
+    } catch (err) {
+      console.error('Error in updateRecurringService:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
@@ -1251,6 +1325,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     deleteMember,
     updateMember,
     addRecurringService,
+    updateRecurringService,
     deleteRecurringService,
     addChurchRole,
     deleteChurchRole,

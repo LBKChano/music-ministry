@@ -147,8 +147,8 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   headerTitle: {
-    fontSize: 31,
-    lineHeight: 36,
+    fontSize: 36,
+    lineHeight: 41,
     fontWeight: '900',
     color: '#FFFFFF',
     textAlign: 'left',
@@ -1383,8 +1383,6 @@ export default function HomeScreen() {
             <Text
               style={styles.headerTitle}
               numberOfLines={2}
-              adjustsFontSizeToFit
-              minimumFontScale={0.72}
             >
               {churchName}
             </Text>

@@ -237,6 +237,7 @@ export default function ChurchScreen() {
     deleteMember,
     updateMember,
     addRecurringService,
+    updateRecurringService,
     deleteRecurringService,
     addChurchRole,
     deleteChurchRole,
@@ -268,6 +269,7 @@ export default function ChurchScreen() {
   const [memberToDelete, setMemberToDelete] = useState<string | null>(null);
   const [memberToEdit, setMemberToEdit] = useState<string | null>(null);
   const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
+  const [serviceToEdit, setServiceToEdit] = useState<string | null>(null);
   const [roleToDelete, setRoleToDelete] = useState<string | null>(null);
 
   const [newChurchName, setNewChurchName] = useState('');
@@ -598,29 +600,65 @@ export default function ChurchScreen() {
     setDeleteModalVisible(true);
   };
 
-  const handleAddService = async () => {
-    console.log('User tapped Add Service button');
+  const resetServiceForm = () => {
+    setServiceToEdit(null);
+    setNewServiceName('');
+    setNewServiceDay(0);
+    setNewServiceTime('09:00');
+    setNewServiceNotes('');
+    setSelectedServiceRoles([]);
+  };
+
+  const handleSaveService = async () => {
+    console.log('User tapped Save Service button');
     if (!currentChurch || !newServiceName.trim()) {
       return;
     }
 
-    const result = await addRecurringService(
-      currentChurch.id,
-      newServiceName.trim(),
-      newServiceDay,
-      newServiceTime,
-      newServiceNotes.trim() || undefined,
-      selectedServiceRoles
-    );
+    const result = serviceToEdit
+      ? await updateRecurringService(
+        serviceToEdit,
+        currentChurch.id,
+        {
+          name: newServiceName.trim(),
+          day_of_week: newServiceDay,
+          time: newServiceTime,
+          notes: newServiceNotes.trim() || null,
+        },
+        selectedServiceRoles,
+      )
+      : await addRecurringService(
+        currentChurch.id,
+        newServiceName.trim(),
+        newServiceDay,
+        newServiceTime,
+        newServiceNotes.trim() || undefined,
+        selectedServiceRoles,
+      );
 
     if (result) {
-      setNewServiceName('');
-      setNewServiceDay(0);
-      setNewServiceTime('09:00');
-      setNewServiceNotes('');
-      setSelectedServiceRoles([]);
+      resetServiceForm();
       setAddServiceModalVisible(false);
     }
+  };
+
+  const openAddServiceModal = () => {
+    resetServiceForm();
+    setAddServiceModalVisible(true);
+  };
+
+  const openEditServiceModal = (serviceId: string) => {
+    console.log('User tapped edit recurring service:', serviceId);
+    const service = (recurringServices ?? []).find(item => item.id === serviceId);
+    if (!service) return;
+
+    setServiceToEdit(service.id);
+    setNewServiceName(service.name);
+    setNewServiceDay(service.day_of_week);
+    setNewServiceTime(service.time);
+    setNewServiceNotes(service.notes ?? '');
+    setSelectedServiceRoles(service.roles ?? []);
+    setAddServiceModalVisible(true);
   };
 
   const handleDeleteService = async () => {
@@ -1344,8 +1382,6 @@ export default function ChurchScreen() {
             <Text
               style={styles.churchHeaderTitle}
               numberOfLines={2}
-              adjustsFontSizeToFit
-              minimumFontScale={0.74}
             >
               {churchHeaderTitle}
             </Text>
@@ -1877,7 +1913,7 @@ export default function ChurchScreen() {
                     style={[styles.addButton, { backgroundColor: colors.primary }]}
                     onPress={() => {
                       console.log('User tapped Add Service');
-                      setAddServiceModalVisible(true);
+                      openAddServiceModal();
                     }}
                   >
                     <IconSymbol
@@ -1940,17 +1976,30 @@ export default function ChurchScreen() {
                               )}
                             </View>
                           </View>
-                          <TouchableOpacity
-                            onPress={() => openDeleteServiceModal(service.id)}
-                            style={styles.deleteIconButton}
-                          >
-                            <IconSymbol
-                              ios_icon_name="trash"
-                              android_material_icon_name="delete"
-                              size={20}
-                              color="#ff3b30"
-                            />
-                          </TouchableOpacity>
+                          <View style={styles.serviceActions}>
+                            <TouchableOpacity
+                              onPress={() => openEditServiceModal(service.id)}
+                              style={styles.editIconButton}
+                            >
+                              <IconSymbol
+                                ios_icon_name="pencil"
+                                android_material_icon_name="edit"
+                                size={20}
+                                color={colors.primary}
+                              />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => openDeleteServiceModal(service.id)}
+                              style={styles.deleteIconButton}
+                            >
+                              <IconSymbol
+                                ios_icon_name="trash"
+                                android_material_icon_name="delete"
+                                size={20}
+                                color="#ff3b30"
+                              />
+                            </TouchableOpacity>
+                          </View>
                         </View>
                       );
                     })}
@@ -2477,12 +2526,17 @@ export default function ChurchScreen() {
         visible={isAddServiceModalVisible}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setAddServiceModalVisible(false)}
+        onRequestClose={() => {
+          setAddServiceModalVisible(false);
+          resetServiceForm();
+        }}
       >
         <View style={styles.modalOverlay}>
           <ScrollView contentContainerStyle={styles.modalScrollContent}>
             <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Add Weekly Service</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                {serviceToEdit ? 'Edit Weekly Service' : 'Add Weekly Service'}
+              </Text>
 
               <TextInput
                 style={[styles.input, { color: colors.text, borderColor: colors.border }]}
@@ -2578,22 +2632,18 @@ export default function ChurchScreen() {
                 <TouchableOpacity
                   style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
                   onPress={() => {
-                    console.log('User cancelled add service');
+                    console.log('User cancelled weekly service modal');
                     setAddServiceModalVisible(false);
-                    setNewServiceName('');
-                    setNewServiceDay(0);
-                    setNewServiceTime('09:00');
-                    setNewServiceNotes('');
-                    setSelectedServiceRoles([]);
+                    resetServiceForm();
                   }}
                 >
                   <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.modalButton, { backgroundColor: colors.primary }]}
-                  onPress={handleAddService}
+                  onPress={handleSaveService}
                 >
-                  <Text style={styles.saveButtonText}>Add</Text>
+                  <Text style={styles.saveButtonText}>{serviceToEdit ? 'Save' : 'Add'}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -3834,8 +3884,8 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   churchHeaderTitle: {
-    fontSize: 34,
-    lineHeight: 39,
+    fontSize: 38,
+    lineHeight: 43,
     fontWeight: '900',
     color: '#FFFFFF',
     textAlign: 'left',
@@ -3986,8 +4036,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   churchName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '800',
   },
   helperText: {
     fontSize: 12,
@@ -4217,6 +4267,11 @@ const styles = StyleSheet.create({
   },
   serviceDetails: {
     flex: 1,
+  },
+  serviceActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   serviceName: {
     fontSize: 16,

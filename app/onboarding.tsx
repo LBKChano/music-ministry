@@ -20,6 +20,7 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/lib/supabase/client';
 import { getAuthParamsFromUrl, PASSWORD_RESET_REDIRECT_URL } from '@/utils/passwordResetLinks';
+import { useChurch } from '@/hooks/useChurch';
 
 const SCHEDULES_ROUTE = '/(tabs)/(home)';
 const ONBOARDING_READY_RETRY_MS = 300;
@@ -31,6 +32,7 @@ export default function OnboardingScreen() {
   const { colors: themeColors } = useTheme();
   const router = useRouter();
   const routeParams = useLocalSearchParams<{ passwordReset?: string }>();
+  const { refreshChurches, setCurrentChurch } = useChurch();
 
   const [step, setStep] = useState<'welcome' | 'church' | 'admin' | 'adminLogin' | 'member' | 'memberSignup' | 'forgotPassword' | 'resetPassword'>('welcome');
   const [loading, setLoading] = useState(false);
@@ -136,8 +138,21 @@ export default function OnboardingScreen() {
       console.warn('Membership row was not visible before navigation. Continuing to schedules.');
     }
 
+    const { data: churchData, error: churchFetchError } = await supabase
+      .from('churches')
+      .select('*')
+      .eq('id', churchId)
+      .maybeSingle();
+
+    if (churchFetchError) {
+      console.warn('Unable to preload church before navigation:', churchFetchError.message);
+    } else if (churchData) {
+      setCurrentChurch(churchData);
+    }
+
+    await refreshChurches();
     router.replace(SCHEDULES_ROUTE);
-  }, [router, waitForChurchMembership]);
+  }, [refreshChurches, router, setCurrentChurch, waitForChurchMembership]);
 
   const handlePasswordRecoveryUrl = useCallback(async (url: string | null) => {
     if (!url) return;
