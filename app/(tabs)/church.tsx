@@ -3884,8 +3884,8 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   churchHeaderTitle: {
-    fontSize: 38,
-    lineHeight: 43,
+    fontSize: 34,
+    lineHeight: 39,
     fontWeight: '900',
     color: '#FFFFFF',
     textAlign: 'left',

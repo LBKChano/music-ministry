@@ -147,8 +147,8 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   headerTitle: {
-    fontSize: 36,
-    lineHeight: 41,
+    fontSize: 33,
+    lineHeight: 38,
     fontWeight: '900',
     color: '#FFFFFF',
     textAlign: 'left',
