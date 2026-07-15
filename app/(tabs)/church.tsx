@@ -1560,7 +1560,35 @@ export default function ChurchScreen() {
               />
               <Text style={styles.actionButtonText}>Add Single Service</Text>
             </TouchableOpacity>
-            <View style={[styles.autoAssignSettingsCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+            <TouchableOpacity
+              style={[
+                styles.autoAssignSettingsCard,
+                {
+                  backgroundColor: allowMultipleRolesSameService ? '#EEF6FF' : colors.cardBackground,
+                  borderColor: allowMultipleRolesSameService ? colors.primary : '#C7D2FE',
+                },
+              ]}
+              activeOpacity={0.85}
+              onPress={() => {
+                if (!isSavingAutoAssignSettings) {
+                  handleToggleAllowMultipleRolesSameService(!allowMultipleRolesSameService);
+                }
+              }}
+              disabled={isSavingAutoAssignSettings}
+            >
+              <View
+                style={[
+                  styles.autoAssignSettingsIcon,
+                  { backgroundColor: allowMultipleRolesSameService ? colors.primary : '#E0E7FF' },
+                ]}
+              >
+                <IconSymbol
+                  ios_icon_name="person.2.fill"
+                  android_material_icon_name="manage-accounts"
+                  size={22}
+                  color={allowMultipleRolesSameService ? '#fff' : colors.primary}
+                />
+              </View>
               <View style={styles.autoAssignSettingsText}>
                 <Text style={[styles.autoAssignSettingsTitle, { color: colors.text }]}>
                   Allow one member in multiple roles
@@ -1572,15 +1600,21 @@ export default function ChurchScreen() {
               {isSavingAutoAssignSettings ? (
                 <ActivityIndicator size="small" color={colors.primary} />
               ) : (
-                <Switch
-                  value={allowMultipleRolesSameService}
-                  onValueChange={handleToggleAllowMultipleRolesSameService}
-                  trackColor={{ false: colors.border, true: colors.primary }}
-                  thumbColor="#fff"
-                  disabled={isSavingAutoAssignSettings}
-                />
+                <View
+                  style={styles.autoAssignSwitchWrap}
+                  onStartShouldSetResponder={() => true}
+                >
+                  <Switch
+                    value={allowMultipleRolesSameService}
+                    onValueChange={handleToggleAllowMultipleRolesSameService}
+                    trackColor={{ false: '#CBD5E1', true: colors.primary }}
+                    thumbColor="#fff"
+                    ios_backgroundColor="#CBD5E1"
+                    disabled={isSavingAutoAssignSettings}
+                  />
+                </View>
               )}
-            </View>
+            </TouchableOpacity>
 
             <View style={[styles.songTypesCard, { backgroundColor: colors.cardBackground }]}>
               <View style={styles.songTypesHeader}>
@@ -4334,23 +4368,36 @@ const styles = StyleSheet.create({
   autoAssignSettingsCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 12,
-    gap: 12,
+    borderWidth: 1.5,
+    borderRadius: 14,
+    padding: 16,
+    marginTop: 14,
+    gap: 14,
+  },
+  autoAssignSettingsIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   autoAssignSettingsText: {
     flex: 1,
   },
   autoAssignSettingsTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
     marginBottom: 4,
   },
   autoAssignSettingsDescription: {
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  autoAssignSwitchWrap: {
+    minWidth: 58,
+    minHeight: 44,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   errorContainer: {
     margin: 16,

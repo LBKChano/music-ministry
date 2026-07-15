@@ -965,10 +965,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     try {
       setError(null);
       const { data, error: fetchError } = await supabase
-        .from('fill_in_requests')
-        .select('*')
-        .eq('church_id', churchId)
-        .order('created_at', { ascending: false });
+        .rpc('get_fill_in_requests_with_member_info', { target_church_id: churchId });
 
       if (fetchError) {
         console.error('Error fetching fill-in requests:', fetchError);
@@ -976,34 +973,14 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const allRequests = data ?? [];
-      const requestsWithMemberInfo: FillInRequestWithMemberInfo[] = [];
-
-      if (allRequests.length > 0) {
-        const requestingIds = [...new Set(allRequests.map(r => r.requesting_member_id).filter(Boolean))] as string[];
-        const filledByIds = [...new Set(allRequests.map(r => r.filled_by_member_id).filter(Boolean))] as string[];
-        const allMemberIds = [...new Set([...requestingIds, ...filledByIds])];
-
-        const { data: membersData } = await supabase
-          .from('church_members')
-          .select('id, name, email')
-          .in('id', allMemberIds);
-
-        const memberMap = new Map<string, { name: string | null; email: string }>();
-        (membersData ?? []).forEach(m => memberMap.set(m.id, { name: m.name, email: m.email }));
-
-        for (const request of allRequests) {
-          const requestingMember = memberMap.get(request.requesting_member_id);
-          const filledByMember = request.filled_by_member_id ? memberMap.get(request.filled_by_member_id) : undefined;
-          requestsWithMemberInfo.push({
-            ...request,
-            requesting_member_name: requestingMember?.name ?? '',
-            requesting_member_email: requestingMember?.email ?? '',
-            filled_by_member_name: filledByMember?.name ?? undefined,
-            filled_by_member_email: filledByMember?.email,
-          });
-        }
-      }
+      const requestsWithMemberInfo: FillInRequestWithMemberInfo[] = (data ?? []).map(request => ({
+        ...request,
+        status: request.status as FillInRequest['status'],
+        requesting_member_name: request.requesting_member_name || request.requesting_member_email || 'Member',
+        requesting_member_email: request.requesting_member_email || '',
+        filled_by_member_name: request.filled_by_member_name || undefined,
+        filled_by_member_email: request.filled_by_member_email || undefined,
+      }));
 
       setFillInRequests(requestsWithMemberInfo);
     } catch (err) {

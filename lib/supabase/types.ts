@@ -694,6 +694,28 @@ export type Database = {
         }
         Returns: Database["public"]["Tables"]["onesignal_subscriptions"]["Row"]
       }
+      get_fill_in_requests_with_member_info: {
+        Args: {
+          target_church_id: string
+        }
+        Returns: {
+          id: string
+          assignment_id: string
+          service_id: string
+          church_id: string
+          requesting_member_id: string
+          role_name: string
+          reason: string | null
+          status: string
+          filled_by_member_id: string | null
+          created_at: string
+          updated_at: string
+          requesting_member_name: string
+          requesting_member_email: string
+          filled_by_member_name: string | null
+          filled_by_member_email: string | null
+        }[]
+      }
       delete_account: {
         Args: Record<PropertyKey, never>
         Returns: unknown
