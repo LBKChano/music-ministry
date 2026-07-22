@@ -245,6 +245,7 @@ export default function ChurchScreen() {
     addMemberRole,
     removeMemberRole,
     updateNotificationSettings,
+    updateChurchName,
     updateChurchSongTypes,
     updateChurchAutoAssignSettings,
     signOut,
@@ -273,6 +274,9 @@ export default function ChurchScreen() {
   const [roleToDelete, setRoleToDelete] = useState<string | null>(null);
 
   const [newChurchName, setNewChurchName] = useState('');
+  const [editChurchName, setEditChurchName] = useState('');
+  const [isEditChurchNameModalVisible, setEditChurchNameModalVisible] = useState(false);
+  const [isSavingChurchName, setIsSavingChurchName] = useState(false);
   const [editMemberEmail, setEditMemberEmail] = useState('');
   const [editMemberName, setEditMemberName] = useState('');
   const [editMemberRoles, setEditMemberRoles] = useState<string[]>([]);
@@ -486,6 +490,51 @@ export default function ChurchScreen() {
     if (result) {
       setNewChurchName('');
       setCreateChurchModalVisible(false);
+    }
+  };
+
+  const openEditChurchNameModal = () => {
+    if (!currentChurch) return;
+    console.log('User tapped Edit Church Name');
+    setEditChurchName(currentChurch.name || '');
+    setEditChurchNameModalVisible(true);
+  };
+
+  const closeEditChurchNameModal = () => {
+    if (isSavingChurchName) return;
+    setEditChurchNameModalVisible(false);
+    setEditChurchName('');
+  };
+
+  const handleUpdateChurchName = async () => {
+    if (!currentChurch || isSavingChurchName) return;
+
+    const trimmedName = editChurchName.trim();
+    if (!trimmedName) {
+      Alert.alert('Error', 'Please enter a church name.');
+      return;
+    }
+
+    if (trimmedName === currentChurch.name) {
+      closeEditChurchNameModal();
+      return;
+    }
+
+    setIsSavingChurchName(true);
+    try {
+      const updatedChurch = await updateChurchName(currentChurch.id, trimmedName);
+      if (!updatedChurch) {
+        Alert.alert('Error', 'Could not update the church name. Please try again.');
+        return;
+      }
+
+      setEditChurchNameModalVisible(false);
+      setEditChurchName('');
+    } catch (err) {
+      console.error('Error updating church name:', err);
+      Alert.alert('Error', 'Could not update the church name. Please try again.');
+    } finally {
+      setIsSavingChurchName(false);
     }
   };
 
@@ -1387,6 +1436,20 @@ export default function ChurchScreen() {
             </Text>
           </View>
           <View style={styles.churchHeaderActions}>
+            {currentChurch ? (
+              <TouchableOpacity
+                style={styles.churchHeaderIconButton}
+                onPress={openEditChurchNameModal}
+                accessibilityLabel="Edit church name"
+              >
+                <IconSymbol
+                  ios_icon_name="pencil"
+                  android_material_icon_name="edit"
+                  size={22}
+                  color="#fff"
+                />
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
               style={styles.churchHeaderIconButton}
               onPress={() => {
@@ -2364,6 +2427,62 @@ export default function ChurchScreen() {
                 onPress={handleCreateChurch}
               >
                 <Text style={styles.saveButtonText}>Create</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Church Name Modal */}
+      <Modal
+        visible={isEditChurchNameModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={closeEditChurchNameModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Church Name</Text>
+
+            <TextInput
+              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+              placeholder="Church Name"
+              placeholderTextColor={colors.textSecondary}
+              value={editChurchName}
+              onChangeText={setEditChurchName}
+              autoCapitalize="words"
+              returnKeyType="done"
+              editable={!isSavingChurchName}
+              onSubmitEditing={handleUpdateChurchName}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  styles.cancelButton,
+                  { backgroundColor: '#e0e0e0' },
+                  isSavingChurchName && styles.disabledButton,
+                ]}
+                onPress={closeEditChurchNameModal}
+                disabled={isSavingChurchName}
+              >
+                <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  { backgroundColor: colors.primary },
+                  isSavingChurchName && styles.disabledButton,
+                ]}
+                onPress={handleUpdateChurchName}
+                disabled={isSavingChurchName}
+              >
+                {isSavingChurchName ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.saveButtonText}>Save</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -3884,8 +4003,8 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   churchHeaderTitle: {
-    fontSize: 34,
-    lineHeight: 39,
+    fontSize: 32,
+    lineHeight: 37,
     fontWeight: '900',
     color: '#FFFFFF',
     textAlign: 'left',
@@ -3893,12 +4012,12 @@ const styles = StyleSheet.create({
   churchHeaderActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 7,
   },
   churchHeaderIconButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.16)',

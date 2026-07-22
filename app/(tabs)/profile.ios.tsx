@@ -526,8 +526,8 @@ const styles = StyleSheet.create({
   },
   profileChurchTitle: {
     marginTop: 5,
-    fontSize: 21,
-    lineHeight: 26,
+    fontSize: 20,
+    lineHeight: 24,
     fontWeight: '900',
     color: '#DBEAFE',
     textAlign: 'left',

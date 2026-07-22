@@ -71,6 +71,7 @@ interface ChurchContextValue {
   saveUnavailableDates: (memberId: string, dates: string[]) => Promise<boolean>;
   fetchNotificationSettings: (churchId: string) => Promise<void>;
   updateNotificationSettings: (churchId: string, notificationHours: number[], enabled: boolean) => Promise<boolean>;
+  updateChurchName: (churchId: string, name: string) => Promise<Church | null>;
   updateChurchSongTypes: (churchId: string, songTypeOptions: string[]) => Promise<Church | null>;
   updateChurchAutoAssignSettings: (churchId: string, allowMultipleRolesSameService: boolean) => Promise<Church | null>;
   createFillInRequest: (assignmentId: string, serviceId: string, churchId: string, requestingMemberId: string, roleName: string, reason?: string) => Promise<FillInRequest | null>;
@@ -990,6 +991,38 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const updateChurchName = useCallback(async (churchId: string, name: string): Promise<Church | null> => {
+    console.log('Updating church name:', { churchId });
+    try {
+      setError(null);
+      const normalizedName = name.trim();
+
+      if (!normalizedName) {
+        setError('Church name is required');
+        return null;
+      }
+
+      const { data, error: updateError } = await supabase.rpc('update_church_name', {
+        target_church_id: churchId,
+        church_name: normalizedName,
+      });
+
+      if (updateError) {
+        console.error('Error updating church name:', updateError);
+        setError(updateError.message);
+        return null;
+      }
+
+      setChurches(prev => prev.map(church => church.id === churchId ? data : church));
+      setCurrentChurch(prev => prev?.id === churchId ? data : prev);
+      return data;
+    } catch (err) {
+      console.error('Error in updateChurchName:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return null;
+    }
+  }, []);
+
   const updateChurchAutoAssignSettings = useCallback(async (churchId: string, allowMultipleRolesSameService: boolean): Promise<Church | null> => {
     console.log('Updating church auto-assign settings:', { churchId, allowMultipleRolesSameService });
     try {
@@ -1338,6 +1371,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     saveUnavailableDates,
     fetchNotificationSettings,
     updateNotificationSettings,
+    updateChurchName,
     updateChurchSongTypes,
     updateChurchAutoAssignSettings,
     createFillInRequest,

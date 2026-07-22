@@ -720,6 +720,13 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: unknown
       }
+      update_church_name: {
+        Args: {
+          target_church_id: string
+          church_name: string
+        }
+        Returns: Database["public"]["Tables"]["churches"]["Row"]
+      }
       update_church_song_type_options: {
         Args: {
           target_church_id: string
