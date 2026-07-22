@@ -2,7 +2,7 @@
   "expo": {
     "name": "Music Ministry",
     "slug": "music-ministry",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.lbkchano.musicministry",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocationWhenInUseUsageDescription": "Music Ministry does not use your location. This permission description is included because a notification library may reference location APIs.",
@@ -41,7 +41,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.lbkchano.musicministry",
-      "versionCode": 11,
+      "versionCode": 12,
       "googleServicesFile": "./google-services.json",
       "splash": {
         "image": "./assets/images/9b11f806-5921-4e61-9383-a3f7e125c18f.png",

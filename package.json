@@ -1,6 +1,6 @@
 {
   "name": "music-ministry",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "packageManager": "pnpm@9.15.0",
   "main": "index.ts",
   "scripts": {
