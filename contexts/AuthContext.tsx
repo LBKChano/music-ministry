@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
 import type { Session } from '@supabase/supabase-js';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase/client';
 
 interface AuthContextType {
@@ -18,10 +19,24 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [session, setSession] = useState<Session | null>(null);
   const [initialized, setInitialized] = useState(false);
   const splashHidden = useRef(false);
   const initializedRef = useRef(false);
+  const activeAccountIdRef = useRef<string | null>(null);
+
+  const replaceSession = useCallback((newSession: Session | null) => {
+    const nextAccountId = newSession?.user?.id ?? null;
+
+    if (activeAccountIdRef.current !== nextAccountId) {
+      void queryClient.cancelQueries();
+      queryClient.clear();
+      activeAccountIdRef.current = nextAccountId;
+    }
+
+    setSession(newSession);
+  }, [queryClient]);
 
   const hideSplash = () => {
     if (!splashHidden.current) {
@@ -63,15 +78,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (event === 'SIGNED_OUT') {
           console.log('[AuthContext] SIGNED_OUT — clearing session');
-          setSession(null);
+          replaceSession(null);
         } else if (event === 'TOKEN_REFRESHED') {
           // Silently update the session token without triggering navigation side-effects.
           // On iOS, closing and reopening the app fires TOKEN_REFRESHED (not SIGNED_IN),
           // so treating it like a new sign-in would incorrectly redirect to onboarding.
           console.log('[AuthContext] TOKEN_REFRESHED — updating session silently');
-          setSession(newSession ?? null);
+          replaceSession(newSession ?? null);
         } else {
-          setSession(newSession ?? null);
+          replaceSession(newSession ?? null);
         }
 
         // INITIAL_SESSION fires exactly once after storage is fully hydrated.
@@ -105,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // ignore cleanup errors
       }
     };
-  }, []);
+  }, [replaceSession]);
 
   const signOut = async () => {
     console.log('[AuthContext] signOut called');
@@ -137,7 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.warn('[AuthContext] signOut after deleteAccount failed:', err);
     } finally {
-      setSession(null);
+      replaceSession(null);
     }
   };
 

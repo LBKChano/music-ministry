@@ -9,13 +9,15 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useChurch } from "@/hooks/useChurch";
 import { Calendar, DateData } from "react-native-calendars";
 import type { Tables } from "@/lib/supabase/types";
+import { usePerformanceBaselineScreen } from "@/hooks/usePerformanceBaselineScreen";
+import { performanceBaselineEnabled } from "@/lib/performance/baseline";
 
 type MemberUnavailability = Tables<'member_unavailability'>;
 
 type ToastType = 'success' | 'error';
 
 export default function ProfileScreen() {
-  const { user, loading, currentMember, currentChurch, signOut, deleteAccount, fetchMemberUnavailability, saveUnavailableDates } = useChurch();
+  const { user, loading, currentMember, currentChurch, isAdmin, signOut, deleteAccount, fetchMemberUnavailability, saveUnavailableDates } = useChurch();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [showSignOutModal, setShowSignOutModal] = useState(false);
@@ -25,6 +27,7 @@ export default function ProfileScreen() {
   const [savedDates, setSavedDates] = useState<MemberUnavailability[]>([]);
   const [pendingDates, setPendingDates] = useState<Set<string>>(new Set());
   const [loadingDates, setLoadingDates] = useState(false);
+  const [loadedUnavailabilityMemberId, setLoadedUnavailabilityMemberId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
@@ -54,6 +57,7 @@ export default function ProfileScreen() {
     const loadUnavailability = async () => {
       if (currentMember?.id) {
         console.log('Loading unavailability dates for member:', currentMember.id);
+        if (performanceBaselineEnabled) setLoadedUnavailabilityMemberId(null);
         setLoadingDates(true);
         const dates = await fetchMemberUnavailability(currentMember.id);
         setSavedDates(dates);
@@ -61,11 +65,26 @@ export default function ProfileScreen() {
         setPendingDates(dateSet);
         setHasUnsavedChanges(false);
         setLoadingDates(false);
+        if (performanceBaselineEnabled) setLoadedUnavailabilityMemberId(currentMember.id);
       }
     };
 
     loadUnavailability().catch(err => console.error('[ProfileScreen.ios] loadUnavailability error:', err));
   }, [currentMember?.id, fetchMemberUnavailability]);
+
+  usePerformanceBaselineScreen(
+    'Profile',
+    !loading &&
+      !!user &&
+      !!currentMember &&
+      (!performanceBaselineEnabled || loadedUnavailabilityMemberId === currentMember.id),
+    {
+      implementation: 'ios',
+      unavailableDates: savedDates.length,
+      hasChurch: !!currentChurch,
+      isAdmin,
+    }
+  );
 
   const handleDeleteAccount = async () => {
     console.log('User confirmed account deletion');
@@ -161,7 +180,6 @@ export default function ProfileScreen() {
 
   const displayName = currentMember?.name || user?.email?.split('@')[0] || 'User';
   const displayEmail = currentMember?.email || user?.email || '';
-  const isAdmin = currentChurch?.admin_id === user?.id || currentMember?.is_admin;
   const userRole = isAdmin ? 'Admin' : 'Member';
   const profileSubtitle = userRole;
 

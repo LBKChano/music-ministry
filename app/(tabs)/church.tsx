@@ -4,6 +4,7 @@ import {
   View,
   Text,
   StyleSheet,
+  SectionList,
   ScrollView,
   TouchableOpacity,
   TextInput,
@@ -20,7 +21,9 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useChurch } from '@/hooks/useChurch';
 import { useServices } from '@/hooks/useServices';
+import { usePerformanceBaselineScreen } from '@/hooks/usePerformanceBaselineScreen';
 import { supabase } from '@/lib/supabase/client';
+import { createAutoAssignPreviewKey } from '@/lib/admin/operations';
 import type { Json } from '@/lib/supabase/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Clipboard from 'expo-clipboard';
@@ -74,6 +77,20 @@ type AutoAssignResult = {
   cleared_count: number;
   preview: AutoAssignPreviewAssignment[];
   skipped_report: AutoAssignSkippedSlot[];
+};
+type AutoAssignListItem =
+  | {
+    kind: 'assignment';
+    assignment: AutoAssignPreviewAssignment;
+  }
+  | {
+    kind: 'skipped';
+    skipped: AutoAssignSkippedSlot;
+  };
+type AutoAssignListSection = {
+  key: 'preview' | 'skipped';
+  title: string;
+  data: AutoAssignListItem[];
 };
 
 type AutoAssignRangeConfig = {
@@ -218,6 +235,89 @@ function formatTimeForDatabase(date: Date): string {
   return `${hours}:${minutes}`;
 }
 
+const AutoAssignVirtualRow = React.memo(function AutoAssignVirtualRow({
+  row,
+}: {
+  row: AutoAssignListItem;
+}) {
+  if (row.kind === 'assignment') {
+    const item = row.assignment;
+    const time = formatPreviewTime(item.service_time);
+    return (
+      <View
+        style={[
+          styles.autoAssignPreviewItem,
+          styles.autoAssignVirtualRow,
+          {
+            borderColor: colors.border,
+            backgroundColor: colors.inputBackground,
+          },
+        ]}
+      >
+        <Text style={[styles.autoAssignPreviewService, { color: colors.text }]}>
+          {formatDateForDisplay(item.service_date)}
+          {time ? ` • ${time}` : ''}
+          {' • '}
+          {item.service_type}
+        </Text>
+        <Text style={[styles.autoAssignPreviewMember, { color: colors.text }]}>
+          {item.person_name} will be assigned to {item.role}
+        </Text>
+        {item.current_person_name
+          && item.current_person_name !== item.person_name ? (
+            <Text
+              style={[
+                styles.autoAssignPreviewReplacement,
+                { color: colors.textSecondary },
+              ]}
+            >
+              Replaces {item.current_person_name}
+            </Text>
+          ) : null}
+      </View>
+    );
+  }
+
+  const item = row.skipped;
+  const time = formatPreviewTime(item.service_time);
+  const unavailableNames = item.unavailable_members
+    .map(member => member.name || member.email)
+    .filter(Boolean);
+
+  return (
+    <View
+      style={[
+        styles.autoAssignSkippedItem,
+        styles.autoAssignVirtualRow,
+        { borderColor: colors.border, backgroundColor: '#FFF7ED' },
+      ]}
+    >
+      <Text style={[styles.autoAssignPreviewService, { color: colors.text }]}>
+        {formatDateForDisplay(item.service_date)}
+        {time ? ` • ${time}` : ''}
+        {' • '}
+        {item.service_type}
+      </Text>
+      <Text style={[styles.autoAssignSkippedRole, { color: colors.text }]}>
+        {item.role}
+      </Text>
+      <Text style={[styles.autoAssignSkipText, { color: colors.textSecondary }]}>
+        {item.reason}
+      </Text>
+      {unavailableNames.length > 0 ? (
+        <Text
+          style={[
+            styles.autoAssignUnavailableText,
+            { color: colors.textSecondary },
+          ]}
+        >
+          Unavailable: {unavailableNames.join(', ')}
+        </Text>
+      ) : null}
+    </View>
+  );
+});
+
 export default function ChurchScreen() {
   const insets = useSafeAreaInsets();
 
@@ -256,7 +356,25 @@ export default function ChurchScreen() {
     refreshNotificationSettings,
   } = useChurch();
 
-  const { services, createServiceFromTemplate, refreshServices: refreshServicesHook } = useServices(currentChurch?.id || null);
+  const {
+    services,
+    loading: servicesLoading,
+    createServiceFromTemplate,
+    createServicesBatch,
+    refreshServices: refreshServicesHook,
+  } = useServices(currentChurch?.id || null, { windowed: true });
+
+  usePerformanceBaselineScreen(
+    'Church',
+    !loading && !servicesLoading && !!user,
+    {
+      services: services.length,
+      members: members.length,
+      roles: churchRoles.length,
+      recurringServices: recurringServices.length,
+      churches: churches.length,
+    }
+  );
 
   const [activeTab, setActiveTab] = useState<'members' | 'services' | 'roles' | 'notifications'>('members');
   const [isCreateChurchModalVisible, setCreateChurchModalVisible] = useState(false);
@@ -274,6 +392,7 @@ export default function ChurchScreen() {
   const [roleToDelete, setRoleToDelete] = useState<string | null>(null);
 
   const [newChurchName, setNewChurchName] = useState('');
+  const [isCreatingChurch, setIsCreatingChurch] = useState(false);
   const [editChurchName, setEditChurchName] = useState('');
   const [isEditChurchNameModalVisible, setEditChurchNameModalVisible] = useState(false);
   const [isSavingChurchName, setIsSavingChurchName] = useState(false);
@@ -331,6 +450,8 @@ export default function ChurchScreen() {
   const [showAutoAssignStartPicker, setShowAutoAssignStartPicker] = useState(false);
   const [showAutoAssignEndPicker, setShowAutoAssignEndPicker] = useState(false);
   const [autoAssignPreview, setAutoAssignPreview] = useState<AutoAssignResult | null>(null);
+  const [autoAssignPreviewKey, setAutoAssignPreviewKey] = useState<string | null>(null);
+  const [autoAssignOperationStatus, setAutoAssignOperationStatus] = useState<string | null>(null);
   const [isGeneratingAutoAssignPreview, setIsGeneratingAutoAssignPreview] = useState(false);
   const [isApplyingAutoAssign, setIsApplyingAutoAssign] = useState(false);
   const isAutoAssigning = autoAssignMode !== null || isGeneratingAutoAssignPreview || isApplyingAutoAssign;
@@ -354,6 +475,7 @@ export default function ChurchScreen() {
 
   // Quarter preparation loading state
   const [isPreparing, setIsPreparing] = useState(false);
+  const [quarterOperationStatus, setQuarterOperationStatus] = useState<string | null>(null);
 
   // Pull-to-refresh state
   const [refreshing, setRefreshing] = useState(false);
@@ -475,6 +597,36 @@ export default function ChurchScreen() {
     }
   };
 
+  const autoAssignSections = React.useMemo<AutoAssignListSection[]>(() => {
+    if (!autoAssignPreview) return [];
+
+    const sections: AutoAssignListSection[] = [];
+
+    if (autoAssignPreview.preview.length > 0) {
+      sections.push({
+        key: 'preview',
+        title: 'Schedule Preview',
+        data: autoAssignPreview.preview.map(assignment => ({
+          kind: 'assignment',
+          assignment,
+        })),
+      });
+    }
+
+    if (autoAssignPreview.skipped_report.length > 0) {
+      sections.push({
+        key: 'skipped',
+        title: 'Skipped Slots',
+        data: autoAssignPreview.skipped_report.map(skipped => ({
+          kind: 'skipped',
+          skipped,
+        })),
+      });
+    }
+
+    return sections;
+  }, [autoAssignPreview]);
+
   if (!isAdmin) {
     console.log('[ChurchScreen] Non-admin user attempted to access church screen, redirecting');
     return <Redirect href="/(tabs)/(home)" />;
@@ -482,14 +634,30 @@ export default function ChurchScreen() {
 
   const handleCreateChurch = async () => {
     console.log('User tapped Create Church button');
-    if (!newChurchName.trim()) {
+    if (isCreatingChurch) return;
+
+    const trimmedName = newChurchName.trim();
+    if (!trimmedName) {
+      Alert.alert('Church Name Required', 'Please enter a church name.');
       return;
     }
 
-    const result = await createChurch(newChurchName.trim());
-    if (result) {
+    setIsCreatingChurch(true);
+    try {
+      const result = await createChurch(trimmedName);
+      if (!result) {
+        Alert.alert('Error', 'Could not create the church. Please try again.');
+        return;
+      }
+
+      setCurrentChurch(result);
       setNewChurchName('');
       setCreateChurchModalVisible(false);
+    } catch (err) {
+      console.error('Error creating church:', err);
+      Alert.alert('Error', 'Could not create the church. Please try again.');
+    } finally {
+      setIsCreatingChurch(false);
     }
   };
 
@@ -577,7 +745,10 @@ export default function ChurchScreen() {
     if (editMemberName.trim()) {
       updates.name = editMemberName.trim();
     }
-    updates.is_admin = isChurchOwner ? true : editMemberIsAdmin;
+    const nextIsAdmin = isChurchOwner ? true : editMemberIsAdmin;
+    if (member && member.is_admin !== nextIsAdmin) {
+      updates.is_admin = nextIsAdmin;
+    }
 
     const success = await updateMember(memberToEdit, currentChurch.id, updates);
     
@@ -937,61 +1108,69 @@ export default function ChurchScreen() {
       return;
     }
 
-    console.log('User tapped Generate Services button for church:', currentChurch.id);
-    setIsPreparing(true);
-
     const generatedServices = generateQuarterServices();
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const { date, template } of generatedServices) {
-      const dateString = formatDateForDatabase(date);
-      try {
-        const result = await createServiceFromTemplate(currentChurch.id, dateString, template.name, template.notes, template.roles, template.time);
-        if (result) {
-          successCount++;
-        } else {
-          failCount++;
-        }
-      } catch (err) {
-        console.error('Error creating service from template:', err);
-        failCount++;
-      }
-    }
-
-    for (const special of specialServices) {
-      const dateString = formatDateForDatabase(special.date);
+    const recurringDrafts = generatedServices.map(({ date, template }) => ({
+      date: formatDateForDatabase(date),
+      serviceType: template.name,
+      notes: template.notes,
+      roleSlots: template.roles ?? [],
+      time: template.time,
+    }));
+    const specialDrafts = specialServices.map(special => {
       const roleNames = (special.selectedRoleIds ?? [])
         .map(roleId => (churchRoles ?? []).find(r => r.id === roleId)?.name)
         .filter((name): name is string => name !== undefined);
+      return {
+        date: formatDateForDatabase(special.date),
+        serviceType: special.name,
+        notes: special.notes,
+        roleSlots: roleNames,
+        time: special.time,
+      };
+    });
+    const drafts = [...recurringDrafts, ...specialDrafts];
 
-      console.log('Creating special service with roles:', { name: special.name, roleNames, time: special.time });
-      try {
-        const result = await createServiceFromTemplate(currentChurch.id, dateString, special.name, special.notes, roleNames, special.time);
-        if (result) {
-          successCount++;
-        } else {
-          failCount++;
+    console.log('User tapped Generate Services button for church:', currentChurch.id);
+    setIsPreparing(true);
+    setQuarterOperationStatus(`Creating ${drafts.length} service${drafts.length !== 1 ? 's' : ''}...`);
+
+    try {
+      const result = await createServicesBatch(
+        currentChurch.id,
+        drafts,
+        (completed, total) => {
+          if (completed > 0 && completed < total) {
+            setQuarterOperationStatus(`Created ${completed} of ${total} services...`);
+          }
         }
-      } catch (err) {
-        console.error('Error creating special service:', err);
-        failCount++;
-      }
-    }
-
-    setIsPreparing(false);
-    setShowPrepareQuarterModal(false);
-    setPrepareQuarterStep('block');
-    setBlockedServices(new Set());
-    setSpecialServices([]);
-
-    if (failCount > 0) {
-      Alert.alert(
-        'Partial Success',
-        `${successCount} service${successCount !== 1 ? 's' : ''} created successfully, ${failCount} failed. Please check your connection and try again for any missing services.`
       );
-    } else {
-      Alert.alert('Success', `${successCount} quarter service${successCount !== 1 ? 's' : ''} generated successfully!`);
+      if (!result) {
+        Alert.alert('Error', 'No services were created. Please check your connection and try again.');
+        return;
+      }
+
+      setShowPrepareQuarterModal(false);
+      setPrepareQuarterStep('block');
+      setBlockedServices(new Set());
+      setSpecialServices([]);
+
+      if (result.failedCount > 0) {
+        Alert.alert(
+          'Partial Success',
+          `${result.createdCount} service${result.createdCount !== 1 ? 's' : ''} created successfully, ${result.failedCount} failed. Please check your connection and try again for any missing services.`
+        );
+      } else {
+        Alert.alert(
+          'Success',
+          `${result.createdCount} quarter service${result.createdCount !== 1 ? 's' : ''} generated successfully!`
+        );
+      }
+    } catch (err) {
+      console.error('Error preparing quarter:', err);
+      Alert.alert('Error', 'No services were created. Please try again.');
+    } finally {
+      setIsPreparing(false);
+      setQuarterOperationStatus(null);
     }
   };
 
@@ -1093,6 +1272,23 @@ export default function ChurchScreen() {
     };
   };
 
+  const getAutoAssignPreviewKey = (range: AutoAssignRangeConfig) => (
+    createAutoAssignPreviewKey({
+      churchId: currentChurch?.id ?? '',
+      mode: pendingAutoAssignMode,
+      range,
+      allowMultipleRolesSameService,
+      services,
+      members,
+    })
+  );
+
+  const clearAutoAssignPreview = () => {
+    setAutoAssignPreview(null);
+    setAutoAssignPreviewKey(null);
+    setAutoAssignOperationStatus(null);
+  };
+
   const openAutoAssignModal = (mode: AutoAssignMode) => {
     if (!currentChurch) {
       Alert.alert('Error', 'No church selected');
@@ -1108,7 +1304,7 @@ export default function ChurchScreen() {
     setDraftAutoAssignEndDate(addDays(today, 30));
     setShowAutoAssignStartPicker(false);
     setShowAutoAssignEndPicker(false);
-    setAutoAssignPreview(null);
+    clearAutoAssignPreview();
     setShowAutoAssignModal(true);
   };
 
@@ -1120,6 +1316,11 @@ export default function ChurchScreen() {
 
     const range = getAutoAssignRangeConfig();
     if (!range) return;
+    const requestKey = getAutoAssignPreviewKey(range);
+    if (autoAssignPreview && autoAssignPreviewKey === requestKey) {
+      setAutoAssignOperationStatus('Preview is already current.');
+      return;
+    }
 
     console.log('Generating auto-assign preview:', {
       mode: pendingAutoAssignMode,
@@ -1129,6 +1330,8 @@ export default function ChurchScreen() {
 
     setIsGeneratingAutoAssignPreview(true);
     setAutoAssignPreview(null);
+    setAutoAssignPreviewKey(null);
+    setAutoAssignOperationStatus('Calculating the schedule preview...');
 
     try {
       const { data, error: rpcError } = await supabase.rpc('auto_assign_service_slots', {
@@ -1142,6 +1345,7 @@ export default function ChurchScreen() {
 
       if (rpcError) {
         console.error('Error generating auto-assign preview:', rpcError);
+        setAutoAssignOperationStatus(null);
         Alert.alert('Error', rpcError.message || 'Could not generate the assignment preview.');
         return;
       }
@@ -1149,11 +1353,15 @@ export default function ChurchScreen() {
       const result = data?.[0] ? normalizeAutoAssignResult(data[0]) : null;
       if (result) {
         setAutoAssignPreview(result);
+        setAutoAssignPreviewKey(requestKey);
+        setAutoAssignOperationStatus('Preview ready.');
       } else {
+        setAutoAssignOperationStatus(null);
         Alert.alert('Info', 'No assignment preview was returned.');
       }
     } catch (err) {
       console.error('Error generating auto-assign preview:', err);
+      setAutoAssignOperationStatus(null);
       Alert.alert('Error', 'Could not generate the assignment preview.');
     } finally {
       setIsGeneratingAutoAssignPreview(false);
@@ -1173,6 +1381,14 @@ export default function ChurchScreen() {
 
     const range = getAutoAssignRangeConfig();
     if (!range) return;
+    if (autoAssignPreviewKey !== getAutoAssignPreviewKey(range)) {
+      clearAutoAssignPreview();
+      Alert.alert(
+        'Preview Out of Date',
+        'The schedule or assignment options changed. Generate a new preview before saving.'
+      );
+      return;
+    }
 
     console.log('Applying auto-assign preview:', {
       mode: pendingAutoAssignMode,
@@ -1182,6 +1398,7 @@ export default function ChurchScreen() {
 
     setAutoAssignMode(pendingAutoAssignMode);
     setIsApplyingAutoAssign(true);
+    setAutoAssignOperationStatus('Saving assignments atomically...');
 
     try {
       const { data, error: rpcError } = await supabase.rpc('auto_assign_service_slots', {
@@ -1195,6 +1412,7 @@ export default function ChurchScreen() {
 
       if (rpcError) {
         console.error('Error applying auto-assign RPC:', rpcError);
+        setAutoAssignOperationStatus('Save failed. The preview is still available.');
         Alert.alert('Error', rpcError.message || 'Auto-assignment failed');
         return;
       }
@@ -1202,10 +1420,11 @@ export default function ChurchScreen() {
       const result = data?.[0] ? normalizeAutoAssignResult(data[0]) : autoAssignPreview;
       await refreshServicesHook();
       setShowAutoAssignModal(false);
-      setAutoAssignPreview(null);
+      clearAutoAssignPreview();
       Alert.alert('Success', formatAutoAssignMessage(result, pendingAutoAssignMode));
     } catch (err) {
       console.error('Error applying auto-assign:', err);
+      setAutoAssignOperationStatus('Save failed. The preview is still available.');
       Alert.alert('Error', 'Auto-assignment failed');
     } finally {
       setAutoAssignMode(null);
@@ -2397,7 +2616,9 @@ export default function ChurchScreen() {
         visible={isCreateChurchModalVisible}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setCreateChurchModalVisible(false)}
+        onRequestClose={() => {
+          if (!isCreatingChurch) setCreateChurchModalVisible(false);
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
@@ -2409,24 +2630,44 @@ export default function ChurchScreen() {
               placeholderTextColor={colors.textSecondary}
               value={newChurchName}
               onChangeText={setNewChurchName}
+              editable={!isCreatingChurch}
+              autoCapitalize="words"
+              returnKeyType="done"
+              onSubmitEditing={handleCreateChurch}
             />
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
+                style={[
+                  styles.modalButton,
+                  styles.cancelButton,
+                  { backgroundColor: '#e0e0e0' },
+                  isCreatingChurch && styles.disabledButton,
+                ]}
                 onPress={() => {
+                  if (isCreatingChurch) return;
                   console.log('User cancelled create church');
                   setCreateChurchModalVisible(false);
                   setNewChurchName('');
                 }}
+                disabled={isCreatingChurch}
               >
                 <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                style={[
+                  styles.modalButton,
+                  { backgroundColor: colors.primary },
+                  isCreatingChurch && styles.disabledButton,
+                ]}
                 onPress={handleCreateChurch}
+                disabled={isCreatingChurch}
               >
-                <Text style={styles.saveButtonText}>Create</Text>
+                {isCreatingChurch ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.saveButtonText}>Create</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -2937,7 +3178,7 @@ export default function ChurchScreen() {
         onRequestClose={() => {
           if (!isApplyingAutoAssign) {
             setShowAutoAssignModal(false);
-            setAutoAssignPreview(null);
+            clearAutoAssignPreview();
           }
         }}
       >
@@ -2954,260 +3195,241 @@ export default function ChurchScreen() {
               </Text>
             </View>
 
-            <ScrollView
+            <SectionList<AutoAssignListItem, AutoAssignListSection>
               style={styles.autoAssignModalBody}
               contentContainerStyle={styles.autoAssignModalBodyContent}
+              contentInsetAdjustmentBehavior="automatic"
+              sections={autoAssignSections}
+              keyExtractor={item => (
+                item.kind === 'assignment'
+                  ? `assignment-${item.assignment.assignment_id}`
+                  : `skipped-${item.skipped.assignment_id}`
+              )}
+              renderItem={({ item }) => <AutoAssignVirtualRow row={item} />}
+              renderSectionHeader={({ section }) => (
+                <Text
+                  style={[
+                    styles.autoAssignPreviewTitle,
+                    styles.autoAssignSectionHeader,
+                    { color: colors.text, backgroundColor: colors.cardBackground },
+                  ]}
+                >
+                  {section.title}
+                </Text>
+              )}
+              ListHeaderComponent={(
+                <>
+                  <Text style={[styles.label, { color: colors.text }]}>Assignment Range</Text>
+                  <View style={styles.autoAssignRangeGrid}>
+                    {AUTO_ASSIGN_RANGE_OPTIONS.map(option => {
+                      const isSelected = autoAssignRangeMode === option.mode;
+                      return (
+                        <TouchableOpacity
+                          key={option.mode}
+                          style={[
+                            styles.autoAssignRangeChip,
+                            {
+                              borderColor: isSelected ? colors.primary : colors.border,
+                              backgroundColor: isSelected ? colors.primary : colors.inputBackground,
+                            },
+                          ]}
+                          onPress={() => {
+                            setAutoAssignRangeMode(option.mode);
+                            clearAutoAssignPreview();
+                          }}
+                          disabled={isGeneratingAutoAssignPreview || isApplyingAutoAssign}
+                        >
+                          <Text style={[styles.autoAssignRangeChipText, { color: isSelected ? '#fff' : colors.text }]}>
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {autoAssignRangeMode === 'selected_range' && (
+                    <View style={styles.autoAssignDateRange}>
+                      <TouchableOpacity
+                        style={[styles.dateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
+                        onPress={() => {
+                          setDraftAutoAssignStartDate(autoAssignStartDate);
+                          setShowAutoAssignStartPicker(true);
+                          setShowAutoAssignEndPicker(false);
+                        }}
+                      >
+                        <Text style={[styles.dateButtonText, { color: colors.text }]}>
+                          Start: {autoAssignStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </Text>
+                      </TouchableOpacity>
+                      {showAutoAssignStartPicker && (
+                        <View style={styles.datePickerWrapper}>
+                          <DateTimePicker
+                            value={draftAutoAssignStartDate}
+                            mode="date"
+                            display="spinner"
+                            themeVariant="light"
+                            textColor="#000000"
+                            onChange={(event, date) => {
+                              if (date) setDraftAutoAssignStartDate(getStartOfLocalDay(date));
+                            }}
+                          />
+                          <View style={styles.pickerActionRow}>
+                            <TouchableOpacity
+                              style={[styles.pickerActionButton, styles.pickerCancelButton]}
+                              onPress={() => {
+                                setDraftAutoAssignStartDate(autoAssignStartDate);
+                                setShowAutoAssignStartPicker(false);
+                              }}
+                            >
+                              <Text style={styles.pickerCancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.pickerActionButton, styles.pickerConfirmButton]}
+                              onPress={() => {
+                                setAutoAssignStartDate(draftAutoAssignStartDate);
+                                setShowAutoAssignStartPicker(false);
+                                clearAutoAssignPreview();
+                              }}
+                            >
+                              <Text style={styles.pickerConfirmText}>Confirm</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      )}
+
+                      <TouchableOpacity
+                        style={[styles.dateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
+                        onPress={() => {
+                          setDraftAutoAssignEndDate(autoAssignEndDate);
+                          setShowAutoAssignEndPicker(true);
+                          setShowAutoAssignStartPicker(false);
+                        }}
+                      >
+                        <Text style={[styles.dateButtonText, { color: colors.text }]}>
+                          End: {autoAssignEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </Text>
+                      </TouchableOpacity>
+                      {showAutoAssignEndPicker && (
+                        <View style={styles.datePickerWrapper}>
+                          <DateTimePicker
+                            value={draftAutoAssignEndDate}
+                            mode="date"
+                            display="spinner"
+                            themeVariant="light"
+                            textColor="#000000"
+                            onChange={(event, date) => {
+                              if (date) setDraftAutoAssignEndDate(getStartOfLocalDay(date));
+                            }}
+                          />
+                          <View style={styles.pickerActionRow}>
+                            <TouchableOpacity
+                              style={[styles.pickerActionButton, styles.pickerCancelButton]}
+                              onPress={() => {
+                                setDraftAutoAssignEndDate(autoAssignEndDate);
+                                setShowAutoAssignEndPicker(false);
+                              }}
+                            >
+                              <Text style={styles.pickerCancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.pickerActionButton, styles.pickerConfirmButton]}
+                              onPress={() => {
+                                setAutoAssignEndDate(draftAutoAssignEndDate);
+                                setShowAutoAssignEndPicker(false);
+                                clearAutoAssignPreview();
+                              }}
+                            >
+                              <Text style={styles.pickerConfirmText}>Confirm</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    style={[
+                      styles.primaryButton,
+                      styles.autoAssignPreviewButton,
+                      { backgroundColor: colors.primary },
+                      isGeneratingAutoAssignPreview && styles.disabledButton,
+                    ]}
+                    onPress={requestAutoAssignPreview}
+                    disabled={isGeneratingAutoAssignPreview || isApplyingAutoAssign}
+                  >
+                    {isGeneratingAutoAssignPreview ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.primaryButtonText}>
+                        {autoAssignPreview ? 'Regenerate Preview' : 'Generate Preview'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                  {autoAssignOperationStatus ? (
+                    <Text
+                      style={[
+                        styles.adminOperationStatus,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      {autoAssignOperationStatus}
+                    </Text>
+                  ) : null}
+
+                  {autoAssignPreview && (
+                    <View style={styles.autoAssignPreviewPanel}>
+                      <View style={styles.autoAssignStatsGrid}>
+                        <View style={[styles.autoAssignStat, { backgroundColor: colors.inputBackground }]}>
+                          <Text style={[styles.autoAssignStatValue, { color: colors.primary }]}>{autoAssignPreview.assigned_count}</Text>
+                          <Text style={[styles.autoAssignStatLabel, { color: colors.textSecondary }]}>Will assign</Text>
+                        </View>
+                        <View style={[styles.autoAssignStat, { backgroundColor: colors.inputBackground }]}>
+                          <Text style={[styles.autoAssignStatValue, { color: colors.text }]}>{autoAssignPreview.open_slot_count}</Text>
+                          <Text style={[styles.autoAssignStatLabel, { color: colors.textSecondary }]}>Slots checked</Text>
+                        </View>
+                        <View style={[styles.autoAssignStat, { backgroundColor: colors.inputBackground }]}>
+                          <Text style={[styles.autoAssignStatValue, { color: '#B45309' }]}>{autoAssignPreview.skipped_count}</Text>
+                          <Text style={[styles.autoAssignStatLabel, { color: colors.textSecondary }]}>Left open</Text>
+                        </View>
+                        {pendingAutoAssignMode === 'reassign_all' && (
+                          <View style={[styles.autoAssignStat, { backgroundColor: colors.inputBackground }]}>
+                            <Text style={[styles.autoAssignStatValue, { color: '#C2410C' }]}>{autoAssignPreview.cleared_count}</Text>
+                            <Text style={[styles.autoAssignStatLabel, { color: colors.textSecondary }]}>Will clear</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {autoAssignPreview.preview.length === 0 && (
+                        <View style={styles.autoAssignEmptyPreview}>
+                          <Text style={[styles.autoAssignPreviewTitle, { color: colors.text }]}>
+                            Schedule Preview
+                          </Text>
+                          <Text style={[styles.autoAssignEmptyText, { color: colors.textSecondary }]}>
+                            No assignment changes found for this range.
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </>
+              )}
+              stickySectionHeadersEnabled={false}
+              initialNumToRender={10}
+              maxToRenderPerBatch={8}
+              updateCellsBatchingPeriod={50}
+              windowSize={7}
               nestedScrollEnabled
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator
-            >
-              <Text style={[styles.label, { color: colors.text }]}>Assignment Range</Text>
-              <View style={styles.autoAssignRangeGrid}>
-                {AUTO_ASSIGN_RANGE_OPTIONS.map(option => {
-                  const isSelected = autoAssignRangeMode === option.mode;
-                  return (
-                    <TouchableOpacity
-                      key={option.mode}
-                      style={[
-                        styles.autoAssignRangeChip,
-                        { borderColor: isSelected ? colors.primary : colors.border, backgroundColor: isSelected ? colors.primary : colors.inputBackground },
-                      ]}
-                      onPress={() => {
-                        setAutoAssignRangeMode(option.mode);
-                        setAutoAssignPreview(null);
-                      }}
-                      disabled={isGeneratingAutoAssignPreview || isApplyingAutoAssign}
-                    >
-                      <Text style={[styles.autoAssignRangeChipText, { color: isSelected ? '#fff' : colors.text }]}>
-                        {option.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              {autoAssignRangeMode === 'selected_range' && (
-                <View style={styles.autoAssignDateRange}>
-                  <TouchableOpacity
-                    style={[styles.dateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
-                    onPress={() => {
-                      setDraftAutoAssignStartDate(autoAssignStartDate);
-                      setShowAutoAssignStartPicker(true);
-                      setShowAutoAssignEndPicker(false);
-                    }}
-                  >
-                    <Text style={[styles.dateButtonText, { color: colors.text }]}>
-                      Start: {autoAssignStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </Text>
-                  </TouchableOpacity>
-                  {showAutoAssignStartPicker && (
-                    <View style={styles.datePickerWrapper}>
-                      <DateTimePicker
-                        value={draftAutoAssignStartDate}
-                        mode="date"
-                        display="spinner"
-                        themeVariant="light"
-                        textColor="#000000"
-                        onChange={(event, date) => {
-                          if (date) setDraftAutoAssignStartDate(getStartOfLocalDay(date));
-                        }}
-                      />
-                      <View style={styles.pickerActionRow}>
-                        <TouchableOpacity
-                          style={[styles.pickerActionButton, styles.pickerCancelButton]}
-                          onPress={() => {
-                            setDraftAutoAssignStartDate(autoAssignStartDate);
-                            setShowAutoAssignStartPicker(false);
-                          }}
-                        >
-                          <Text style={styles.pickerCancelText}>Cancel</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.pickerActionButton, styles.pickerConfirmButton]}
-                          onPress={() => {
-                            setAutoAssignStartDate(draftAutoAssignStartDate);
-                            setShowAutoAssignStartPicker(false);
-                            setAutoAssignPreview(null);
-                          }}
-                        >
-                          <Text style={styles.pickerConfirmText}>Confirm</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-
-                  <TouchableOpacity
-                    style={[styles.dateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
-                    onPress={() => {
-                      setDraftAutoAssignEndDate(autoAssignEndDate);
-                      setShowAutoAssignEndPicker(true);
-                      setShowAutoAssignStartPicker(false);
-                    }}
-                  >
-                    <Text style={[styles.dateButtonText, { color: colors.text }]}>
-                      End: {autoAssignEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </Text>
-                  </TouchableOpacity>
-                  {showAutoAssignEndPicker && (
-                    <View style={styles.datePickerWrapper}>
-                      <DateTimePicker
-                        value={draftAutoAssignEndDate}
-                        mode="date"
-                        display="spinner"
-                        themeVariant="light"
-                        textColor="#000000"
-                        onChange={(event, date) => {
-                          if (date) setDraftAutoAssignEndDate(getStartOfLocalDay(date));
-                        }}
-                      />
-                      <View style={styles.pickerActionRow}>
-                        <TouchableOpacity
-                          style={[styles.pickerActionButton, styles.pickerCancelButton]}
-                          onPress={() => {
-                            setDraftAutoAssignEndDate(autoAssignEndDate);
-                            setShowAutoAssignEndPicker(false);
-                          }}
-                        >
-                          <Text style={styles.pickerCancelText}>Cancel</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.pickerActionButton, styles.pickerConfirmButton]}
-                          onPress={() => {
-                            setAutoAssignEndDate(draftAutoAssignEndDate);
-                            setShowAutoAssignEndPicker(false);
-                            setAutoAssignPreview(null);
-                          }}
-                        >
-                          <Text style={styles.pickerConfirmText}>Confirm</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              )}
-
-              <TouchableOpacity
-                style={[
-                  styles.primaryButton,
-                  styles.autoAssignPreviewButton,
-                  { backgroundColor: colors.primary },
-                  isGeneratingAutoAssignPreview && styles.disabledButton,
-                ]}
-                onPress={requestAutoAssignPreview}
-                disabled={isGeneratingAutoAssignPreview || isApplyingAutoAssign}
-              >
-                {isGeneratingAutoAssignPreview ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.primaryButtonText}>
-                    {autoAssignPreview ? 'Regenerate Preview' : 'Generate Preview'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-
-              {autoAssignPreview && (
-                <View style={styles.autoAssignPreviewPanel}>
-                  <View style={styles.autoAssignStatsGrid}>
-                    <View style={[styles.autoAssignStat, { backgroundColor: colors.inputBackground }]}>
-                      <Text style={[styles.autoAssignStatValue, { color: colors.primary }]}>{autoAssignPreview.assigned_count}</Text>
-                      <Text style={[styles.autoAssignStatLabel, { color: colors.textSecondary }]}>Will assign</Text>
-                    </View>
-                    <View style={[styles.autoAssignStat, { backgroundColor: colors.inputBackground }]}>
-                      <Text style={[styles.autoAssignStatValue, { color: colors.text }]}>{autoAssignPreview.open_slot_count}</Text>
-                      <Text style={[styles.autoAssignStatLabel, { color: colors.textSecondary }]}>Slots checked</Text>
-                    </View>
-                    <View style={[styles.autoAssignStat, { backgroundColor: colors.inputBackground }]}>
-                      <Text style={[styles.autoAssignStatValue, { color: '#B45309' }]}>{autoAssignPreview.skipped_count}</Text>
-                      <Text style={[styles.autoAssignStatLabel, { color: colors.textSecondary }]}>Left open</Text>
-                    </View>
-                    {pendingAutoAssignMode === 'reassign_all' && (
-                      <View style={[styles.autoAssignStat, { backgroundColor: colors.inputBackground }]}>
-                        <Text style={[styles.autoAssignStatValue, { color: '#C2410C' }]}>{autoAssignPreview.cleared_count}</Text>
-                        <Text style={[styles.autoAssignStatLabel, { color: colors.textSecondary }]}>Will clear</Text>
-                      </View>
-                    )}
-                  </View>
-
-                  <Text style={[styles.autoAssignPreviewTitle, { color: colors.text }]}>
-                    Schedule Preview
-                  </Text>
-                  {autoAssignPreview.preview.length === 0 ? (
-                    <Text style={[styles.autoAssignEmptyText, { color: colors.textSecondary }]}>
-                      No assignment changes found for this range.
-                    </Text>
-                  ) : (
-                    <View style={styles.autoAssignPreviewList}>
-                      {autoAssignPreview.preview.map(item => (
-                        <View
-                          key={item.assignment_id}
-                          style={[styles.autoAssignPreviewItem, { borderColor: colors.border, backgroundColor: colors.inputBackground }]}
-                        >
-                          <Text style={[styles.autoAssignPreviewService, { color: colors.text }]}>
-                            {formatDateForDisplay(item.service_date)}
-                            {formatPreviewTime(item.service_time) ? ` • ${formatPreviewTime(item.service_time)}` : ''}
-                            {' • '}
-                            {item.service_type}
-                          </Text>
-                          <Text style={[styles.autoAssignPreviewMember, { color: colors.text }]}>
-                            {item.person_name} will be assigned to {item.role}
-                          </Text>
-                          {item.current_person_name && item.current_person_name !== item.person_name && (
-                            <Text style={[styles.autoAssignPreviewReplacement, { color: colors.textSecondary }]}>
-                              Replaces {item.current_person_name}
-                            </Text>
-                          )}
-                        </View>
-                      ))}
-                    </View>
-                  )}
-
-                  {autoAssignPreview.skipped_report.length > 0 && (
-                    <View style={styles.autoAssignSkippedPanel}>
-                      <Text style={[styles.autoAssignPreviewTitle, { color: colors.text }]}>
-                        Skipped Slots
-                      </Text>
-                      {autoAssignPreview.skipped_report.map(item => {
-                        const unavailableNames = item.unavailable_members
-                          .map(member => member.name || member.email)
-                          .filter(Boolean);
-
-                        return (
-                          <View
-                            key={item.assignment_id}
-                            style={[styles.autoAssignSkippedItem, { borderColor: colors.border, backgroundColor: '#FFF7ED' }]}
-                          >
-                            <Text style={[styles.autoAssignPreviewService, { color: colors.text }]}>
-                              {formatDateForDisplay(item.service_date)}
-                              {formatPreviewTime(item.service_time) ? ` • ${formatPreviewTime(item.service_time)}` : ''}
-                              {' • '}
-                              {item.service_type}
-                            </Text>
-                            <Text style={[styles.autoAssignSkippedRole, { color: colors.text }]}>
-                              {item.role}
-                            </Text>
-                            <Text style={[styles.autoAssignSkipText, { color: colors.textSecondary }]}>
-                              {item.reason}
-                            </Text>
-                            {unavailableNames.length > 0 && (
-                              <Text style={[styles.autoAssignUnavailableText, { color: colors.textSecondary }]}>
-                                Unavailable: {unavailableNames.join(', ')}
-                              </Text>
-                            )}
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              )}
-            </ScrollView>
+              ListFooterComponent={<View style={styles.autoAssignListFooter} />}
+            />
 
             <View style={[styles.modalButtons, styles.autoAssignModalFooter, { borderTopColor: colors.border }]}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
                 onPress={() => {
                   setShowAutoAssignModal(false);
-                  setAutoAssignPreview(null);
+                  clearAutoAssignPreview();
                 }}
                 disabled={isApplyingAutoAssign}
               >
@@ -3553,17 +3775,42 @@ export default function ChurchScreen() {
                       <Text style={styles.primaryButtonText}>Generate All Services</Text>
                     )}
                   </TouchableOpacity>
+                  {quarterOperationStatus ? (
+                    <Text
+                      style={[
+                        styles.adminOperationStatus,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      {quarterOperationStatus}
+                    </Text>
+                  ) : null}
                   <TouchableOpacity 
-                    style={[styles.secondaryButton, { backgroundColor: '#e0e0e0', marginTop: 12 }]} 
+                    style={[
+                      styles.secondaryButton,
+                      {
+                        backgroundColor: '#e0e0e0',
+                        marginTop: 12,
+                        opacity: isPreparing ? 0.55 : 1,
+                      },
+                    ]}
                     onPress={() => {
                       console.log('User went back to block dates step');
                       setPrepareQuarterStep('block');
                     }}
+                    disabled={isPreparing}
                   >
                     <Text style={[styles.secondaryButtonText, { color: '#333' }]}>Back to Block Dates</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
-                    style={[styles.secondaryButton, { backgroundColor: '#e0e0e0', marginTop: 12 }]} 
+                    style={[
+                      styles.secondaryButton,
+                      {
+                        backgroundColor: '#e0e0e0',
+                        marginTop: 12,
+                        opacity: isPreparing ? 0.55 : 1,
+                      },
+                    ]}
                     onPress={() => {
                       console.log('User cancelled prepare quarter');
                       setShowPrepareQuarterModal(false);
@@ -3571,6 +3818,7 @@ export default function ChurchScreen() {
                       setBlockedServices(new Set());
                       setSpecialServices([]);
                     }}
+                    disabled={isPreparing}
                   >
                     <Text style={[styles.secondaryButtonText, { color: '#333' }]}>Cancel</Text>
                   </TouchableOpacity>
@@ -4706,10 +4954,25 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 14,
   },
+  adminOperationStatus: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
   autoAssignPreviewPanel: {
     gap: 12,
   },
-  autoAssignSkippedPanel: {
+  autoAssignSectionHeader: {
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  autoAssignVirtualRow: {
+    marginBottom: 8,
+  },
+  autoAssignListFooter: {
+    height: 8,
+  },
+  autoAssignEmptyPreview: {
     gap: 8,
   },
   autoAssignStatsGrid: {
@@ -4735,9 +4998,6 @@ const styles = StyleSheet.create({
   autoAssignPreviewTitle: {
     fontSize: 16,
     fontWeight: '800',
-  },
-  autoAssignPreviewList: {
-    gap: 8,
   },
   autoAssignPreviewItem: {
     borderWidth: 1,

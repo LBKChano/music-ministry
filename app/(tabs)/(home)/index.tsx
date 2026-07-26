@@ -1,19 +1,23 @@
 
 import { useChurch } from '@/hooks/useChurch';
 import { useNotifications } from '@/contexts/NotificationContext';
+import type { FillInRequestWithMemberInfo } from '@/contexts/ChurchContext';
 import { colors } from '@/styles/commonStyles';
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Stack } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useServices, type ServiceWithAssignments } from '@/hooks/useServices';
+import { usePerformanceBaselineScreen } from '@/hooks/usePerformanceBaselineScreen';
 
 import { IconSymbol } from '@/components/IconSymbol';
 import { NotificationBell } from "@/components/NotificationBell";
+import { ScheduleServiceCard } from '@/components/schedules/schedule-service-card';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   StyleSheet,
   View,
   Text,
+  FlatList,
   ScrollView,
   RefreshControl,
   TouchableOpacity,
@@ -61,6 +65,7 @@ const createLocalDate = (dateString: string): Date => {
 
 const DEFAULT_SONG_TYPE_OPTIONS = ['Opening', 'Praise', 'Worship', 'Offering', 'Special', 'Closing'];
 const OTHER_SONG_TYPE_OPTION = 'Other';
+const EMPTY_FILL_IN_REQUESTS: readonly FillInRequestWithMemberInfo[] = [];
 
 type PendingServiceSong = {
   id: string;
@@ -377,6 +382,24 @@ const styles = StyleSheet.create({
   addButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  loadMoreButton: {
+    minHeight: 48,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  loadMoreButtonText: {
+    color: colors.primary,
+    fontSize: 15,
     fontWeight: '600',
   },
   modalOverlay: {
@@ -730,7 +753,37 @@ export default function HomeScreen() {
   // Notification context - OneSignal handles token registration automatically
   const { requestPermission, hasPermission, loading: notificationLoading } = useNotifications();
 
-  const { services, loading: servicesLoading, refreshServices, deleteService, updateAssignment, createServiceFromTemplate, addServiceComment, updateServiceComment, deleteServiceComment, notifyServiceComments } = useServices(currentChurch?.id ?? null);
+  const {
+    services,
+    loading: servicesLoading,
+    refreshServices,
+    deleteService,
+    updateAssignment,
+    createServiceFromTemplate,
+    addServiceComment,
+    addServiceComments,
+    updateServiceComment,
+    deleteServiceComment,
+    notifyServiceComments,
+    loadMoreServices,
+    loadingMoreServices,
+    serviceRangeError,
+    loadedThrough,
+    serviceWindowDays,
+  } = useServices(currentChurch?.id ?? null, { windowed: true });
+
+  usePerformanceBaselineScreen(
+    'Schedules',
+    !churchLoading && !servicesLoading && !!currentChurch && !!user,
+    {
+      implementation: 'default',
+      services: services.length,
+      members: members.length,
+      roles: churchRoles.length,
+      recurringServices: recurringServices.length,
+      fillInRequests: fillInRequests.length,
+    }
+  );
 
   const insets = useSafeAreaInsets();
 
@@ -743,6 +796,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isCreatingFillInRequest, setIsCreatingFillInRequest] = useState(false);
   const [isSavingServiceComment, setIsSavingServiceComment] = useState(false);
+  const [isAssigningMember, setIsAssigningMember] = useState(false);
 
   const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
@@ -791,15 +845,6 @@ export default function HomeScreen() {
     }
   }, [commentModalVisible, enabledSongTypeOptions, serviceSongType]);
 
-  // Refresh services when church changes
-  useEffect(() => {
-    if (currentChurch?.id) {
-      console.log('Church changed, refreshing services');
-      refreshServices().catch(err => console.error('[HomeScreen] refreshServices error:', err));
-    }
-  }, [currentChurch?.id, refreshServices]);
-
-
   // OPTIMIZATION: Memoize filtered services to avoid recalculating on every render
   const filteredServices = useMemo(() => {
     const today = new Date();
@@ -821,6 +866,41 @@ export default function HomeScreen() {
   const sortedRoles = useMemo(() => {
     return [...(churchRoles ?? [])].sort((a, b) => a.display_order - b.display_order);
   }, [churchRoles]);
+
+  const pendingFillInRequestsByService = useMemo(() => {
+    const grouped = new Map<string, FillInRequestWithMemberInfo[]>();
+    fillInRequests.forEach(request => {
+      if (request.status !== 'pending') return;
+      const requests = grouped.get(request.service_id);
+      if (requests) {
+        requests.push(request);
+      } else {
+        grouped.set(request.service_id, [request]);
+      }
+    });
+    return grouped;
+  }, [fillInRequests]);
+
+  const memberDisplayNames = useMemo(() => (
+    new Map(
+      members.map(member => [
+        member.id,
+        member.name || member.email || 'Member',
+      ])
+    )
+  ), [members]);
+
+  const currentMemberDisplayName = useMemo(
+    () => currentMember?.name || currentMember?.email || 'Member',
+    [currentMember?.email, currentMember?.name]
+  );
+
+  const currentMemberRoleNames = useMemo(
+    () => new Set(
+      currentMember?.memberRoles.map(role => role.role_name) ?? []
+    ),
+    [currentMember?.memberRoles]
+  );
 
   const onRefresh = useCallback(async () => {
     console.log('User pulled to refresh schedules');
@@ -901,6 +981,7 @@ export default function HomeScreen() {
 
   const handleAssignMember = async () => {
     console.log('User tapped assign member button');
+    if (isAssigningMember) return;
     if (!selectedAssignment || !selectedMemberId) {
       Alert.alert('Error', 'Please select a member');
       return;
@@ -913,15 +994,26 @@ export default function HomeScreen() {
     }
 
     const personName = member.name || member.email;
-    const success = await updateAssignment(selectedAssignment, selectedMemberId, personName);
-    
-    if (success) {
-      Alert.alert('Success', 'Member assigned successfully');
-      setAssignMemberModalVisible(false);
-      setSelectedAssignment(null);
-      setSelectedMemberId('');
-    } else {
+    setIsAssigningMember(true);
+    try {
+      const success = await updateAssignment(
+        selectedAssignment,
+        selectedMemberId,
+        personName
+      );
+      if (success) {
+        Alert.alert('Success', 'Member assigned successfully');
+        setAssignMemberModalVisible(false);
+        setSelectedAssignment(null);
+        setSelectedMemberId('');
+      } else {
+        Alert.alert('Error', 'Failed to assign member');
+      }
+    } catch (err) {
+      console.error('Error assigning member:', err);
       Alert.alert('Error', 'Failed to assign member');
+    } finally {
+      setIsAssigningMember(false);
     }
   };
 
@@ -941,62 +1033,32 @@ export default function HomeScreen() {
     setAssignmentToDelete(null);
   };
 
-  const formatDate = useCallback((dateString: string) => {
-    const date = createLocalDate(dateString);
-    
-    if (isNaN(date.getTime())) {
-      return 'Invalid Date';
-    }
-    
-    const formattedDate = date.toLocaleDateString('en-US', { 
-      weekday: 'short', 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    });
-    return formattedDate;
-  }, []);
-
-  const formatTime = useCallback((timeString: string | null) => {
-    if (!timeString) return '';
-    
-    try {
-      const [hours, minutes] = timeString.split(':');
-      const hour = parseInt(hours, 10);
-      const ampm = hour >= 12 ? 'PM' : 'AM';
-      const displayHour = hour % 12 || 12;
-      return `${displayHour}:${minutes} ${ampm}`;
-    } catch {
-      return timeString;
-    }
-  }, []);
-
-  const openDeleteServiceModal = (serviceId: string) => {
+  const openDeleteServiceModal = useCallback((serviceId: string) => {
     console.log('User tapped delete service button');
     setServiceToDelete(serviceId);
     setDeleteServiceModalVisible(true);
-  };
+  }, []);
 
-  const openDeleteAssignmentModal = (serviceId: string, assignmentId: string) => {
+  const openDeleteAssignmentModal = useCallback((serviceId: string, assignmentId: string) => {
     console.log('User tapped delete assignment button');
     setAssignmentToDelete({ serviceId, assignmentId });
     setDeleteAssignmentModalVisible(true);
-  };
+  }, []);
 
-  const openAssignMemberModal = (assignmentId: string) => {
+  const openAssignMemberModal = useCallback((assignmentId: string) => {
     console.log('User tapped assign member button');
     setSelectedAssignment(assignmentId);
     setSelectedMemberId('');
     setAssignMemberModalVisible(true);
-  };
+  }, []);
 
-  const openFillInRequestModal = (assignmentId: string, serviceId: string, roleName: string) => {
+  const openFillInRequestModal = useCallback((assignmentId: string, serviceId: string, roleName: string) => {
     console.log('User tapped request fill-in button');
     setFillInAssignmentId(assignmentId);
     setFillInServiceId(serviceId);
     setFillInRoleName(roleName);
     setFillInRequestModalVisible(true);
-  };
+  }, []);
 
   const getCommentNotifyOptions = useCallback((service: ServiceWithAssignments | null) => {
     if (!service) return [];
@@ -1020,18 +1082,7 @@ export default function HomeScreen() {
       });
   }, [currentMember?.id, members]);
 
-  const getMemberDisplayName = useCallback((memberId?: string | null, preferredName?: string | null) => {
-    if (preferredName?.trim()) return preferredName.trim();
-
-    if (memberId && memberId === currentMember?.id) {
-      return currentMember.name || currentMember.email || 'Member';
-    }
-
-    const member = members.find(m => m.id === memberId);
-    return member?.name || member?.email || 'Member';
-  }, [currentMember?.email, currentMember?.id, currentMember?.name, members]);
-
-  const getSongTypeEditState = (songType?: string | null) => {
+  const getSongTypeEditState = useCallback((songType?: string | null) => {
     const normalizedType = songType?.trim();
     if (!normalizedType) {
       return { selectedType: enabledSongTypeOptions[0] ?? OTHER_SONG_TYPE_OPTION, customType: '' };
@@ -1043,9 +1094,9 @@ export default function HomeScreen() {
       return { selectedType: normalizedType, customType: '' };
     }
     return { selectedType: OTHER_SONG_TYPE_OPTION, customType: normalizedType };
-  };
+  }, [enabledSongTypeOptions]);
 
-  const openCommentModal = (service: ServiceWithAssignments) => {
+  const openCommentModal = useCallback((service: ServiceWithAssignments) => {
     console.log('User tapped add service song button');
     setSelectedCommentService(service);
     setServiceCommentText('');
@@ -1056,9 +1107,9 @@ export default function HomeScreen() {
     setNotifyCommentMemberIds([]);
     setPendingServiceSongs([]);
     setCommentModalVisible(true);
-  };
+  }, [enabledSongTypeOptions]);
 
-  const openEditCommentModal = (
+  const openEditCommentModal = useCallback((
     service: ServiceWithAssignments,
     comment: ServiceWithAssignments['service_comments'][number]
   ) => {
@@ -1073,7 +1124,7 @@ export default function HomeScreen() {
     setNotifyCommentMemberIds([]);
     setPendingServiceSongs([]);
     setCommentModalVisible(true);
-  };
+  }, [getSongTypeEditState]);
 
   const closeCommentModal = () => {
     Keyboard.dismiss();
@@ -1197,27 +1248,27 @@ export default function HomeScreen() {
           return;
         }
       } else {
-        const savedCommentIds: string[] = [];
         let notificationsSent = true;
-        for (const song of songsToSave) {
-          const result = await addServiceComment(
-            currentChurch.id,
-            selectedCommentService.id,
-            currentMember.id,
-            song.commentText,
-            [],
-            song.songType,
-            song.songNumber,
-          );
-          if (!result) {
-            Alert.alert('Error', 'Failed to save every song. Please try again.');
-            return;
-          }
-          savedCommentIds.push(result.id);
+        const savedComments = await addServiceComments(
+          currentChurch.id,
+          selectedCommentService.id,
+          currentMember.id,
+          songsToSave.map(song => ({
+            commentText: song.commentText,
+            songType: song.songType,
+            songNumber: song.songNumber,
+          }))
+        );
+        if (!savedComments || savedComments.length !== songsToSave.length) {
+          Alert.alert('Error', 'Failed to save every song. Please try again.');
+          return;
         }
 
         if (notifyCommentMemberIds.length > 0) {
-          notificationsSent = await notifyServiceComments(savedCommentIds, notifyCommentMemberIds);
+          notificationsSent = await notifyServiceComments(
+            savedComments.map(comment => comment.id),
+            notifyCommentMemberIds
+          );
         }
 
         if (!notificationsSent) {
@@ -1244,7 +1295,7 @@ export default function HomeScreen() {
     }
   };
 
-  const handleDeleteServiceComment = (
+  const handleDeleteServiceComment = useCallback((
     serviceId: string,
     commentId: string,
   ) => {
@@ -1267,7 +1318,7 @@ export default function HomeScreen() {
         },
       ],
     );
-  };
+  }, [deleteServiceComment]);
 
   const handleCreateFillInRequest = async () => {
     console.log('User submitted fill-in request');
@@ -1321,9 +1372,6 @@ export default function HomeScreen() {
         setFillInServiceId('');
         setFillInRoleName('');
         
-        if (refreshFillInRequests) {
-          await refreshFillInRequests();
-        }
       } else {
         console.error('Fill-in request creation returned false');
         Alert.alert(
@@ -1347,7 +1395,7 @@ export default function HomeScreen() {
     }
   };
 
-  const handleAcceptFillInRequest = async (requestId: string, assignmentId: string) => {
+  const handleAcceptFillInRequest = useCallback(async (requestId: string, assignmentId: string) => {
     console.log('User accepted fill-in request');
     if (!currentChurch || !currentMember) return;
 
@@ -1355,13 +1403,12 @@ export default function HomeScreen() {
     
     if (success) {
       Alert.alert('Success', 'You have accepted the fill-in request and been assigned to this role');
-      refreshServices().catch(err => console.error('[HomeScreen] refreshServices error after accept:', err));
     } else {
       Alert.alert('Error', 'Failed to accept fill-in request');
     }
-  };
+  }, [acceptFillInRequest, currentChurch, currentMember]);
 
-  const handleCancelFillInRequest = async (requestId: string) => {
+  const handleCancelFillInRequest = useCallback(async (requestId: string) => {
     console.log('User cancelled fill-in request');
     if (!currentChurch) return;
 
@@ -1372,14 +1419,71 @@ export default function HomeScreen() {
     } else {
       Alert.alert('Error', 'Failed to cancel fill-in request');
     }
-  };
+  }, [cancelFillInRequest, currentChurch]);
 
   const churchName = currentChurch?.name || 'Schedule';
   const upcomingCount = filteredServices.length;
-  const upcomingText = `${upcomingCount} upcoming ${upcomingCount === 1 ? 'service' : 'services'}`;
-  const schedulePeriod = useMemo(
-    () => new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
-    []
+  const upcomingText = `${upcomingCount} scheduled`;
+  const schedulePeriod = useMemo(() => {
+    if (!loadedThrough) {
+      return new Date().toLocaleDateString(undefined, {
+        month: 'long',
+        year: 'numeric',
+      });
+    }
+    return `Through ${createLocalDate(loadedThrough).toLocaleDateString(
+      undefined,
+      { month: 'short', day: 'numeric', year: 'numeric' }
+    )}`;
+  }, [loadedThrough]);
+
+  const renderScheduleService = useCallback(
+    ({ item: service }: { item: ServiceWithAssignments }) => (
+      <ScheduleServiceCard
+        service={service}
+        pendingFillInRequests={
+          pendingFillInRequestsByService.get(service.id)
+          ?? EMPTY_FILL_IN_REQUESTS
+        }
+        sortedRoles={sortedRoles}
+        memberDisplayNames={memberDisplayNames}
+        currentMemberId={currentMember?.id ?? null}
+        currentMemberDisplayName={currentMemberDisplayName}
+        currentMemberRoleNames={currentMemberRoleNames}
+        isAdmin={isAdmin}
+        isCreatingFillInRequest={isCreatingFillInRequest}
+        assignmentLayout="stacked"
+        styles={styles}
+        onDeleteService={openDeleteServiceModal}
+        onAddSong={openCommentModal}
+        onEditSong={openEditCommentModal}
+        onDeleteSong={handleDeleteServiceComment}
+        onAcceptFillIn={handleAcceptFillInRequest}
+        onCancelFillIn={handleCancelFillInRequest}
+        onRequestFillIn={openFillInRequestModal}
+        onAssignMember={openAssignMemberModal}
+        onDeleteAssignment={openDeleteAssignmentModal}
+      />
+    ),
+    [
+      currentMember?.id,
+      currentMemberDisplayName,
+      currentMemberRoleNames,
+      handleAcceptFillInRequest,
+      handleCancelFillInRequest,
+      handleDeleteServiceComment,
+      isAdmin,
+      isCreatingFillInRequest,
+      memberDisplayNames,
+      openAssignMemberModal,
+      openCommentModal,
+      openDeleteAssignmentModal,
+      openDeleteServiceModal,
+      openEditCommentModal,
+      openFillInRequestModal,
+      pendingFillInRequestsByService,
+      sortedRoles,
+    ]
   );
 
   if (churchLoading || servicesLoading || !currentChurch || !user) {
@@ -1431,9 +1535,17 @@ export default function HomeScreen() {
         </View>
       </LinearGradient>
 
-      <ScrollView 
-        style={styles.container} 
+      <FlatList
+        style={styles.container}
         contentContainerStyle={styles.scrollContent}
+        contentInsetAdjustmentBehavior="automatic"
+        data={filteredServices}
+        keyExtractor={service => service.id}
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        updateCellsBatchingPeriod={50}
+        windowSize={7}
+        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -1442,220 +1554,51 @@ export default function HomeScreen() {
             colors={[colors.primary]}
           />
         }
-      >
-        {filteredServices.length === 0 ? (
-          <Text style={styles.emptyText}>No upcoming services scheduled</Text>
-        ) : (
-          filteredServices.map((service) => {
-            const serviceFillInRequests = (fillInRequests ?? []).filter(
-              req => req.service_id === service.id && req.status === 'pending'
-            );
-
-            const dateDisplay = formatDate(service.date);
-            const timeDisplay = formatTime(service.time);
-            const dateTimeDisplay = timeDisplay ? `${dateDisplay} at ${timeDisplay}` : dateDisplay;
-
-            return (
-              <View key={service.id} style={styles.serviceCard}>
-                <View style={styles.serviceHeader}>
-                  <Text style={styles.serviceTitle}>{service.service_type}</Text>
-                  {isAdmin && (
-                    <TouchableOpacity
-                      onPress={() => openDeleteServiceModal(service.id)}
-                      style={styles.deleteButton}
-                    >
-                      <IconSymbol
-                        ios_icon_name="trash"
-                        android_material_icon_name="delete"
-                        size={20}
-                        color={colors.error}
-                      />
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <Text style={styles.serviceDateTime}>{dateTimeDisplay}</Text>
-                {service.notes && <Text style={styles.serviceNotes}>{service.notes}</Text>}
-
-                {service.service_comments.length > 0 && (
-                  <View style={styles.commentsSection}>
-                    <Text style={styles.commentsTitle}>Songs</Text>
-                    {service.service_comments.map(comment => {
-                      const authorName = getMemberDisplayName(
-                        comment.member_id,
-                        comment.church_members?.name || comment.church_members?.email
-                      );
-                      const canEditSong = isAdmin || currentMember?.id === comment.member_id;
-                      const createdAt = new Date(comment.created_at);
-                      const createdAtText = isNaN(createdAt.getTime())
-                        ? ''
-                        : createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-                      return (
-                        <View key={comment.id} style={styles.commentItem}>
-                          <View style={styles.commentHeader}>
-                            <View style={styles.songTypeBadge}>
-                              <Text style={styles.songTypeText}>{comment.song_type || 'Song'}</Text>
-                            </View>
-                            {comment.song_number ? (
-                              <View style={styles.songNumberBadge}>
-                                <Text style={styles.songNumberText}>#{comment.song_number}</Text>
-                              </View>
-                            ) : null}
-                            {canEditSong ? (
-                              <View style={styles.songActions}>
-                                <TouchableOpacity
-                                  style={styles.editSongButton}
-                                  onPress={() => openEditCommentModal(service, comment)}
-                                >
-                                  <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={16} color={colors.primary} />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.editSongButton}
-                                  onPress={() => handleDeleteServiceComment(service.id, comment.id)}
-                                >
-                                  <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={16} color={colors.error} />
-                                </TouchableOpacity>
-                              </View>
-                            ) : null}
-                          </View>
-                          <Text style={styles.commentText}>{comment.comment_text}</Text>
-                          <Text style={styles.commentAuthor}>
-                            Added by {authorName}{createdAtText ? ` - ${createdAtText}` : ''}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
-
-                <TouchableOpacity
-                  style={styles.addCommentButton}
-                  onPress={() => openCommentModal(service)}
-                >
-                  <IconSymbol ios_icon_name="music.note.list" android_material_icon_name="queue-music" size={16} color={colors.primary} />
-                  <Text style={styles.addCommentButtonText}>Add Song</Text>
-                </TouchableOpacity>
-
-                {serviceFillInRequests.map(request => {
-                  const requestingMemberDisplayName = getMemberDisplayName(
-                    request.requesting_member_id,
-                    request.requesting_member_name || request.requesting_member_email
-                  );
-                  const isMyRequest = currentMember?.id === request.requesting_member_id;
-                  const canAccept = currentMember?.memberRoles?.some(r => r.role_name === request.role_name);
-
-                  return (
-                    <View key={request.id} style={styles.fillInRequestCard}>
-                      <Text style={styles.fillInRequestText}>
-                        {isMyRequest ? 'You' : requestingMemberDisplayName}
-                      </Text>
-                      <Text style={styles.fillInRequestText}>
-                        requested a fill-in for {request.role_name}
-                      </Text>
-                      {request.reason && (
-                        <Text style={styles.fillInRequestText}>Reason: {request.reason}</Text>
-                      )}
-                      <View style={styles.fillInRequestButtons}>
-                        {!isMyRequest && canAccept && (
-                          <TouchableOpacity
-                            style={styles.fillInAcceptButton}
-                            onPress={() => handleAcceptFillInRequest(request.id, request.assignment_id)}
-                          >
-                            <Text style={styles.fillInButtonTextSmall}>Accept</Text>
-                          </TouchableOpacity>
-                        )}
-                        {isMyRequest && (
-                          <TouchableOpacity
-                            style={styles.fillInCancelButton}
-                            onPress={() => handleCancelFillInRequest(request.id)}
-                          >
-                            <Text style={styles.fillInButtonTextSmall}>Cancel Request</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </View>
-                  );
-                })}
-
-                {sortedRoles.map(role => {
-                  const assignment = service.assignments.find(a => a.role === role.name);
-                  if (!assignment) return null;
-
-                  const isMyAssignment = currentMember?.id === assignment.member_id;
-                  const hasFillInRequest = serviceFillInRequests.some(
-                    req => req.assignment_id === assignment.id
-                  );
-
-                  const showActions = (isMyAssignment && !hasFillInRequest) || isAdmin;
-
-                  return (
-                    <View key={assignment.id} style={styles.assignmentRow}>
-                      <View style={styles.assignmentTopRow}>
-                        <Text style={styles.roleNameText} numberOfLines={1} ellipsizeMode="tail">
-                          {assignment.role}
-                        </Text>
-                        <Text style={[styles.personText, !assignment.person_name && styles.emptySlot]} numberOfLines={1} ellipsizeMode="tail">
-                          {assignment.person_name || 'Unassigned'}
-                        </Text>
-                      </View>
-                      {showActions && (
-                        <View style={styles.assignmentActions}>
-                          {isMyAssignment && !hasFillInRequest && (
-                            <TouchableOpacity
-                              style={styles.fillInButton}
-                              onPress={() => openFillInRequestModal(assignment.id, service.id, assignment.role)}
-                              disabled={isCreatingFillInRequest}
-                            >
-                              <Text style={styles.fillInButtonText}>Request Fill-In</Text>
-                            </TouchableOpacity>
-                          )}
-                          {isAdmin && (
-                            <>
-                              <TouchableOpacity
-                                onPress={() => openAssignMemberModal(assignment.id)}
-                                style={styles.assignButton}
-                              >
-                                <IconSymbol
-                                  ios_icon_name="person.badge.plus"
-                                  android_material_icon_name="person-add-alt"
-                                  size={20}
-                                  color={colors.primary}
-                                />
-                              </TouchableOpacity>
-                              {assignment.member_id && (
-                                <TouchableOpacity
-                                  onPress={() => openDeleteAssignmentModal(service.id, assignment.id)}
-                                  style={styles.deleteButton}
-                                >
-                                  <IconSymbol
-                                    ios_icon_name="trash"
-                                    android_material_icon_name="delete"
-                                    size={20}
-                                    color={colors.error}
-                                  />
-                                </TouchableOpacity>
-                              )}
-                            </>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
-            );
-          })
+        ListEmptyComponent={(
+          <Text style={styles.emptyText}>
+            {serviceRangeError
+              ? 'Could not load services. Please try again.'
+              : 'No upcoming services scheduled'}
+          </Text>
         )}
+        renderItem={renderScheduleService}
+        ListFooterComponent={(
+          <>
+            <TouchableOpacity
+              style={styles.loadMoreButton}
+              onPress={loadMoreServices}
+              disabled={loadingMoreServices}
+            >
+              {loadingMoreServices ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <IconSymbol
+                  ios_icon_name="calendar.badge.plus"
+                  android_material_icon_name="event"
+                  size={19}
+                  color={colors.primary}
+                />
+              )}
+              <Text style={styles.loadMoreButtonText}>
+                {loadingMoreServices
+                  ? 'Loading services...'
+                  : serviceRangeError
+                    ? 'Retry Service Range'
+                    : `Load Next ${serviceWindowDays ?? 90} Days`}
+              </Text>
+            </TouchableOpacity>
 
-        {isAdmin && (
-          <TouchableOpacity style={styles.addButton} onPress={() => {
-            console.log('User tapped Add Service button');
-            setAddServiceModalVisible(true);
-          }}>
-            <Text style={styles.addButtonText}>Add Service</Text>
-          </TouchableOpacity>
+            {isAdmin && (
+              <TouchableOpacity style={styles.addButton} onPress={() => {
+                console.log('User tapped Add Service button');
+                setAddServiceModalVisible(true);
+              }}>
+                <Text style={styles.addButtonText}>Add Service</Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
-      </ScrollView>
+      />
 
       {/* Add Service Modal */}
       <Modal
@@ -1930,7 +1873,9 @@ export default function HomeScreen() {
         visible={assignMemberModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setAssignMemberModalVisible(false)}
+        onRequestClose={() => {
+          if (!isAssigningMember) setAssignMemberModalVisible(false);
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -1950,6 +1895,7 @@ export default function HomeScreen() {
                       isSelected && { backgroundColor: colors.primary + '30', borderColor: colors.primary }
                     ]}
                     onPress={() => setSelectedMemberId(member.id)}
+                    disabled={isAssigningMember}
                   >
                     <Text style={[styles.memberItemText, isSelected && { fontWeight: 'bold' }]}>
                       {displayName}
@@ -1966,14 +1912,24 @@ export default function HomeScreen() {
                   setSelectedAssignment(null);
                   setSelectedMemberId('');
                 }}
+                disabled={isAssigningMember}
               >
                 <Text style={styles.buttonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, styles.saveButton]}
+                style={[
+                  styles.modalButton,
+                  styles.saveButton,
+                  isAssigningMember && { opacity: 0.6 },
+                ]}
                 onPress={handleAssignMember}
+                disabled={isAssigningMember || !selectedMemberId}
               >
-                <Text style={styles.buttonText}>Assign</Text>
+                {isAssigningMember ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Assign</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>

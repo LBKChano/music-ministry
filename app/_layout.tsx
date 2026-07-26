@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { Platform } from 'react-native';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -15,10 +16,12 @@ import { StatusBar } from 'expo-status-bar';
 import { WidgetProvider } from '@/contexts/WidgetContext';
 import { NotificationProvider, useNotifications } from '@/contexts/NotificationContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { ChurchProvider, useChurch } from '@/contexts/ChurchContext';
+import { ChurchProvider, useChurchSession } from '@/contexts/ChurchContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CustomSplashScreen } from '@/components/CustomSplashScreen';
 import { supabase } from '@/lib/supabase/client';
+import { queryClient } from '@/lib/query/client';
+import { usePerformanceBaselineLifecycle } from '@/hooks/usePerformanceBaselineScreen';
 
 // Force expo-router to always start at index, never restore cached navigation state
 export const unstable_settings = {
@@ -27,6 +30,12 @@ export const unstable_settings = {
 
 // Prevent the splash screen from auto-hiding before auth is ready.
 SplashScreen.preventAutoHideAsync().catch(() => {});
+if (Platform.OS === 'android') {
+  SplashScreen.setOptions({
+    duration: 350,
+    fade: true,
+  });
+}
 
 const CustomDefaultTheme: Theme = {
   ...DefaultTheme,
@@ -72,8 +81,9 @@ function RootLayoutNav() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
   const { initialized, session } = useAuth();
-  const { currentMember } = useChurch();
+  const { currentMember } = useChurchSession();
   const { hasPermission, onesignalSubscriptionId } = useNotifications();
+  usePerformanceBaselineLifecycle();
 
   useEffect(() => {
     if (!initialized || session) return;
@@ -214,14 +224,16 @@ function RootLayoutNav() {
 export default function RootLayout() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <NotificationProvider>
-          <ChurchProvider>
-            <StatusBar style="auto" animated />
-            <RootLayoutNav />
-          </ChurchProvider>
-        </NotificationProvider>
-      </AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <NotificationProvider>
+            <ChurchProvider>
+              <StatusBar style="auto" animated />
+              <RootLayoutNav />
+            </ChurchProvider>
+          </NotificationProvider>
+        </AuthProvider>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 }

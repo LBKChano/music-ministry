@@ -1,4 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  buildNotificationTargets,
+  sendOneSignalNotification,
+} from '../_shared/onesignal.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -30,12 +34,6 @@ type OneSignalMessage = {
   data: Record<string, string>
 }
 
-type SubscriptionRow = {
-  member_id: string
-  subscription_id: string | null
-  updated_at?: string | null
-}
-
 async function sendOneSignalMessages(messages: OneSignalMessage[]) {
   if (!ONESIGNAL_REST_API_KEY) {
     throw new Error(`OneSignal REST API key is not configured. Set one of: ${ONESIGNAL_REST_API_KEY_NAMES.join(', ')}`)
@@ -43,6 +41,7 @@ async function sendOneSignalMessages(messages: OneSignalMessage[]) {
 
   let sent = 0
   const errors: string[] = []
+  const warnings: string[] = []
   const successfulReminderKeys = new Set<string>()
   const terminalReminderKeys = new Set<string>()
   const invalidSubscriptionIds = new Set<string>()
@@ -53,53 +52,42 @@ async function sendOneSignalMessages(messages: OneSignalMessage[]) {
     title: string
     body: string
     data: Record<string, string>
+    event_key: string
   }[] = []
 
   for (const message of messages) {
     const subscriptionIds = Array.from(new Set(message.subscriptionIds))
-    const target = subscriptionIds.length > 0
-      ? { include_subscription_ids: subscriptionIds }
-      : {
-        include_aliases: {
-          external_id: [message.memberId],
-        },
-        target_channel: 'push',
-      }
-
-    const response = await fetch('https://api.onesignal.com/notifications', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${ONESIGNAL_REST_API_KEY}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        app_id: ONESIGNAL_APP_ID,
-        ...target,
-        headings: { en: message.title },
-        contents: { en: message.body },
-        data: message.data,
-      }),
+    const result = await sendOneSignalNotification({
+      appId: ONESIGNAL_APP_ID,
+      apiKey: ONESIGNAL_REST_API_KEY,
+      eventKey: `service_reminder:${message.reminderKey}`,
+      externalIds: subscriptionIds.length === 0 ? [message.memberId] : [],
+      subscriptionIds,
+      title: message.title,
+      body: message.body,
+      data: message.data,
     })
 
-    const result = await response.json().catch(() => ({}))
-    if (!response.ok || result.errors || !result.id) {
-      const invalidIds = getInvalidSubscriptionIds(result)
-      invalidIds.forEach((id) => invalidSubscriptionIds.add(id))
-      if (subscriptionIds.length > 0 && invalidIds.length >= subscriptionIds.length) {
+    result.invalidSubscriptionIds.forEach((id) => invalidSubscriptionIds.add(id))
+    result.errors.forEach((error) => errors.push(`${message.memberId}: ${error}`))
+    result.warnings.forEach((warning) => warnings.push(`${message.memberId}: ${warning}`))
+
+    if (result.successfulTargetLabels.length === 0) {
+      if (
+        subscriptionIds.length > 0
+        && result.invalidSubscriptionIds.length >= subscriptionIds.length
+      ) {
         terminalReminderKeys.add(message.reminderKey)
       }
-
-      errors.push(`${message.memberId}: ${JSON.stringify(result.errors ?? result)}`)
       continue
     }
 
-    getInvalidSubscriptionIds(result).forEach((id) => invalidSubscriptionIds.add(id))
-    sent += result.recipients ?? 1
+    sent += result.sent
     successfulReminderKeys.add(message.reminderKey)
     notificationRows.push({
       church_id: message.churchId,
       member_id: message.memberId,
+      event_key: `service_reminder:${message.reminderKey}`,
       notification_type: 'service_reminder',
       title: message.title,
       body: message.body,
@@ -110,6 +98,7 @@ async function sendOneSignalMessages(messages: OneSignalMessage[]) {
   return {
     sent,
     errors,
+    warnings,
     invalidSubscriptionIds: Array.from(invalidSubscriptionIds),
     notificationRows,
     reminderKeysToRecord: Array.from(new Set([
@@ -128,10 +117,6 @@ Deno.serve(async (req) => {
   if (requestBody?.diagnostic === true) {
     return new Response(JSON.stringify({
       onesignalConfigured: Boolean(ONESIGNAL_REST_API_KEY),
-      onesignalAppId: ONESIGNAL_APP_ID,
-      ignoredOneSignalAppIdSecret: normalizeSecret(Deno.env.get('ONESIGNAL_APP_ID') ?? Deno.env.get('ONE_SIGNAL_APP_ID')) ?? null,
-      onesignalKeyPrefix: ONESIGNAL_REST_API_KEY?.slice(0, 10) ?? null,
-      onesignalKeyLength: ONESIGNAL_REST_API_KEY?.length ?? 0,
       checkedSecretNames: ONESIGNAL_REST_API_KEY_NAMES,
     }), {
       status: 200,
@@ -232,10 +217,15 @@ Deno.serve(async (req) => {
       .select('member_id, subscription_id, updated_at')
       .in('member_id', Array.from(allMemberIds))
 
-    const latestSubscriptionRows = getLatestSubscriptionRows(subscriptionRows ?? [])
-    const subscriptionMap = new Map<string, string>()
-    for (const row of latestSubscriptionRows) {
-      subscriptionMap.set(row.member_id, row.subscription_id)
+    const targets = buildNotificationTargets(
+      Array.from(allMemberIds),
+      subscriptionRows ?? [],
+    )
+    const subscriptionMap = new Map<string, string[]>()
+    for (const row of targets.subscriptionRows) {
+      const memberSubscriptions = subscriptionMap.get(row.member_id) ?? []
+      memberSubscriptions.push(row.subscription_id)
+      subscriptionMap.set(row.member_id, memberSubscriptions)
     }
 
     // 7. Check which reminders have already been sent (deduplication)
@@ -254,7 +244,7 @@ Deno.serve(async (req) => {
       churches: churchIds.length,
       services: services.length,
       assignedMembers: allMemberIds.size,
-      subscriptions: latestSubscriptionRows.length,
+      subscriptions: targets.subscriptionRows.length,
       dueAssignments: 0,
       skippedNoSubscription: 0,
       skippedAlreadySent: 0,
@@ -293,8 +283,7 @@ Deno.serve(async (req) => {
         for (const assignment of (service.assignments ?? [])) {
           if (!assignment.member_id) continue
 
-          const subscriptionId = subscriptionMap.get(assignment.member_id) ?? null
-          const subscriptionIds = subscriptionId ? [subscriptionId] : []
+          const subscriptionIds = subscriptionMap.get(assignment.member_id) ?? []
 
           const reminderKey = `${service.id}:${assignment.member_id}:${windowHours}`
           if (sentKeys.has(reminderKey) || pendingSentKeys.has(reminderKey)) {
@@ -338,7 +327,14 @@ Deno.serve(async (req) => {
     }
 
     // 9. Send via OneSignal Push API
-    const { sent, errors, invalidSubscriptionIds, notificationRows, reminderKeysToRecord } = await sendOneSignalMessages(messages)
+    const {
+      sent,
+      errors,
+      warnings,
+      invalidSubscriptionIds,
+      notificationRows,
+      reminderKeysToRecord,
+    } = await sendOneSignalMessages(messages)
 
     if (invalidSubscriptionIds.length > 0) {
       await supabase
@@ -350,7 +346,10 @@ Deno.serve(async (req) => {
     if (notificationRows.length > 0) {
       const { error: notificationHistoryError } = await supabase
         .from('member_notifications')
-        .insert(notificationRows)
+        .upsert(notificationRows, {
+          onConflict: 'member_id,event_key',
+          ignoreDuplicates: true,
+        })
 
       if (notificationHistoryError) {
         console.error('Error recording member notifications:', notificationHistoryError)
@@ -362,7 +361,7 @@ Deno.serve(async (req) => {
       members_found: stats.dueAssignments,
       tokens_found: messages.length,
       notifications_sent: sent,
-      onesignal_response: JSON.stringify({ errors, invalidSubscriptionIds, notificationHistoryRows: notificationRows.length, reminderKeysToRecord }),
+      onesignal_response: JSON.stringify({ errors, warnings, invalidSubscriptionIds, notificationHistoryRows: notificationRows.length, reminderKeysToRecord }),
       notes: `service reminder batch; stats=${JSON.stringify(stats)}`,
     })
 
@@ -421,28 +420,6 @@ function formatDateInTimeZone(date: Date, timeZone: string): string {
   return `${values.get('year')}-${values.get('month')}-${values.get('day')}`
 }
 
-function getLatestSubscriptionRows(rows: SubscriptionRow[]): { member_id: string; subscription_id: string }[] {
-  const latestByMember = new Map<string, SubscriptionRow>()
-
-  for (const row of rows) {
-    if (!row.member_id || !row.subscription_id) continue
-
-    const previous = latestByMember.get(row.member_id)
-    if (!previous || getSubscriptionUpdatedAt(row) > getSubscriptionUpdatedAt(previous)) {
-      latestByMember.set(row.member_id, row)
-    }
-  }
-
-  return Array.from(latestByMember.values()).map((row) => ({
-    member_id: row.member_id,
-    subscription_id: row.subscription_id!,
-  }))
-}
-
-function getSubscriptionUpdatedAt(row: SubscriptionRow): number {
-  return row.updated_at ? new Date(row.updated_at).getTime() : 0
-}
-
 function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -490,26 +467,4 @@ function normalizeSecret(value?: string | null): string | undefined {
   }
 
   return trimmed
-}
-
-function getInvalidSubscriptionIds(result: unknown): string[] {
-  if (!result || typeof result !== 'object') return []
-
-  const payload = result as {
-    invalid_player_ids?: unknown
-    errors?: unknown
-  }
-
-  if (Array.isArray(payload.invalid_player_ids)) {
-    return payload.invalid_player_ids.filter((id): id is string => typeof id === 'string')
-  }
-
-  if (payload.errors && typeof payload.errors === 'object' && !Array.isArray(payload.errors)) {
-    const errors = payload.errors as { invalid_player_ids?: unknown }
-    if (Array.isArray(errors.invalid_player_ids)) {
-      return errors.invalid_player_ids.filter((id): id is string => typeof id === 'string')
-    }
-  }
-
-  return []
 }

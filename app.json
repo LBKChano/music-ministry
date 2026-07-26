@@ -42,12 +42,7 @@
       },
       "package": "com.lbkchano.musicministry",
       "versionCode": 12,
-      "googleServicesFile": "./google-services.json",
-      "splash": {
-        "image": "./assets/images/9b11f806-5921-4e61-9383-a3f7e125c18f.png",
-        "resizeMode": "cover",
-        "backgroundColor": "#1a2332"
-      }
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/icon.png",
@@ -62,6 +57,17 @@
           "nseBundleIdentifier": "onesignalnse",
           "appGroupName": "group.com.lbkchano.musicministry.onesignal",
           "disableLocation": true
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "android": {
+            "image": "./assets/icon.png",
+            "imageWidth": 220,
+            "resizeMode": "contain",
+            "backgroundColor": "#06152F"
+          }
         }
       ],
       [

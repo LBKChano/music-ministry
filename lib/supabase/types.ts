@@ -377,6 +377,7 @@ export type Database = {
           church_id: string
           created_at: string
           data: Json
+          event_key: string | null
           id: string
           member_id: string
           notification_type: string
@@ -388,6 +389,7 @@ export type Database = {
           church_id: string
           created_at?: string
           data?: Json
+          event_key?: string | null
           id?: string
           member_id: string
           notification_type: string
@@ -399,6 +401,7 @@ export type Database = {
           church_id?: string
           created_at?: string
           data?: Json
+          event_key?: string | null
           id?: string
           member_id?: string
           notification_type?: string
@@ -679,6 +682,20 @@ export type Database = {
           preview: Json
           skipped_report: Json
         }[]
+      }
+      create_services_with_assignments_batch: {
+        Args: {
+          target_church_id: string
+          service_drafts: Json
+        }
+        Returns: Json
+      }
+      update_assignments_batch: {
+        Args: {
+          target_church_id: string
+          assignment_updates: Json
+        }
+        Returns: Json
       }
       accept_fill_in_request: {
         Args: {

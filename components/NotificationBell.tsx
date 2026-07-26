@@ -27,13 +27,38 @@ import {
   ScrollView,
   ActivityIndicator,
 } from "react-native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { useChurch } from "@/hooks/useChurch";
+import { useAuth } from "@/contexts/AuthContext";
+import { useChurchSession } from "@/hooks/useChurch";
 import { IconSymbol } from "@/components/IconSymbol";
+import { queryKeys } from "@/lib/query/keys";
+import {
+  createRealtimeChannel,
+  logRealtimeStatus,
+  realtimeChannelNames,
+  removeRealtimeChannel,
+} from "@/lib/realtime/channels";
+import { applyNotificationRealtimePayload } from "@/lib/realtime/cache-updates";
 import { supabase } from "@/lib/supabase/client";
 import type { Tables } from "@/lib/supabase/types";
 
 type MemberNotification = Tables<"member_notifications">;
+
+async function fetchMemberNotifications(memberId: string): Promise<MemberNotification[]> {
+  const { data, error } = await supabase
+    .from("member_notifications")
+    .select("*")
+    .eq("member_id", memberId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? [];
+}
 
 interface NotificationBellProps {
   /** Button style variant */
@@ -48,43 +73,36 @@ export function NotificationBell({
 }: NotificationBellProps) {
   const { hasPermission, permissionDenied, loading, isWeb, requestPermission } =
     useNotifications();
-  const { currentMember } = useChurch();
+  const { session } = useAuth();
+  const { currentMember } = useChurchSession();
+  const queryClient = useQueryClient();
   const [modalVisible, setModalVisible] = React.useState(false);
-  const [notifications, setNotifications] = React.useState<MemberNotification[]>([]);
-  const [unreadCount, setUnreadCount] = React.useState(0);
-  const [loadingHistory, setLoadingHistory] = React.useState(false);
 
-  const fetchNotifications = React.useCallback(async () => {
-    if (!currentMember?.id) {
-      setNotifications([]);
-      setUnreadCount(0);
-      return;
-    }
-
-    setLoadingHistory(true);
-    const { data, error } = await supabase
-      .from("member_notifications")
-      .select("*")
-      .eq("member_id", currentMember.id)
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (error) {
-      console.error("Error fetching member notifications:", error);
-      Alert.alert("Error", "Could not load notifications");
-      setLoadingHistory(false);
-      return;
-    }
-
-    const rows = data ?? [];
-    setNotifications(rows);
-    setUnreadCount(rows.filter(row => !row.read_at).length);
-    setLoadingHistory(false);
-  }, [currentMember?.id]);
+  const memberId = currentMember?.id ?? null;
+  const accountId = session?.user?.id ?? null;
+  const notificationQueryKey = React.useMemo(
+    () => queryKeys.memberNotifications(accountId ?? "signed-out", memberId ?? "none"),
+    [accountId, memberId]
+  );
+  const notificationsQuery = useQuery({
+    queryKey: notificationQueryKey,
+    queryFn: () => fetchMemberNotifications(memberId as string),
+    enabled: !loading && !isWeb && Boolean(accountId && memberId),
+    staleTime: 60_000,
+  });
+  const notifications = React.useMemo(
+    () => notificationsQuery.data ?? [],
+    [notificationsQuery.data]
+  );
+  const unreadCount = React.useMemo(
+    () => notifications.filter(row => !row.read_at).length,
+    [notifications]
+  );
+  const loadingHistory = notificationsQuery.isFetching && notifications.length === 0;
 
   const markVisibleNotificationsRead = React.useCallback(async (rows: MemberNotification[]) => {
     const unreadIds = rows.filter(row => !row.read_at).map(row => row.id);
-    if (unreadIds.length === 0) return;
+    if (unreadIds.length === 0 || !memberId) return;
 
     const readAt = new Date().toISOString();
     const { error } = await supabase
@@ -97,39 +115,70 @@ export function NotificationBell({
       return;
     }
 
-    setNotifications(prev => prev.map(row => unreadIds.includes(row.id) ? { ...row, read_at: readAt } : row));
-    setUnreadCount(0);
-  }, []);
+    queryClient.setQueryData<MemberNotification[]>(
+      notificationQueryKey,
+      previous => (previous ?? []).map(row =>
+        unreadIds.includes(row.id) ? { ...row, read_at: readAt } : row
+      )
+    );
+  }, [memberId, notificationQueryKey, queryClient]);
 
   React.useEffect(() => {
-    if (!loading && !isWeb && currentMember?.id) {
-      fetchNotifications();
-    }
-  }, [currentMember?.id, fetchNotifications, isWeb, loading]);
+    if (isWeb || !accountId || !memberId) return;
 
-  React.useEffect(() => {
-    if (loading || isWeb || !currentMember?.id) return;
+    const channelLabel = `member notifications ${memberId}`;
+    const channel = createRealtimeChannel(
+      realtimeChannelNames.memberNotifications(accountId, memberId),
+      channelLabel
+    );
+    const handleNotificationPayload = (payload: Parameters<
+      typeof applyNotificationRealtimePayload
+    >[1]) => {
+      if (queryClient.getQueryData(notificationQueryKey) === undefined) return;
+      queryClient.setQueryData<MemberNotification[]>(
+        notificationQueryKey,
+        previous => applyNotificationRealtimePayload(previous, payload)
+      );
+    };
 
-    const channel = supabase
-      .channel(`member-notifications-${currentMember.id}`)
+    channel
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
           schema: "public",
           table: "member_notifications",
-          filter: `member_id=eq.${currentMember.id}`,
+          filter: `member_id=eq.${memberId}`,
         },
-        () => {
-          fetchNotifications();
-        }
+        handleNotificationPayload
       )
-      .subscribe();
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "member_notifications",
+          filter: `member_id=eq.${memberId}`,
+        },
+        handleNotificationPayload
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "member_notifications",
+        },
+        handleNotificationPayload
+      )
+      .subscribe(logRealtimeStatus(channelLabel));
 
     return () => {
-      supabase.removeChannel(channel);
+      void removeRealtimeChannel(channel, channelLabel).catch(error => {
+        console.warn(`[Realtime] ${channelLabel} cleanup failed`, error);
+      });
     };
-  }, [currentMember?.id, fetchNotifications, isWeb, loading]);
+  }, [accountId, isWeb, memberId, notificationQueryKey, queryClient]);
 
   if (loading || isWeb) return null;
 
@@ -168,27 +217,19 @@ export function NotificationBell({
   };
 
   const loadNotificationsForOpen = async (): Promise<MemberNotification[]> => {
-    if (!currentMember?.id) return [];
+    if (!memberId) return [];
 
-    setLoadingHistory(true);
-    const { data, error } = await supabase
-      .from("member_notifications")
-      .select("*")
-      .eq("member_id", currentMember.id)
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    setLoadingHistory(false);
-    if (error) {
+    try {
+      return await queryClient.fetchQuery({
+        queryKey: notificationQueryKey,
+        queryFn: () => fetchMemberNotifications(memberId),
+        staleTime: 60_000,
+      });
+    } catch (error) {
       console.error("Error fetching member notifications:", error);
       Alert.alert("Error", "Could not load notifications");
       return [];
     }
-
-    const rows = data ?? [];
-    setNotifications(rows);
-    setUnreadCount(rows.filter(row => !row.read_at).length);
-    return rows;
   };
 
   const renderNotificationCenter = () => (

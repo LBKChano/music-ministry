@@ -3,7 +3,7 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 import { colors } from '@/styles/commonStyles';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
-import { useChurch } from '@/hooks/useChurch';
+import { useChurchSession } from '@/hooks/useChurch';
 
 const baseTabs: TabBarItem[] = [
   { name: '(home)', route: '/(tabs)/(home)' as any, icon: 'calendar-today', iosIcon: 'calendar', label: 'Schedule' },
@@ -13,7 +13,7 @@ const baseTabs: TabBarItem[] = [
 const adminTab: TabBarItem = { name: 'church', route: '/(tabs)/church' as any, icon: 'home', iosIcon: 'building.2', label: 'Church' };
 
 export default function TabLayout() {
-  const { isAdmin } = useChurch();
+  const { isAdmin } = useChurchSession();
 
   console.log('[TabLayout] isAdmin:', isAdmin);
 
