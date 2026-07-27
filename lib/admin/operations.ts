@@ -14,6 +14,7 @@ type AutoAssignServiceFingerprint = {
   id: string;
   date: string;
   time?: string | null;
+  recurring_service_id?: string | null;
   updated_at?: string | null;
   assignments?: {
     id: string;
@@ -65,6 +66,7 @@ export function createAutoAssignPreviewKey(
       id: service.id,
       date: service.date,
       time: service.time ?? null,
+      recurringServiceId: service.recurring_service_id ?? null,
       updatedAt: service.updated_at ?? null,
       assignments: [...(service.assignments ?? [])]
         .map(assignment => ({

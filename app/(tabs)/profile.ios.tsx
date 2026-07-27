@@ -1,25 +1,30 @@
 
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "@/styles/commonStyles";
 import React, { useState, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, ActivityIndicator, Animated } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
+import {
+  ResponsiveTabHeader,
+  TabHeaderIconSurface,
+  TabHeaderMetaText,
+  TabHeaderPill,
+} from "@/components/navigation/responsive-tab-header";
 import { Stack, useRouter } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
 import { useChurch } from "@/hooks/useChurch";
 import { Calendar, DateData } from "react-native-calendars";
 import type { Tables } from "@/lib/supabase/types";
 import { usePerformanceBaselineScreen } from "@/hooks/usePerformanceBaselineScreen";
 import { performanceBaselineEnabled } from "@/lib/performance/baseline";
+import { SchedulingPreferencesCard } from "@/components/profile/scheduling-preferences-card";
 
 type MemberUnavailability = Tables<'member_unavailability'>;
 
 type ToastType = 'success' | 'error';
 
 export default function ProfileScreen() {
-  const { user, loading, currentMember, currentChurch, isAdmin, signOut, deleteAccount, fetchMemberUnavailability, saveUnavailableDates } = useChurch();
+  const { user, loading, currentMember, currentChurch, recurringServices, isAdmin, signOut, deleteAccount, fetchMemberUnavailability, saveUnavailableDates } = useChurch();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -210,49 +215,28 @@ export default function ProfileScreen() {
           headerShown: false,
         }}
       />
-      <LinearGradient
-        colors={['#0F172A', '#1E3A8A', '#2563EB']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.profileHeaderContainer, { paddingTop: insets.top + 14 }]}
-      >
-        <View style={styles.headerAccentPanel} />
-        <View style={styles.headerAccentLine} />
-        <View style={styles.profileHeaderTopRow}>
-          <View style={styles.profileHeaderTextWrap}>
-            <Text style={styles.headerEyebrow}>Profile</Text>
-            <Text
-              style={styles.profileHeaderTitle}
-              numberOfLines={2}
-            >
-              {displayName}
-            </Text>
-            {currentChurch?.name ? (
-              <Text
-                style={styles.profileChurchTitle}
-                numberOfLines={2}
-              >
-                {currentChurch.name}
-              </Text>
-            ) : null}
-          </View>
-          <View style={styles.profileHeaderAvatar}>
+      <ResponsiveTabHeader
+        eyebrow="Profile"
+        title={displayName}
+        subtitle={currentChurch?.name}
+        accessibilityTitle={`Profile for ${displayName}`}
+        trailing={(
+          <TabHeaderIconSurface>
             <IconSymbol
               ios_icon_name="person.fill"
               android_material_icon_name="person"
               size={30}
               color="#FFFFFF"
             />
-          </View>
-        </View>
-        <View style={styles.headerMetaRow}>
-          <View style={styles.headerStatPill}>
-            <IconSymbol ios_icon_name="person.badge.key.fill" android_material_icon_name="verified-user" size={16} color="#FFFFFF" />
-            <Text style={styles.headerStatText}>{profileSubtitle}</Text>
-          </View>
-          <Text style={styles.headerPeriodText} numberOfLines={1}>{displayEmail}</Text>
-        </View>
-      </LinearGradient>
+          </TabHeaderIconSurface>
+        )}
+      >
+        <TabHeaderPill
+          icon={<IconSymbol ios_icon_name="person.badge.key.fill" android_material_icon_name="verified-user" size={16} color="#FFFFFF" />}
+          label={profileSubtitle}
+        />
+        <TabHeaderMetaText>{displayEmail}</TabHeaderMetaText>
+      </ResponsiveTabHeader>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
         {currentMember && (
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -340,6 +324,15 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
           </View>
+        )}
+
+        {currentMember && currentChurch && user && (
+          <SchedulingPreferencesCard
+            accountId={user.id}
+            churchId={currentChurch.id}
+            member={currentMember}
+            recurringServices={recurringServices}
+          />
         )}
 
         <TouchableOpacity
@@ -474,111 +467,6 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingBottom: 140,
-  },
-  profileHeaderContainer: {
-    paddingBottom: 22,
-    paddingHorizontal: 20,
-    marginBottom: 16,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    elevation: 8,
-  },
-  headerAccentPanel: {
-    position: 'absolute',
-    right: -24,
-    top: 18,
-    width: 132,
-    height: 74,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.10)',
-    transform: [{ rotate: '-12deg' }],
-  },
-  headerAccentLine: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 0,
-    height: 3,
-    borderRadius: 3,
-    backgroundColor: '#60A5FA',
-  },
-  profileHeaderTopRow: {
-    minHeight: 92,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 14,
-  },
-  profileHeaderTextWrap: {
-    flex: 1,
-    minWidth: 0,
-  },
-  profileHeaderAvatar: {
-    width: 58,
-    height: 58,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.28)',
-  },
-  headerEyebrow: {
-    color: '#BFDBFE',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 5,
-  },
-  profileHeaderTitle: {
-    fontSize: 36,
-    lineHeight: 41,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    textAlign: 'left',
-  },
-  profileChurchTitle: {
-    marginTop: 5,
-    fontSize: 20,
-    lineHeight: 24,
-    fontWeight: '900',
-    color: '#DBEAFE',
-    textAlign: 'left',
-  },
-  headerMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 16,
-  },
-  headerStatPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.22)',
-  },
-  headerStatText: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    fontWeight: '800',
-    textAlign: 'left',
-  },
-  headerPeriodText: {
-    flexShrink: 1,
-    fontSize: 13,
-    color: '#DBEAFE',
-    fontWeight: '700',
   },
   header: {
     alignItems: 'center',

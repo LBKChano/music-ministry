@@ -9,6 +9,8 @@ export const realtimeChannelNames = {
     `church:${accountId}:${churchId}`,
   memberNotifications: (accountId: string, memberId: string) =>
     `member-notifications:${accountId}:${memberId}`,
+  schedulingPreferences: (accountId: string, memberId: string) =>
+    `scheduling-preferences:${accountId}:${memberId}`,
 };
 
 export function createRealtimeChannel(

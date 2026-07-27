@@ -5,14 +5,18 @@ import type { FillInRequestWithMemberInfo } from '@/contexts/ChurchContext';
 import { colors } from '@/styles/commonStyles';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Stack } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useServices, type ServiceWithAssignments } from '@/hooks/useServices';
 import { usePerformanceBaselineScreen } from '@/hooks/usePerformanceBaselineScreen';
+import { moveItemById } from '@/lib/services/song-order';
 
 import { IconSymbol } from '@/components/IconSymbol';
 import { NotificationBell } from "@/components/NotificationBell";
+import {
+  ResponsiveTabHeader,
+  TabHeaderMetaText,
+  TabHeaderPill,
+} from '@/components/navigation/responsive-tab-header';
 import { ScheduleServiceCard } from '@/components/schedules/schedule-service-card';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   StyleSheet,
   View,
@@ -100,98 +104,6 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 140,
   },
-  headerContainer: {
-    paddingBottom: 22,
-    paddingHorizontal: 20,
-    marginBottom: 16,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    elevation: 8,
-  },
-  headerAccentPanel: {
-    position: 'absolute',
-    right: -24,
-    top: 18,
-    width: 132,
-    height: 74,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.10)',
-    transform: [{ rotate: '-12deg' }],
-  },
-  headerAccentLine: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 0,
-    height: 3,
-    borderRadius: 3,
-    backgroundColor: '#60A5FA',
-  },
-  headerTopRow: {
-    minHeight: 74,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 14,
-  },
-  headerTitleWrap: {
-    flex: 1,
-    minWidth: 0,
-  },
-  headerBellSlot: {
-    width: 52,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerEyebrow: {
-    color: '#BFDBFE',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 5,
-  },
-  headerTitle: {
-    fontSize: 32,
-    lineHeight: 37,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    textAlign: 'left',
-  },
-  headerMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 16,
-  },
-  headerStatPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.22)',
-  },
-  headerStatText: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    fontWeight: '800',
-    textAlign: 'left',
-  },
-  headerPeriodText: {
-    fontSize: 13,
-    color: '#DBEAFE',
-    fontWeight: '700',
-  },
   serviceCard: {
     backgroundColor: colors.cardBackground,
     borderRadius: 16,
@@ -242,11 +154,34 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     marginBottom: 12,
   },
+  commentsHeader: {
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 8,
+  },
   commentsTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 8,
+  },
+  reorderSongsButton: {
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary + '45',
+    backgroundColor: colors.primary + '10',
+  },
+  reorderSongsButtonText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
   },
   commentItem: {
     backgroundColor: colors.background + '40',
@@ -259,6 +194,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginBottom: 4,
+  },
+  songDragHandle: {
+    width: 24,
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  songReorderControls: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  songMoveButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary + '10',
   },
   songTypeBadge: {
     backgroundColor: colors.primary + '18',
@@ -366,23 +321,6 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     padding: 4,
-  },
-  addButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 16,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  addButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
   },
   loadMoreButton: {
     minHeight: 48,
@@ -532,6 +470,25 @@ const styles = StyleSheet.create({
   pendingSongTextWrap: {
     flex: 1,
   },
+  pendingSongDragHandle: {
+    width: 24,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pendingSongMoveControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  pendingSongMoveButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary + '10',
+  },
   pendingSongTitle: {
     color: colors.text,
     fontSize: 14,
@@ -637,18 +594,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   pickerButtonText: {
-    fontSize: 16,
-    color: colors.text,
-  },
-  recurringServiceItem: {
-    backgroundColor: colors.inputBackground,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  recurringServiceText: {
     fontSize: 16,
     color: colors.text,
   },
@@ -759,11 +704,12 @@ export default function HomeScreen() {
     refreshServices,
     deleteService,
     updateAssignment,
-    createServiceFromTemplate,
     addServiceComment,
     addServiceComments,
     updateServiceComment,
     deleteServiceComment,
+    reorderServiceComments,
+    reorderingServiceIds,
     notifyServiceComments,
     loadMoreServices,
     loadingMoreServices,
@@ -785,9 +731,6 @@ export default function HomeScreen() {
     }
   );
 
-  const insets = useSafeAreaInsets();
-
-  const [addServiceModalVisible, setAddServiceModalVisible] = useState(false);
   const [assignMemberModalVisible, setAssignMemberModalVisible] = useState(false);
   const [deleteServiceModalVisible, setDeleteServiceModalVisible] = useState(false);
   const [deleteAssignmentModalVisible, setDeleteAssignmentModalVisible] = useState(false);
@@ -803,10 +746,6 @@ export default function HomeScreen() {
   const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
   const [assignmentToDelete, setAssignmentToDelete] = useState<{ serviceId: string; assignmentId: string } | null>(null);
   const [selectedCommentService, setSelectedCommentService] = useState<ServiceWithAssignments | null>(null);
-
-  const [newServiceDate, setNewServiceDate] = useState(new Date());
-  const [newServiceType, setNewServiceType] = useState('');
-  const [newServiceNotes, setNewServiceNotes] = useState('');
 
   const [fillInReason, setFillInReason] = useState('');
   const [fillInAssignmentId, setFillInAssignmentId] = useState('');
@@ -919,46 +858,6 @@ export default function HomeScreen() {
     }
   }, [refreshServices, refreshMembers, refreshFillInRequests]);
 
-  const handleSaveService = async () => {
-    console.log('User tapped save service button');
-    if (!currentChurch || !newServiceType.trim()) {
-      Alert.alert('Error', 'Please fill in all required fields');
-      return;
-    }
-
-    // Format date as YYYY-MM-DD
-    const year = newServiceDate.getFullYear();
-    const month = String(newServiceDate.getMonth() + 1).padStart(2, '0');
-    const day = String(newServiceDate.getDate()).padStart(2, '0');
-    const dateString = `${year}-${month}-${day}`;
-
-    // Find the matching recurring service to get its role slots
-    const matchingRecurring = recurringServices.find(rs => rs.name === newServiceType.trim());
-    const roleSlots = matchingRecurring?.roles ?? [];
-
-    console.log('Creating service:', { date: dateString, type: newServiceType, roles: roleSlots });
-
-    const result = await createServiceFromTemplate(
-      currentChurch.id,
-      dateString,
-      newServiceType.trim(),
-      newServiceNotes.trim() || undefined,
-      roleSlots,
-    );
-
-    if (result) {
-      console.log('Service created successfully:', result.id);
-      Alert.alert('Success', 'Service added successfully');
-      setAddServiceModalVisible(false);
-      setNewServiceType('');
-      setNewServiceNotes('');
-      setNewServiceDate(new Date());
-    } else {
-      console.error('Failed to create service');
-      Alert.alert('Error', 'Failed to add service. Please try again.');
-    }
-  };
-
   const handleDeleteService = async () => {
     console.log('User confirmed delete service');
     if (!serviceToDelete) return;
@@ -972,11 +871,6 @@ export default function HomeScreen() {
     
     setDeleteServiceModalVisible(false);
     setServiceToDelete(null);
-  };
-
-  const handleSelectRecurringService = (recurringService: any) => {
-    console.log('User selected recurring service:', recurringService.name);
-    setNewServiceType(recurringService.name);
   };
 
   const handleAssignMember = async () => {
@@ -1203,6 +1097,26 @@ export default function HomeScreen() {
   const handleRemovePendingServiceSong = (songId: string) => {
     setPendingServiceSongs(prev => prev.filter(song => song.id !== songId));
   };
+
+  const handleMovePendingServiceSong = (songId: string, direction: -1 | 1) => {
+    setPendingServiceSongs(previous => (
+      moveItemById(previous, songId, direction)
+    ));
+  };
+
+  const handleReorderServiceSongs = useCallback(async (
+    serviceId: string,
+    orderedCommentIds: string[]
+  ) => {
+    const success = await reorderServiceComments(serviceId, orderedCommentIds);
+    if (!success) {
+      Alert.alert(
+        'Could Not Reorder Songs',
+        'The song list may have changed on another device. Refresh and try again.'
+      );
+    }
+    return success;
+  }, [reorderServiceComments]);
 
   const handleAddServiceComment = async () => {
     if (isSavingServiceComment) return;
@@ -1452,12 +1366,14 @@ export default function HomeScreen() {
         currentMemberRoleNames={currentMemberRoleNames}
         isAdmin={isAdmin}
         isCreatingFillInRequest={isCreatingFillInRequest}
+        isReorderingSongs={reorderingServiceIds.has(service.id)}
         assignmentLayout="stacked"
         styles={styles}
         onDeleteService={openDeleteServiceModal}
         onAddSong={openCommentModal}
         onEditSong={openEditCommentModal}
         onDeleteSong={handleDeleteServiceComment}
+        onReorderSongs={handleReorderServiceSongs}
         onAcceptFillIn={handleAcceptFillInRequest}
         onCancelFillIn={handleCancelFillInRequest}
         onRequestFillIn={openFillInRequestModal}
@@ -1472,6 +1388,7 @@ export default function HomeScreen() {
       handleAcceptFillInRequest,
       handleCancelFillInRequest,
       handleDeleteServiceComment,
+      handleReorderServiceSongs,
       isAdmin,
       isCreatingFillInRequest,
       memberDisplayNames,
@@ -1482,6 +1399,7 @@ export default function HomeScreen() {
       openEditCommentModal,
       openFillInRequestModal,
       pendingFillInRequestsByService,
+      reorderingServiceIds,
       sortedRoles,
     ]
   );
@@ -1504,36 +1422,18 @@ export default function HomeScreen() {
         }}
       />
 
-      <LinearGradient
-        colors={['#0F172A', '#1E3A8A', '#2563EB']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.headerContainer, { paddingTop: insets.top + 14 }]}
+      <ResponsiveTabHeader
+        eyebrow="Schedule"
+        title={churchName}
+        accessibilityTitle={`Schedule for ${churchName}`}
+        trailing={<NotificationBell />}
       >
-        <View style={styles.headerAccentPanel} />
-        <View style={styles.headerAccentLine} />
-        <View style={styles.headerTopRow}>
-          <View style={styles.headerTitleWrap}>
-            <Text style={styles.headerEyebrow}>Schedule</Text>
-            <Text
-              style={styles.headerTitle}
-              numberOfLines={2}
-            >
-              {churchName}
-            </Text>
-          </View>
-          <View style={styles.headerBellSlot}>
-            <NotificationBell />
-          </View>
-        </View>
-        <View style={styles.headerMetaRow}>
-          <View style={styles.headerStatPill}>
-            <IconSymbol ios_icon_name="calendar.badge.clock" android_material_icon_name="event" size={16} color="#FFFFFF" />
-            <Text style={styles.headerStatText}>{upcomingText}</Text>
-          </View>
-          <Text style={styles.headerPeriodText}>{schedulePeriod}</Text>
-        </View>
-      </LinearGradient>
+        <TabHeaderPill
+          icon={<IconSymbol ios_icon_name="calendar.badge.clock" android_material_icon_name="event" size={16} color="#FFFFFF" />}
+          label={upcomingText}
+        />
+        <TabHeaderMetaText>{schedulePeriod}</TabHeaderMetaText>
+      </ResponsiveTabHeader>
 
       <FlatList
         style={styles.container}
@@ -1563,91 +1463,31 @@ export default function HomeScreen() {
         )}
         renderItem={renderScheduleService}
         ListFooterComponent={(
-          <>
-            <TouchableOpacity
-              style={styles.loadMoreButton}
-              onPress={loadMoreServices}
-              disabled={loadingMoreServices}
-            >
-              {loadingMoreServices ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <IconSymbol
-                  ios_icon_name="calendar.badge.plus"
-                  android_material_icon_name="event"
-                  size={19}
-                  color={colors.primary}
-                />
-              )}
-              <Text style={styles.loadMoreButtonText}>
-                {loadingMoreServices
-                  ? 'Loading services...'
-                  : serviceRangeError
-                    ? 'Retry Service Range'
-                    : `Load Next ${serviceWindowDays ?? 90} Days`}
-              </Text>
-            </TouchableOpacity>
-
-            {isAdmin && (
-              <TouchableOpacity style={styles.addButton} onPress={() => {
-                console.log('User tapped Add Service button');
-                setAddServiceModalVisible(true);
-              }}>
-                <Text style={styles.addButtonText}>Add Service</Text>
-              </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.loadMoreButton}
+            onPress={loadMoreServices}
+            disabled={loadingMoreServices}
+          >
+            {loadingMoreServices ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <IconSymbol
+                ios_icon_name="calendar.badge.plus"
+                android_material_icon_name="event"
+                size={19}
+                color={colors.primary}
+              />
             )}
-          </>
+            <Text style={styles.loadMoreButtonText}>
+              {loadingMoreServices
+                ? 'Loading services...'
+                : serviceRangeError
+                  ? 'Retry Service Range'
+                  : `Load Next ${serviceWindowDays ?? 90} Days`}
+            </Text>
+          </TouchableOpacity>
         )}
       />
-
-      {/* Add Service Modal */}
-      <Modal
-        visible={addServiceModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAddServiceModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add Service</Text>
-            <Text style={{ color: colors.text, marginBottom: 8 }}>Select a service type:</Text>
-            <ScrollView style={{ maxHeight: 200 }}>
-              {(recurringServices ?? []).map(rs => (
-                <TouchableOpacity
-                  key={rs.id}
-                  style={[
-                    styles.recurringServiceItem,
-                    newServiceType === rs.name && { backgroundColor: colors.primary + '30', borderColor: colors.primary },
-                  ]}
-                  onPress={() => handleSelectRecurringService(rs)}
-                >
-                  <Text style={styles.recurringServiceText}>{rs.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => {
-                  console.log('User cancelled add service modal');
-                  setAddServiceModalVisible(false);
-                  setNewServiceType('');
-                  setNewServiceNotes('');
-                  setNewServiceDate(new Date());
-                }}
-              >
-                <Text style={styles.buttonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.saveButton]}
-                onPress={handleSaveService}
-              >
-                <Text style={styles.buttonText}>Add</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Add Song Modal */}
       <Modal
@@ -1729,13 +1569,47 @@ export default function HomeScreen() {
                       <Text style={styles.pendingSongsCount}>{pendingServiceSongs.length}</Text>
                     </View>
                     {pendingServiceSongs.length > 0 ? (
-                      pendingServiceSongs.map(song => (
+                      pendingServiceSongs.map((song, songIndex) => (
                         <View key={song.id} style={styles.pendingSongItem}>
+                          <View
+                            style={styles.pendingSongDragHandle}
+                            accessible={false}
+                          >
+                            <IconSymbol ios_icon_name="line.3.horizontal" android_material_icon_name="drag-handle" size={19} color={colors.textSecondary} />
+                          </View>
                           <View style={styles.pendingSongTextWrap}>
                             <Text style={styles.pendingSongTitle}>{song.commentText}</Text>
                             <Text style={styles.pendingSongMeta}>
                               {[song.songType, song.songNumber ? `#${song.songNumber}` : null].filter(Boolean).join(' ')}
                             </Text>
+                          </View>
+                          <View style={styles.pendingSongMoveControls}>
+                            <TouchableOpacity
+                              style={[
+                                styles.pendingSongMoveButton,
+                                songIndex === 0 ? { opacity: 0.35 } : null,
+                              ]}
+                              onPress={() => handleMovePendingServiceSong(song.id, -1)}
+                              disabled={songIndex === 0}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Move ${song.commentText} up`}
+                            >
+                              <IconSymbol ios_icon_name="arrow.up" android_material_icon_name="keyboard-arrow-up" size={19} color={colors.primary} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[
+                                styles.pendingSongMoveButton,
+                                songIndex === pendingServiceSongs.length - 1
+                                  ? { opacity: 0.35 }
+                                  : null,
+                              ]}
+                              onPress={() => handleMovePendingServiceSong(song.id, 1)}
+                              disabled={songIndex === pendingServiceSongs.length - 1}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Move ${song.commentText} down`}
+                            >
+                              <IconSymbol ios_icon_name="arrow.down" android_material_icon_name="keyboard-arrow-down" size={19} color={colors.primary} />
+                            </TouchableOpacity>
                           </View>
                           <TouchableOpacity
                             style={styles.pendingSongRemoveButton}

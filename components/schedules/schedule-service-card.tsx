@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Text,
   TouchableOpacity,
@@ -10,6 +10,7 @@ import {
 import { IconSymbol } from '@/components/IconSymbol';
 import type { FillInRequestWithMemberInfo } from '@/contexts/ChurchContext';
 import type { ServiceWithAssignments } from '@/hooks/useServices';
+import { moveItemById } from '@/lib/services/song-order';
 import { colors } from '@/styles/commonStyles';
 
 type ServiceComment = ServiceWithAssignments['service_comments'][number];
@@ -18,8 +19,13 @@ type ViewStyleName =
   | 'serviceCard'
   | 'serviceHeader'
   | 'commentsSection'
+  | 'commentsHeader'
   | 'commentItem'
   | 'commentHeader'
+  | 'reorderSongsButton'
+  | 'songReorderControls'
+  | 'songMoveButton'
+  | 'songDragHandle'
   | 'songTypeBadge'
   | 'songNumberBadge'
   | 'songActions'
@@ -39,6 +45,7 @@ type TextStyleName =
   | 'serviceDateTime'
   | 'serviceNotes'
   | 'commentsTitle'
+  | 'reorderSongsButtonText'
   | 'songTypeText'
   | 'songNumberText'
   | 'commentText'
@@ -74,6 +81,7 @@ interface ScheduleServiceCardProps {
   currentMemberRoleNames: ReadonlySet<string>;
   isAdmin: boolean;
   isCreatingFillInRequest: boolean;
+  isReorderingSongs: boolean;
   assignmentLayout: 'stacked' | 'inline';
   styles: ScheduleServiceCardStyles;
   onDeleteService: (serviceId: string) => void;
@@ -83,6 +91,10 @@ interface ScheduleServiceCardProps {
     comment: ServiceComment
   ) => void;
   onDeleteSong: (serviceId: string, commentId: string) => void;
+  onReorderSongs: (
+    serviceId: string,
+    orderedCommentIds: string[]
+  ) => Promise<boolean>;
   onAcceptFillIn: (requestId: string, assignmentId: string) => void;
   onCancelFillIn: (requestId: string) => void;
   onRequestFillIn: (
@@ -160,23 +172,51 @@ function ScheduleServiceCardComponent({
   currentMemberRoleNames,
   isAdmin,
   isCreatingFillInRequest,
+  isReorderingSongs,
   assignmentLayout,
   styles,
   onDeleteService,
   onAddSong,
   onEditSong,
   onDeleteSong,
+  onReorderSongs,
   onAcceptFillIn,
   onCancelFillIn,
   onRequestFillIn,
   onAssignMember,
   onDeleteAssignment,
 }: ScheduleServiceCardProps) {
+  const [isSongReorderMode, setIsSongReorderMode] = useState(false);
   const timeDisplay = formatTime(service.time);
   const dateDisplay = formatDate(service.date);
   const dateTimeDisplay = timeDisplay
     ? `${dateDisplay} at ${timeDisplay}`
     : dateDisplay;
+  const canReorderSongs = isAdmin || Boolean(
+    currentMemberId
+    && service.assignments.some(
+      assignment => assignment.member_id === currentMemberId
+    )
+  );
+
+  useEffect(() => {
+    if (service.service_comments.length < 2 || !canReorderSongs) {
+      setIsSongReorderMode(false);
+    }
+  }, [canReorderSongs, service.service_comments.length]);
+
+  const moveSavedSong = (commentId: string, direction: -1 | 1) => {
+    if (isReorderingSongs) return;
+    const nextComments = moveItemById(
+      service.service_comments,
+      commentId,
+      direction
+    );
+    void onReorderSongs(
+      service.id,
+      nextComments.map(comment => comment.id)
+    );
+  };
 
   const getMemberDisplayName = (
     memberId?: string | null,
@@ -215,8 +255,31 @@ function ScheduleServiceCardComponent({
 
       {service.service_comments.length > 0 && (
         <View style={styles.commentsSection}>
-          <Text style={styles.commentsTitle}>Songs</Text>
-          {service.service_comments.map(comment => {
+          <View style={styles.commentsHeader}>
+            <Text style={styles.commentsTitle}>Songs</Text>
+            {canReorderSongs && service.service_comments.length > 1 ? (
+              <TouchableOpacity
+                style={styles.reorderSongsButton}
+                onPress={() => setIsSongReorderMode(current => !current)}
+                disabled={isReorderingSongs}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  isSongReorderMode ? 'Finish reordering songs' : 'Reorder songs'
+                }
+              >
+                <IconSymbol
+                  ios_icon_name={isSongReorderMode ? 'checkmark' : 'arrow.up.arrow.down'}
+                  android_material_icon_name={isSongReorderMode ? 'done' : 'swap-vert'}
+                  size={16}
+                  color={colors.primary}
+                />
+                <Text style={styles.reorderSongsButtonText}>
+                  {isSongReorderMode ? 'Done' : 'Reorder'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          {service.service_comments.map((comment, commentIndex) => {
             const authorName = getMemberDisplayName(
               comment.member_id,
               comment.church_members?.name || comment.church_members?.email
@@ -233,6 +296,19 @@ function ScheduleServiceCardComponent({
             return (
               <View key={comment.id} style={styles.commentItem}>
                 <View style={styles.commentHeader}>
+                  {isSongReorderMode ? (
+                    <View
+                      style={styles.songDragHandle}
+                      accessible={false}
+                    >
+                      <IconSymbol
+                        ios_icon_name="line.3.horizontal"
+                        android_material_icon_name="drag-handle"
+                        size={19}
+                        color={colors.textSecondary}
+                      />
+                    </View>
+                  ) : null}
                   <View style={styles.songTypeBadge}>
                     <Text style={styles.songTypeText}>
                       {comment.song_type || 'Song'}
@@ -245,7 +321,54 @@ function ScheduleServiceCardComponent({
                       </Text>
                     </View>
                   ) : null}
-                  {canEditSong ? (
+                  {isSongReorderMode ? (
+                    <View style={styles.songReorderControls}>
+                      <TouchableOpacity
+                        style={[
+                          styles.songMoveButton,
+                          (commentIndex === 0 || isReorderingSongs)
+                            ? { opacity: 0.35 }
+                            : null,
+                        ]}
+                        onPress={() => moveSavedSong(comment.id, -1)}
+                        disabled={commentIndex === 0 || isReorderingSongs}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Move ${comment.comment_text} up`}
+                      >
+                        <IconSymbol
+                          ios_icon_name="arrow.up"
+                          android_material_icon_name="keyboard-arrow-up"
+                          size={19}
+                          color={colors.primary}
+                        />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.songMoveButton,
+                          (
+                            commentIndex === service.service_comments.length - 1
+                            || isReorderingSongs
+                          )
+                            ? { opacity: 0.35 }
+                            : null,
+                        ]}
+                        onPress={() => moveSavedSong(comment.id, 1)}
+                        disabled={
+                          commentIndex === service.service_comments.length - 1
+                          || isReorderingSongs
+                        }
+                        accessibilityRole="button"
+                        accessibilityLabel={`Move ${comment.comment_text} down`}
+                      >
+                        <IconSymbol
+                          ios_icon_name="arrow.down"
+                          android_material_icon_name="keyboard-arrow-down"
+                          size={19}
+                          color={colors.primary}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  ) : canEditSong ? (
                     <View style={styles.songActions}>
                       <TouchableOpacity
                         style={styles.editSongButton}
@@ -506,12 +629,14 @@ function areScheduleServiceCardPropsEqual(
     && previous.currentMemberRoleNames === next.currentMemberRoleNames
     && previous.isAdmin === next.isAdmin
     && previous.isCreatingFillInRequest === next.isCreatingFillInRequest
+    && previous.isReorderingSongs === next.isReorderingSongs
     && previous.assignmentLayout === next.assignmentLayout
     && previous.styles === next.styles
     && previous.onDeleteService === next.onDeleteService
     && previous.onAddSong === next.onAddSong
     && previous.onEditSong === next.onEditSong
     && previous.onDeleteSong === next.onDeleteSong
+    && previous.onReorderSongs === next.onReorderSongs
     && previous.onAcceptFillIn === next.onAcceptFillIn
     && previous.onCancelFillIn === next.onCancelFillIn
     && previous.onRequestFillIn === next.onRequestFillIn

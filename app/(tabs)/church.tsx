@@ -15,15 +15,25 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Stack, Redirect } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { AdminFormModal } from '@/components/admin/admin-form-modal';
+import { BulkServiceDeleteModal } from '@/components/admin/bulk-service-delete-modal';
+import {
+  ResponsiveTabHeader,
+  TabHeaderIconButton,
+  TabHeaderPill,
+} from '@/components/navigation/responsive-tab-header';
 import { useChurch } from '@/hooks/useChurch';
 import { useServices } from '@/hooks/useServices';
 import { usePerformanceBaselineScreen } from '@/hooks/usePerformanceBaselineScreen';
 import { supabase } from '@/lib/supabase/client';
 import { createAutoAssignPreviewKey } from '@/lib/admin/operations';
+import {
+  LatestStateSaveQueue,
+  type LatestStateSaveStatus,
+} from '@/lib/admin/latest-state-save-queue';
 import type { Json } from '@/lib/supabase/types';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Clipboard from 'expo-clipboard';
@@ -50,6 +60,7 @@ type AutoAssignPreviewAssignment = {
   person_name: string;
   current_member_id: string | null;
   current_person_name: string | null;
+  preference_override: boolean;
 };
 type AutoAssignUnavailableMember = {
   member_id: string;
@@ -193,6 +204,7 @@ function normalizeAutoAssignPreview(preview: Json | undefined): AutoAssignPrevie
       person_name: String(item.person_name ?? ''),
       current_member_id: typeof item.current_member_id === 'string' ? item.current_member_id : null,
       current_person_name: typeof item.current_person_name === 'string' ? item.current_person_name : null,
+      preference_override: item.preference_override === true,
     }))
     .filter(item => item.assignment_id && item.service_id && item.service_date && item.member_id);
 }
@@ -274,6 +286,19 @@ const AutoAssignVirtualRow = React.memo(function AutoAssignVirtualRow({
               Replaces {item.current_person_name}
             </Text>
           ) : null}
+        {item.preference_override ? (
+          <View style={styles.autoAssignPreferenceOverride}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.circle.fill"
+              android_material_icon_name="info"
+              size={15}
+              color="#9A3412"
+            />
+            <Text style={styles.autoAssignPreferenceOverrideText}>
+              Preference override: this member was the best eligible fallback.
+            </Text>
+          </View>
+        ) : null}
       </View>
     );
   }
@@ -319,8 +344,6 @@ const AutoAssignVirtualRow = React.memo(function AutoAssignVirtualRow({
 });
 
 export default function ChurchScreen() {
-  const insets = useSafeAreaInsets();
-
   const {
     churches,
     currentChurch,
@@ -347,6 +370,7 @@ export default function ChurchScreen() {
     updateNotificationSettings,
     updateChurchName,
     updateChurchSongTypes,
+    applyChurchSongTypesLocally,
     updateChurchAutoAssignSettings,
     signOut,
     refreshChurches,
@@ -362,6 +386,11 @@ export default function ChurchScreen() {
     createServiceFromTemplate,
     createServicesBatch,
     refreshServices: refreshServicesHook,
+    previewBulkServiceDeletion,
+    applyBulkServiceDeletion,
+    loadMoreServices,
+    loadingMoreServices,
+    loadedThrough,
   } = useServices(currentChurch?.id || null, { windowed: true });
 
   usePerformanceBaselineScreen(
@@ -385,6 +414,7 @@ export default function ChurchScreen() {
   const [isDeleteServiceModalVisible, setDeleteServiceModalVisible] = useState(false);
   const [isDeleteRoleModalVisible, setDeleteRoleModalVisible] = useState(false);
   const [isSignOutModalVisible, setSignOutModalVisible] = useState(false);
+  const [showBulkServiceDeleteModal, setShowBulkServiceDeleteModal] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<string | null>(null);
   const [memberToEdit, setMemberToEdit] = useState<string | null>(null);
   const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
@@ -420,7 +450,12 @@ export default function ChurchScreen() {
     normalizeEditableSongTypeOptions(currentChurch?.song_type_options)
   ));
   const [newSongTypeName, setNewSongTypeName] = useState('');
-  const [isSavingSongTypes, setIsSavingSongTypes] = useState(false);
+  const [songTypeSaveStatus, setSongTypeSaveStatus] = useState<LatestStateSaveStatus>('idle');
+  const [songTypeSaveError, setSongTypeSaveError] = useState<string | null>(null);
+  const songTypeSaveQueueRef = React.useRef<LatestStateSaveQueue<string[]> | null>(null);
+  const songTypeQueueChurchIdRef = React.useRef<string | null>(null);
+  const currentChurchSongTypesRef = React.useRef(currentChurch?.song_type_options);
+  currentChurchSongTypesRef.current = currentChurch?.song_type_options;
 
   // Quarterly assignment states
   const [showPrepareQuarterModal, setShowPrepareQuarterModal] = useState(false);
@@ -489,9 +524,76 @@ export default function ChurchScreen() {
   }, [notificationSettings]);
 
   React.useEffect(() => {
-    setSongTypeDraftOptions(normalizeEditableSongTypeOptions(currentChurch?.song_type_options));
+    songTypeSaveQueueRef.current?.dispose();
+
+    const churchId = currentChurch?.id ?? null;
+    songTypeQueueChurchIdRef.current = churchId;
+    const initialOptions = normalizeEditableSongTypeOptions(currentChurchSongTypesRef.current);
+    setSongTypeDraftOptions(initialOptions);
     setNewSongTypeName('');
-  }, [currentChurch?.id, currentChurch?.song_type_options]);
+    setSongTypeSaveError(null);
+    setSongTypeSaveStatus('idle');
+
+    if (!churchId) {
+      songTypeSaveQueueRef.current = null;
+      return;
+    }
+
+    const queue = new LatestStateSaveQueue<string[]>({
+      initialConfirmed: initialOptions,
+      persist: async options => {
+        const updatedChurch = await updateChurchSongTypes(churchId, options, false);
+        if (!updatedChurch) {
+          throw new Error('Could not save song types');
+        }
+        return normalizeEditableSongTypeOptions(updatedChurch.song_type_options);
+      },
+      onOptimistic: options => {
+        setSongTypeDraftOptions([...options]);
+        applyChurchSongTypesLocally(churchId, options);
+        setSongTypeSaveError(null);
+      },
+      onConfirmed: options => {
+        setSongTypeDraftOptions([...options]);
+        applyChurchSongTypesLocally(churchId, options);
+        setSongTypeSaveError(null);
+      },
+      onRollback: (confirmed, _retryValue, error) => {
+        console.error('Error auto-saving song types:', error);
+        setSongTypeDraftOptions([...confirmed]);
+        applyChurchSongTypesLocally(churchId, confirmed);
+        setSongTypeSaveError('Changes were not saved. Check your connection and retry.');
+      },
+      onStatusChange: setSongTypeSaveStatus,
+    });
+
+    songTypeSaveQueueRef.current = queue;
+    return () => {
+      queue.dispose();
+      if (songTypeSaveQueueRef.current === queue) {
+        songTypeSaveQueueRef.current = null;
+      }
+    };
+  }, [
+    applyChurchSongTypesLocally,
+    currentChurch?.id,
+    updateChurchSongTypes,
+  ]);
+
+  React.useEffect(() => {
+    if (
+      !currentChurch
+      || songTypeQueueChurchIdRef.current !== currentChurch.id
+      || !songTypeSaveQueueRef.current
+    ) {
+      return;
+    }
+
+    const serverOptions = normalizeEditableSongTypeOptions(currentChurch.song_type_options);
+    if (songTypeSaveQueueRef.current.syncConfirmed(serverOptions)) {
+      setSongTypeDraftOptions(serverOptions);
+    }
+  }, [currentChurch]);
 
   React.useEffect(() => {
     setAllowMultipleRolesSameService(currentChurch?.allow_member_multiple_roles_same_service ?? false);
@@ -545,36 +647,31 @@ export default function ChurchScreen() {
       return;
     }
 
-    setSongTypeDraftOptions(prev => [...prev, normalizedName]);
+    const nextOptions = normalizeEditableSongTypeOptions(
+      [...songTypeDraftOptions, normalizedName],
+      false
+    );
+    songTypeSaveQueueRef.current?.enqueue(nextOptions);
     setNewSongTypeName('');
   };
 
   const handleRemoveSongType = (option: string) => {
-    setSongTypeDraftOptions(prev => prev.filter(item => item !== option));
-  };
-
-  const handleSaveSongTypes = async () => {
-    if (!currentChurch || isSavingSongTypes) return;
-
-    const nextOptions = normalizeEditableSongTypeOptions(songTypeDraftOptions, false);
+    const nextOptions = normalizeEditableSongTypeOptions(
+      songTypeDraftOptions.filter(item => item !== option),
+      false
+    );
     if (nextOptions.length === 0) {
       Alert.alert('Error', 'Keep at least one song type.');
       return;
     }
 
-    setIsSavingSongTypes(true);
-    try {
-      const updatedChurch = await updateChurchSongTypes(currentChurch.id, nextOptions);
-      if (!updatedChurch) {
-        Alert.alert('Error', 'Could not save song types. Please try again.');
-        return;
-      }
-      Alert.alert('Success', 'Song types updated.');
-    } catch (err) {
-      console.error('Error saving song types:', err);
-      Alert.alert('Error', 'Could not save song types. Please try again.');
-    } finally {
-      setIsSavingSongTypes(false);
+    songTypeSaveQueueRef.current?.enqueue(nextOptions);
+  };
+
+  const handleRetrySongTypeSave = () => {
+    if (!songTypeSaveQueueRef.current?.retry()) {
+      setSongTypeSaveError(null);
+      setSongTypeSaveStatus('idle');
     }
   };
 
@@ -712,6 +809,20 @@ export default function ChurchScreen() {
       await Clipboard.setStringAsync(currentChurch.invitation_code);
       Alert.alert('Copied!', 'Invitation code copied to clipboard');
     }
+  };
+
+  const previewScheduledServiceDeletion = async (
+    selection: Parameters<typeof previewBulkServiceDeletion>[1]
+  ) => {
+    if (!currentChurch) return null;
+    return previewBulkServiceDeletion(currentChurch.id, selection);
+  };
+
+  const applyScheduledServiceDeletion = async (
+    serviceIds: string[]
+  ) => {
+    if (!currentChurch) return null;
+    return applyBulkServiceDeletion(currentChurch.id, serviceIds);
   };
 
   const openEditMemberModal = (memberId: string) => {
@@ -879,6 +990,11 @@ export default function ChurchScreen() {
     setNewServiceNotes(service.notes ?? '');
     setSelectedServiceRoles(service.roles ?? []);
     setAddServiceModalVisible(true);
+  };
+
+  const closeServiceModal = () => {
+    setAddServiceModalVisible(false);
+    resetServiceForm();
   };
 
   const handleDeleteService = async () => {
@@ -1115,6 +1231,7 @@ export default function ChurchScreen() {
       notes: template.notes,
       roleSlots: template.roles ?? [],
       time: template.time,
+      recurringServiceId: template.id,
     }));
     const specialDrafts = specialServices.map(special => {
       const roleNames = (special.selectedRoleIds ?? [])
@@ -1126,6 +1243,7 @@ export default function ChurchScreen() {
         notes: special.notes,
         roleSlots: roleNames,
         time: special.time,
+        recurringServiceId: null,
       };
     });
     const drafts = [...recurringDrafts, ...specialDrafts];
@@ -1495,6 +1613,19 @@ export default function ChurchScreen() {
     setAdHocServiceRoles(newRoles);
   };
 
+  const closeAdHocServiceModal = () => {
+    setShowAdHocServiceModal(false);
+    setShowAdHocDatePicker(false);
+    setShowAdHocTimePicker(false);
+    setAdHocServiceName('');
+    setAdHocServiceDate(new Date());
+    setDraftAdHocServiceDate(new Date());
+    setAdHocServiceTime(new Date());
+    setDraftAdHocServiceTime(new Date());
+    setAdHocServiceNotes('');
+    setAdHocServiceRoles([]);
+  };
+
   const handleCreateAdHocService = async () => {
     if (!currentChurch) {
       Alert.alert('Error', 'No church selected');
@@ -1547,14 +1678,7 @@ export default function ChurchScreen() {
       if (result) {
         console.log('Ad-hoc service created successfully:', result);
         Alert.alert('Success', 'Service created successfully! It will now appear in the Schedules tab and members will receive reminder notifications.');
-        
-        // Reset form and close modal
-        setAdHocServiceName('');
-        setAdHocServiceDate(new Date());
-        setAdHocServiceTime(new Date());
-        setAdHocServiceNotes('');
-        setAdHocServiceRoles([]);
-        setShowAdHocServiceModal(false);
+        closeAdHocServiceModal();
       } else {
         Alert.alert('Error', 'Failed to create service');
       }
@@ -1636,103 +1760,86 @@ export default function ChurchScreen() {
         }}
       />
 
-      <LinearGradient
-        colors={['#0F172A', '#1E3A8A', '#2563EB']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.churchHeaderContainer, { paddingTop: insets.top + 14 }]}
-      >
-        <View style={styles.headerAccentPanel} />
-        <View style={styles.headerAccentLine} />
-        <View style={styles.churchHeaderTopRow}>
-          <View style={styles.churchHeaderTextWrap}>
-            <Text style={styles.headerEyebrow}>Church</Text>
-            <Text
-              style={styles.churchHeaderTitle}
-              numberOfLines={2}
-            >
-              {churchHeaderTitle}
-            </Text>
-          </View>
-          <View style={styles.churchHeaderActions}>
+      <ResponsiveTabHeader
+        eyebrow="Church"
+        title={churchHeaderTitle}
+        accessibilityTitle={`Church management for ${churchHeaderTitle}`}
+        trailing={(
+          <>
             {currentChurch ? (
-              <TouchableOpacity
-                style={styles.churchHeaderIconButton}
-                onPress={openEditChurchNameModal}
+              <TabHeaderIconButton
                 accessibilityLabel="Edit church name"
+                onPress={openEditChurchNameModal}
               >
                 <IconSymbol
                   ios_icon_name="pencil"
                   android_material_icon_name="edit"
-                  size={22}
-                  color="#fff"
+                  size={21}
+                  color="#FFFFFF"
                 />
-              </TouchableOpacity>
+              </TabHeaderIconButton>
             ) : null}
-            <TouchableOpacity
-              style={styles.churchHeaderIconButton}
+            <TabHeaderIconButton
+              accessibilityLabel="Add church"
               onPress={() => {
                 console.log('User tapped Create Church from header');
                 setCreateChurchModalVisible(true);
               }}
-              accessibilityLabel="Add church"
             >
               <IconSymbol
                 ios_icon_name="plus"
                 android_material_icon_name="add"
-                size={24}
-                color="#fff"
+                size={23}
+                color="#FFFFFF"
               />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.churchHeaderIconButton}
+            </TabHeaderIconButton>
+            <TabHeaderIconButton
+              accessibilityLabel="Sign out"
               onPress={() => {
                 console.log('User tapped Sign Out');
                 setSignOutModalVisible(true);
               }}
-              accessibilityLabel="Sign out"
             >
               <IconSymbol
                 ios_icon_name="arrow.right.square"
                 android_material_icon_name="logout"
-                size={23}
-                color="#fff"
+                size={22}
+                color="#FFFFFF"
               />
-            </TouchableOpacity>
-          </View>
-        </View>
-        {currentChurch ? (
-          <TouchableOpacity
-            style={styles.churchHeaderInvitationPill}
-            onPress={copyInvitationCode}
-            accessibilityLabel="Copy invitation code"
-          >
-            <IconSymbol
-              ios_icon_name="ticket"
-              android_material_icon_name="local-offer"
-              size={19}
-              color="#FFFFFF"
-            />
-            <View style={styles.churchHeaderInvitationText}>
-              <Text style={styles.churchHeaderInvitationLabel}>Invitation Code</Text>
-              <Text style={styles.churchHeaderInvitationCode} numberOfLines={1}>
-                {currentChurch.invitation_code}
-              </Text>
-            </View>
-            <IconSymbol
-              ios_icon_name="doc.on.doc"
-              android_material_icon_name="file-copy"
-              size={17}
-              color="#DBEAFE"
-            />
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.churchHeaderEmptyPill}>
-            <IconSymbol ios_icon_name="building.2" android_material_icon_name="home" size={17} color="#FFFFFF" />
-            <Text style={styles.churchHeaderEmptyText} numberOfLines={1}>Create a church to get started</Text>
-          </View>
+            </TabHeaderIconButton>
+          </>
         )}
-      </LinearGradient>
+      >
+        {currentChurch ? (
+          <TabHeaderPill
+            icon={(
+              <IconSymbol
+                ios_icon_name="ticket"
+                android_material_icon_name="local-offer"
+                size={19}
+                color="#FFFFFF"
+              />
+            )}
+            label="Invitation Code"
+            detail={currentChurch.invitation_code}
+            trailing={(
+              <IconSymbol
+                ios_icon_name="doc.on.doc"
+                android_material_icon_name="file-copy"
+                size={17}
+                color="#DBEAFE"
+              />
+            )}
+            onPress={copyInvitationCode}
+            accessibilityLabel={`Copy invitation code ${currentChurch.invitation_code}`}
+          />
+        ) : (
+          <TabHeaderPill
+            icon={<IconSymbol ios_icon_name="building.2" android_material_icon_name="home" size={17} color="#FFFFFF" />}
+            label="Create a church to get started"
+          />
+        )}
+      </ResponsiveTabHeader>
 
       <ScrollView 
         style={styles.scrollView}
@@ -1947,6 +2054,61 @@ export default function ChurchScreen() {
                   <Text style={[styles.songTypesDescription, { color: colors.textSecondary }]}>
                     Choose the default song type buttons shown in schedules. Other is always available.
                   </Text>
+                  {songTypeSaveStatus !== 'idle' ? (
+                    <View
+                      accessibilityLiveRegion="polite"
+                      style={styles.songTypeSaveStatusRow}
+                    >
+                      {songTypeSaveStatus === 'saving' ? (
+                        <>
+                          <ActivityIndicator size="small" color={colors.primary} />
+                          <Text style={[styles.songTypeSaveStatusText, { color: colors.textSecondary }]}>
+                            Saving...
+                          </Text>
+                        </>
+                      ) : songTypeSaveStatus === 'saved' ? (
+                        <>
+                          <IconSymbol
+                            ios_icon_name="checkmark.circle.fill"
+                            android_material_icon_name="check-circle"
+                            size={16}
+                            color="#15803D"
+                          />
+                          <Text style={[styles.songTypeSaveStatusText, { color: '#15803D' }]}>
+                            Saved
+                          </Text>
+                        </>
+                      ) : (
+                        <>
+                          <IconSymbol
+                            ios_icon_name="exclamationmark.circle.fill"
+                            android_material_icon_name="error"
+                            size={16}
+                            color={colors.error}
+                          />
+                          <Text style={[styles.songTypeSaveErrorText, { color: colors.error }]}>
+                            {songTypeSaveError ?? 'Changes were not saved.'}
+                          </Text>
+                          <TouchableOpacity
+                            accessibilityLabel="Retry saving song types"
+                            accessibilityRole="button"
+                            onPress={handleRetrySongTypeSave}
+                            style={[styles.retrySongTypeButton, { borderColor: colors.error }]}
+                          >
+                            <IconSymbol
+                              ios_icon_name="arrow.clockwise"
+                              android_material_icon_name="refresh"
+                              size={15}
+                              color={colors.error}
+                            />
+                            <Text style={[styles.retrySongTypeButtonText, { color: colors.error }]}>
+                              Retry
+                            </Text>
+                          </TouchableOpacity>
+                        </>
+                      )}
+                    </View>
+                  ) : null}
                 </View>
               </View>
               <View style={styles.songTypeGrid}>
@@ -1991,26 +2153,12 @@ export default function ChurchScreen() {
                 <TouchableOpacity
                   style={[styles.addSongTypeButton, { backgroundColor: colors.primary }]}
                   onPress={handleAddSongType}
+                  accessibilityLabel="Add song type"
                 >
                   <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={18} color="#fff" />
                   <Text style={styles.addSongTypeButtonText}>Add</Text>
                 </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={[
-                  styles.saveSongTypesButton,
-                  { backgroundColor: colors.primary },
-                  isSavingSongTypes && styles.disabledButton,
-                ]}
-                onPress={handleSaveSongTypes}
-                disabled={isSavingSongTypes}
-              >
-                {isSavingSongTypes ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.saveSongTypesButtonText}>Save Song Types</Text>
-                )}
-              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -2287,6 +2435,51 @@ export default function ChurchScreen() {
                     })}
                   </View>
                 )}
+
+                <View
+                  style={[
+                    styles.scheduledServiceManager,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: colors.cardBackground,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.scheduledServiceManagerIcon,
+                      { backgroundColor: colors.primary + '14' },
+                    ]}
+                  >
+                    <IconSymbol
+                      ios_icon_name="calendar.badge.minus"
+                      android_material_icon_name="event-busy"
+                      size={24}
+                      color={colors.primary}
+                    />
+                  </View>
+                  <View style={styles.scheduledServiceManagerText}>
+                    <Text style={[styles.scheduledServiceManagerTitle, { color: colors.text }]}>
+                      Manage Scheduled Services
+                    </Text>
+                    <Text style={[styles.scheduledServiceManagerDescription, { color: colors.textSecondary }]}>
+                      Preview and delete services by date range or individual selection. Weekly templates stay unchanged.
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.scheduledServiceManagerButton,
+                      { borderColor: colors.primary },
+                    ]}
+                    onPress={() => setShowBulkServiceDeleteModal(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Manage scheduled services"
+                  >
+                    <Text style={[styles.scheduledServiceManagerButtonText, { color: colors.primary }]}>
+                      Open
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
 
@@ -2881,135 +3074,138 @@ export default function ChurchScreen() {
         </View>
       </Modal>
 
-      {/* Add Service Modal */}
-      <Modal
+      <AdminFormModal
         visible={isAddServiceModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => {
-          setAddServiceModalVisible(false);
-          resetServiceForm();
+        title={serviceToEdit ? 'Edit Weekly Service' : 'Add Weekly Service'}
+        onClose={closeServiceModal}
+        backgroundColor={colors.cardBackground || '#FFFFFF'}
+        textColor={colors.text}
+        borderColor={colors.border}
+        primaryColor={colors.primary}
+        maxWidth={440}
+        maxRestingHeight={600}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: closeServiceModal,
+        }}
+        primaryAction={{
+          label: serviceToEdit ? 'Save' : 'Add',
+          onPress: handleSaveService,
+          disabled: !newServiceName.trim(),
         }}
       >
-        <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalScrollContent}>
-            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>
-                {serviceToEdit ? 'Edit Weekly Service' : 'Add Weekly Service'}
-              </Text>
+        <TextInput
+          style={[styles.input, styles.compactServiceInput, { color: colors.text, borderColor: colors.border }]}
+          placeholder="Service Name (e.g., Sunday Morning)"
+          placeholderTextColor={colors.textSecondary}
+          value={newServiceName}
+          onChangeText={setNewServiceName}
+          returnKeyType="done"
+        />
 
-              <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                placeholder="Service Name (e.g., Sunday Morning)"
-                placeholderTextColor={colors.textSecondary}
-                value={newServiceName}
-                onChangeText={setNewServiceName}
-              />
-
-              <View style={styles.pickerContainer}>
-                <Text style={[styles.label, { color: colors.text }]}>Day of Week</Text>
-                <View style={styles.dayButtons}>
-                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={[
-                        styles.dayButton,
-                        { borderColor: colors.border },
-                        newServiceDay === index && { backgroundColor: colors.primary },
-                      ]}
-                      onPress={() => setNewServiceDay(index)}
-                    >
-                      <Text
-                        style={[
-                          styles.dayButtonText,
-                          { color: newServiceDay === index ? '#fff' : colors.text },
-                        ]}
-                      >
-                        {day}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.pickerContainer}>
-                <Text style={[styles.label, { color: colors.text }]}>Time</Text>
-                <TextInput
-                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="HH:MM (e.g., 09:00)"
-                  placeholderTextColor={colors.textSecondary}
-                  value={newServiceTime}
-                  onChangeText={setNewServiceTime}
-                />
-              </View>
-
-              <View style={styles.pickerContainer}>
-                <Text style={[styles.label, { color: colors.text }]}>Roles for this service</Text>
-                {(churchRoles ?? []).length > 0 ? (
-                  <View style={styles.roleCheckboxContainer}>
-                    {(churchRoles ?? []).map((role) => {
-                      const isSelected = (selectedServiceRoles ?? []).includes(role.name);
-                      return (
-                        <TouchableOpacity
-                          key={role.id}
-                          style={[
-                            styles.roleCheckbox,
-                            { borderColor: colors.border },
-                            isSelected && { backgroundColor: colors.primary },
-                          ]}
-                          onPress={() => toggleServiceRole(role.name)}
-                        >
-                          <Text
-                            style={[
-                              styles.roleCheckboxText,
-                              { color: isSelected ? '#fff' : colors.text },
-                            ]}
-                          >
-                            {role.name}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                ) : (
-                  <Text style={[styles.helperText, { color: colors.textSecondary }]}>
-                    Add roles in the Roles tab first
-                  </Text>
-                )}
-              </View>
-
-              <TextInput
-                style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.border }]}
-                placeholder="Additional notes (optional)"
-                placeholderTextColor={colors.textSecondary}
-                value={newServiceNotes}
-                onChangeText={setNewServiceNotes}
-                multiline
-                numberOfLines={3}
-              />
-
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
-                  onPress={() => {
-                    console.log('User cancelled weekly service modal');
-                    setAddServiceModalVisible(false);
-                    resetServiceForm();
-                  }}
+        <View style={styles.compactPickerContainer}>
+          <Text style={[styles.label, { color: colors.text }]}>Day of Week</Text>
+          <View style={styles.dayButtons}>
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
+              <TouchableOpacity
+                key={day}
+                style={[
+                  styles.dayButton,
+                  { borderColor: colors.border },
+                  newServiceDay === index && { backgroundColor: colors.primary },
+                ]}
+                onPress={() => setNewServiceDay(index)}
+              >
+                <Text
+                  style={[
+                    styles.dayButtonText,
+                    { color: newServiceDay === index ? '#FFFFFF' : colors.text },
+                  ]}
                 >
-                  <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, { backgroundColor: colors.primary }]}
-                  onPress={handleSaveService}
-                >
-                  <Text style={styles.saveButtonText}>{serviceToEdit ? 'Save' : 'Add'}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </ScrollView>
+                  {day}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
-      </Modal>
+
+        <View style={styles.compactPickerContainer}>
+          <Text style={[styles.label, { color: colors.text }]}>Time</Text>
+          <TextInput
+            style={[styles.input, styles.compactServiceInput, { color: colors.text, borderColor: colors.border }]}
+            placeholder="HH:MM (e.g., 09:00)"
+            placeholderTextColor={colors.textSecondary}
+            value={newServiceTime}
+            onChangeText={setNewServiceTime}
+            keyboardType="numbers-and-punctuation"
+            returnKeyType="done"
+          />
+        </View>
+
+        <View style={styles.compactPickerContainer}>
+          <Text style={[styles.label, { color: colors.text }]}>Roles for this service</Text>
+          {(churchRoles ?? []).length > 0 ? (
+            <View style={styles.roleCheckboxContainer}>
+              {(churchRoles ?? []).map((role) => {
+                const isSelected = (selectedServiceRoles ?? []).includes(role.name);
+                return (
+                  <TouchableOpacity
+                    key={role.id}
+                    style={[
+                      styles.roleCheckbox,
+                      { borderColor: colors.border },
+                      isSelected && { backgroundColor: colors.primary },
+                    ]}
+                    onPress={() => toggleServiceRole(role.name)}
+                  >
+                    <Text
+                      style={[
+                        styles.roleCheckboxText,
+                        { color: isSelected ? '#FFFFFF' : colors.text },
+                      ]}
+                    >
+                      {role.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : (
+            <Text style={[styles.helperText, { color: colors.textSecondary }]}>
+              Add roles in the Roles tab first
+            </Text>
+          )}
+        </View>
+
+        <TextInput
+          style={[
+            styles.input,
+            styles.textArea,
+            styles.compactServiceNotes,
+            { color: colors.text, borderColor: colors.border },
+          ]}
+          placeholder="Additional notes (optional)"
+          placeholderTextColor={colors.textSecondary}
+          value={newServiceNotes}
+          onChangeText={setNewServiceNotes}
+          multiline
+          numberOfLines={3}
+          returnKeyType="done"
+          blurOnSubmit
+        />
+      </AdminFormModal>
+
+      <BulkServiceDeleteModal
+        visible={showBulkServiceDeleteModal}
+        churchName={currentChurch?.name ?? 'Church'}
+        services={services}
+        loadingMore={loadingMoreServices}
+        loadedThrough={loadedThrough}
+        onLoadMore={loadMoreServices}
+        onClose={() => setShowBulkServiceDeleteModal(false)}
+        onPreview={previewScheduledServiceDeletion}
+        onApply={applyScheduledServiceDeletion}
+      />
 
       {/* Add Role Modal */}
       <Modal
@@ -3983,180 +4179,192 @@ export default function ChurchScreen() {
         </View>
       </Modal>
 
-      {/* Add Ad-Hoc Service Modal */}
-      <Modal visible={showAdHocServiceModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalScrollContent}>
-            <View style={[styles.modalContent, styles.singleServiceModalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-              <Text style={[styles.modalTitle, styles.singleServiceModalTitle, { color: colors.text }]}>Add Single Service</Text>
-              
-              <TextInput
-                style={[styles.input, styles.singleServiceInput, { color: colors.text, borderColor: colors.border }]}
-                placeholder="Service Name (e.g., Special Prayer Meeting)"
-                placeholderTextColor={colors.textSecondary}
-                value={adHocServiceName}
-                onChangeText={setAdHocServiceName}
-              />
+      <AdminFormModal
+        visible={showAdHocServiceModal}
+        title="Add Single Service"
+        onClose={closeAdHocServiceModal}
+        backgroundColor={colors.cardBackground || '#FFFFFF'}
+        textColor={colors.text}
+        borderColor={colors.border}
+        primaryColor={colors.primary}
+        maxWidth={460}
+        maxRestingHeight={620}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: closeAdHocServiceModal,
+          disabled: isCreatingAdHocService,
+        }}
+        primaryAction={{
+          label: 'Create Service',
+          onPress: handleCreateAdHocService,
+          disabled: isCreatingAdHocService,
+          loading: isCreatingAdHocService,
+        }}
+      >
+        <TextInput
+          style={[styles.input, styles.singleServiceInput, { color: colors.text, borderColor: colors.border }]}
+          placeholder="Service Name (e.g., Special Prayer Meeting)"
+          placeholderTextColor={colors.textSecondary}
+          value={adHocServiceName}
+          onChangeText={setAdHocServiceName}
+          returnKeyType="done"
+        />
 
+        <TouchableOpacity
+          style={[
+            styles.dateButton,
+            styles.singleServiceDateButton,
+            {
+              backgroundColor: colors.inputBackground,
+              borderWidth: 1,
+              borderColor: colors.border,
+            },
+          ]}
+          onPress={() => {
+            console.log('User tapped ad-hoc date picker button');
+            setDraftAdHocServiceDate(adHocServiceDate);
+            setShowAdHocDatePicker(true);
+          }}
+        >
+          <Text style={[styles.dateButtonText, { color: colors.text }]}>
+            Date: {adHocServiceDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          </Text>
+        </TouchableOpacity>
+        {showAdHocDatePicker && (
+          <View style={styles.datePickerWrapper}>
+            <DateTimePicker
+              value={draftAdHocServiceDate}
+              mode="date"
+              display="spinner"
+              themeVariant="light"
+              textColor="#000000"
+              onChange={(event, date) => {
+                console.log('User selected ad-hoc date:', date);
+                if (date) setDraftAdHocServiceDate(date);
+              }}
+            />
+            <View style={styles.pickerActionRow}>
               <TouchableOpacity
-                  style={[styles.dateButton, styles.singleServiceDateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
-                  onPress={() => {
-                    console.log('User tapped ad-hoc date picker button');
-                    setDraftAdHocServiceDate(adHocServiceDate);
-                    setShowAdHocDatePicker(true);
-                  }}
-              >
-                <Text style={[styles.dateButtonText, { color: colors.text }]}>
-                  Date: {adHocServiceDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </Text>
-              </TouchableOpacity>
-                {showAdHocDatePicker && (
-                  <View style={styles.datePickerWrapper}>
-                    <DateTimePicker
-                      value={draftAdHocServiceDate}
-                      mode="date"
-                      display="spinner"
-                      themeVariant="light"
-                      textColor="#000000"
-                      onChange={(event, date) => {
-                        console.log('User selected ad-hoc date:', date);
-                        if (date) setDraftAdHocServiceDate(date);
-                      }}
-                    />
-                    <View style={styles.pickerActionRow}>
-                      <TouchableOpacity
-                        style={[styles.pickerActionButton, styles.pickerCancelButton]}
-                        onPress={() => {
-                          setDraftAdHocServiceDate(adHocServiceDate);
-                          setShowAdHocDatePicker(false);
-                        }}
-                      >
-                        <Text style={styles.pickerCancelText}>Cancel</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.pickerActionButton, styles.pickerConfirmButton]}
-                        onPress={() => {
-                          setAdHocServiceDate(draftAdHocServiceDate);
-                          setShowAdHocDatePicker(false);
-                        }}
-                      >
-                        <Text style={styles.pickerConfirmText}>Confirm</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-
-              <TouchableOpacity
-                  style={[styles.dateButton, styles.singleServiceDateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
-                  onPress={() => {
-                    console.log('User tapped ad-hoc time picker button');
-                    setDraftAdHocServiceTime(adHocServiceTime);
-                    setShowAdHocTimePicker(true);
-                  }}
-              >
-                <Text style={[styles.dateButtonText, { color: colors.text }]}>
-                  Time: {adHocServiceTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                </Text>
-              </TouchableOpacity>
-                {showAdHocTimePicker && (
-                  <View style={styles.datePickerWrapper}>
-                    <DateTimePicker
-                      value={draftAdHocServiceTime}
-                      mode="time"
-                      display="spinner"
-                      themeVariant="light"
-                      textColor="#000000"
-                      onChange={(event, date) => {
-                        console.log('User selected ad-hoc time:', date);
-                        if (date) setDraftAdHocServiceTime(date);
-                      }}
-                    />
-                    <View style={styles.pickerActionRow}>
-                      <TouchableOpacity
-                        style={[styles.pickerActionButton, styles.pickerCancelButton]}
-                        onPress={() => {
-                          setDraftAdHocServiceTime(adHocServiceTime);
-                          setShowAdHocTimePicker(false);
-                        }}
-                      >
-                        <Text style={styles.pickerCancelText}>Cancel</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.pickerActionButton, styles.pickerConfirmButton]}
-                        onPress={() => {
-                          setAdHocServiceTime(draftAdHocServiceTime);
-                          setShowAdHocTimePicker(false);
-                        }}
-                      >
-                        <Text style={styles.pickerConfirmText}>Confirm</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-
-              <Text style={[styles.sectionTitle, styles.singleServiceSectionTitle, { color: colors.text }]}>Select Roles</Text>
-              <ScrollView style={styles.singleServiceRolesList}>
-                {(churchRoles ?? []).map(role => {
-                  const isSelected = (adHocServiceRoles ?? []).includes(role.id);
-                  return (
-                    <TouchableOpacity
-                      key={role.id}
-                      style={[styles.roleItem, styles.singleServiceRoleItem, { backgroundColor: colors.inputBackground }]}
-                      onPress={() => toggleAdHocServiceRole(role.id)}
-                    >
-                      <Text style={[styles.roleItemText, { color: colors.text }]}>{role.name}</Text>
-                      <View style={[
-                        styles.checkbox,
-                        { borderColor: colors.primary },
-                        isSelected && { backgroundColor: colors.primary },
-                      ]}>
-                        {isSelected && (
-                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="done" size={16} color="#fff" />
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-
-              <TextInput
-                style={[styles.input, styles.singleServiceInput, styles.singleServiceNotesInput, { color: colors.text, borderColor: colors.border }]}
-                placeholder="Notes (optional)"
-                placeholderTextColor={colors.textSecondary}
-                value={adHocServiceNotes}
-                onChangeText={setAdHocServiceNotes}
-                multiline
-              />
-
-              <TouchableOpacity 
-                style={[styles.primaryButton, styles.singleServicePrimaryButton, { backgroundColor: colors.primary }]} 
-                onPress={handleCreateAdHocService}
-                disabled={isCreatingAdHocService}
-              >
-                {isCreatingAdHocService ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.primaryButtonText}>Create Service</Text>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.secondaryButton, styles.singleServiceSecondaryButton, { backgroundColor: '#e0e0e0' }]} 
+                style={[styles.pickerActionButton, styles.pickerCancelButton]}
                 onPress={() => {
-                  console.log('User cancelled ad-hoc service creation');
-                  setShowAdHocServiceModal(false);
-                  setAdHocServiceName('');
-                  setAdHocServiceDate(new Date());
-                  setAdHocServiceTime(new Date());
-                  setAdHocServiceNotes('');
-                  setAdHocServiceRoles([]);
+                  setDraftAdHocServiceDate(adHocServiceDate);
+                  setShowAdHocDatePicker(false);
                 }}
               >
-                <Text style={[styles.secondaryButtonText, { color: '#333' }]}>Cancel</Text>
+                <Text style={styles.pickerCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.pickerActionButton, styles.pickerConfirmButton]}
+                onPress={() => {
+                  setAdHocServiceDate(draftAdHocServiceDate);
+                  setShowAdHocDatePicker(false);
+                }}
+              >
+                <Text style={styles.pickerConfirmText}>Confirm</Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={[
+            styles.dateButton,
+            styles.singleServiceDateButton,
+            {
+              backgroundColor: colors.inputBackground,
+              borderWidth: 1,
+              borderColor: colors.border,
+            },
+          ]}
+          onPress={() => {
+            console.log('User tapped ad-hoc time picker button');
+            setDraftAdHocServiceTime(adHocServiceTime);
+            setShowAdHocTimePicker(true);
+          }}
+        >
+          <Text style={[styles.dateButtonText, { color: colors.text }]}>
+            Time: {adHocServiceTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+          </Text>
+        </TouchableOpacity>
+        {showAdHocTimePicker && (
+          <View style={styles.datePickerWrapper}>
+            <DateTimePicker
+              value={draftAdHocServiceTime}
+              mode="time"
+              display="spinner"
+              themeVariant="light"
+              textColor="#000000"
+              onChange={(event, date) => {
+                console.log('User selected ad-hoc time:', date);
+                if (date) setDraftAdHocServiceTime(date);
+              }}
+            />
+            <View style={styles.pickerActionRow}>
+              <TouchableOpacity
+                style={[styles.pickerActionButton, styles.pickerCancelButton]}
+                onPress={() => {
+                  setDraftAdHocServiceTime(adHocServiceTime);
+                  setShowAdHocTimePicker(false);
+                }}
+              >
+                <Text style={styles.pickerCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.pickerActionButton, styles.pickerConfirmButton]}
+                onPress={() => {
+                  setAdHocServiceTime(draftAdHocServiceTime);
+                  setShowAdHocTimePicker(false);
+                }}
+              >
+                <Text style={styles.pickerConfirmText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        <Text style={[styles.sectionTitle, styles.singleServiceSectionTitle, { color: colors.text }]}>
+          Select Roles
+        </Text>
+        <View style={styles.singleServiceRolesList}>
+          {(churchRoles ?? []).map(role => {
+            const isSelected = (adHocServiceRoles ?? []).includes(role.id);
+            return (
+              <TouchableOpacity
+                key={role.id}
+                style={[styles.roleItem, styles.singleServiceRoleItem, { backgroundColor: colors.inputBackground }]}
+                onPress={() => toggleAdHocServiceRole(role.id)}
+              >
+                <Text style={[styles.roleItemText, { color: colors.text }]}>{role.name}</Text>
+                <View style={[
+                  styles.checkbox,
+                  { borderColor: colors.primary },
+                  isSelected && { backgroundColor: colors.primary },
+                ]}>
+                  {isSelected && (
+                    <IconSymbol ios_icon_name="checkmark" android_material_icon_name="done" size={16} color="#FFFFFF" />
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </View>
-      </Modal>
+
+        <TextInput
+          style={[
+            styles.input,
+            styles.singleServiceInput,
+            styles.singleServiceNotesInput,
+            { color: colors.text, borderColor: colors.border },
+          ]}
+          placeholder="Notes (optional)"
+          placeholderTextColor={colors.textSecondary}
+          value={adHocServiceNotes}
+          onChangeText={setAdHocServiceNotes}
+          multiline
+          returnKeyType="done"
+          blurOnSubmit
+        />
+      </AdminFormModal>
     </View>
   );
 }
@@ -4164,7 +4372,7 @@ export default function ChurchScreen() {
 const styles = StyleSheet.create({
   datePickerWrapper: {
     backgroundColor: '#ffffff',
-    borderRadius: 12,
+    borderRadius: 8,
     overflow: 'hidden',
     marginTop: 8,
     marginBottom: 8,
@@ -4199,127 +4407,6 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-  },
-  churchHeaderContainer: {
-    paddingBottom: 22,
-    paddingHorizontal: 20,
-    marginBottom: 16,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    elevation: 8,
-  },
-  headerAccentPanel: {
-    position: 'absolute',
-    right: -24,
-    top: 18,
-    width: 132,
-    height: 74,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.10)',
-    transform: [{ rotate: '-12deg' }],
-  },
-  headerAccentLine: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 0,
-    height: 3,
-    borderRadius: 3,
-    backgroundColor: '#60A5FA',
-  },
-  churchHeaderTopRow: {
-    minHeight: 88,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 14,
-  },
-  churchHeaderTextWrap: {
-    flex: 1,
-    minWidth: 0,
-  },
-  headerEyebrow: {
-    color: '#BFDBFE',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 5,
-  },
-  churchHeaderTitle: {
-    fontSize: 32,
-    lineHeight: 37,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    textAlign: 'left',
-  },
-  churchHeaderActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  churchHeaderIconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.28)',
-  },
-  churchHeaderInvitationPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    borderRadius: 16,
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.24)',
-  },
-  churchHeaderInvitationText: {
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  churchHeaderInvitationLabel: {
-    color: '#BFDBFE',
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  churchHeaderInvitationCode: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    lineHeight: 21,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-  },
-  churchHeaderEmptyPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    alignSelf: 'flex-start',
-    borderRadius: 16,
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.24)',
-  },
-  churchHeaderEmptyText: {
-    flexShrink: 1,
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '800',
   },
   centerContainer: {
     flex: 1,
@@ -4432,7 +4519,7 @@ const styles = StyleSheet.create({
   songTypesCard: {
     marginTop: 16,
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 8,
   },
   songTypesHeader: {
     flexDirection: 'row',
@@ -4451,6 +4538,38 @@ const styles = StyleSheet.create({
   songTypesDescription: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  songTypeSaveStatusRow: {
+    minHeight: 26,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
+  songTypeSaveStatusText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  songTypeSaveErrorText: {
+    minWidth: 140,
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+  },
+  retrySongTypeButton: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    borderWidth: 1,
+    borderRadius: 8,
+  },
+  retrySongTypeButtonText: {
+    fontSize: 12,
+    fontWeight: '800',
   },
   songTypeGrid: {
     flexDirection: 'row',
@@ -4483,19 +4602,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 14,
   },
   addSongTypeInput: {
     flex: 1,
     minHeight: 44,
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 8,
     paddingHorizontal: 12,
     fontSize: 15,
   },
   addSongTypeButton: {
     minHeight: 44,
-    borderRadius: 10,
+    borderRadius: 8,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -4505,18 +4623,6 @@ const styles = StyleSheet.create({
   addSongTypeButtonText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '700',
-  },
-  saveSongTypesButton: {
-    minHeight: 44,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  saveSongTypesButtonText: {
-    color: '#fff',
-    fontSize: 15,
     fontWeight: '700',
   },
   disabledButton: {
@@ -4618,6 +4724,49 @@ const styles = StyleSheet.create({
   },
   servicesList: {
     gap: 12,
+  },
+  scheduledServiceManager: {
+    marginTop: 20,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  scheduledServiceManagerIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scheduledServiceManagerText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  scheduledServiceManagerTitle: {
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: '800',
+  },
+  scheduledServiceManagerDescription: {
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  scheduledServiceManagerButton: {
+    minWidth: 62,
+    minHeight: 40,
+    borderWidth: 1,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  scheduledServiceManagerButtonText: {
+    fontSize: 13,
+    fontWeight: '800',
   },
   serviceCard: {
     flexDirection: 'row',
@@ -4853,15 +5002,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-  singleServiceModalContent: {
-    maxWidth: 500,
-    maxHeight: '78%',
-    padding: 16,
-  },
-  singleServiceModalTitle: {
-    fontSize: 20,
-    marginBottom: 12,
-  },
   singleServiceInput: {
     padding: 10,
     marginBottom: 10,
@@ -4877,7 +5017,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   singleServiceRolesList: {
-    maxHeight: 96,
     marginBottom: 10,
   },
   singleServiceRoleItem: {
@@ -4888,14 +5027,6 @@ const styles = StyleSheet.create({
   singleServiceNotesInput: {
     minHeight: 44,
     textAlignVertical: 'top',
-  },
-  singleServicePrimaryButton: {
-    padding: 13,
-    marginTop: 4,
-  },
-  singleServiceSecondaryButton: {
-    padding: 13,
-    marginTop: 10,
   },
   autoAssignModalContent: {
     width: '90%',
@@ -5018,6 +5149,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
+  autoAssignPreferenceOverride: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 7,
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: '#FFEDD5',
+  },
+  autoAssignPreferenceOverrideText: {
+    flex: 1,
+    color: '#9A3412',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+  },
   autoAssignSkippedItem: {
     borderWidth: 1,
     borderRadius: 8,
@@ -5069,6 +5216,15 @@ const styles = StyleSheet.create({
   },
   pickerContainer: {
     marginBottom: 16,
+  },
+  compactPickerContainer: {
+    marginBottom: 12,
+  },
+  compactServiceInput: {
+    marginBottom: 10,
+  },
+  compactServiceNotes: {
+    marginBottom: 0,
   },
   dayButtons: {
     flexDirection: 'row',

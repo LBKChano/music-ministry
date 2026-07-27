@@ -1,5 +1,12 @@
 
-import { useState, useEffect, useCallback, useMemo, type SetStateAction } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  type SetStateAction,
+} from 'react';
 import {
   useMutation,
   useQueries,
@@ -18,6 +25,16 @@ import {
   getServiceRangeKey,
   type ServiceDateRange,
 } from '@/lib/services/ranges';
+import {
+  applyDenseSongOrder,
+  sortSongs,
+} from '@/lib/services/song-order';
+import {
+  normalizeBulkServiceDeleteResult,
+  removeDeletedServices,
+  type BulkServiceDeleteResult,
+  type BulkServiceDeleteSelection,
+} from '@/lib/admin/bulk-service-deletion';
 import {
   clearLocalAssignmentWrite,
   markLocalAssignmentDelete,
@@ -45,6 +62,7 @@ export interface BatchServiceDraft {
   notes?: string | null;
   roleSlots: string[];
   time?: string | null;
+  recurringServiceId?: string | null;
 }
 
 export interface BatchServiceWriteResult {
@@ -130,9 +148,7 @@ async function fetchServicesForChurch(
   const services = (data ?? []).map(service => ({
     ...service,
     assignments: service.assignments ?? [],
-    service_comments: [...(service.service_comments ?? [])].sort((a, b) =>
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    ),
+    service_comments: sortSongs(service.service_comments ?? []),
   }));
 
   console.log('Fetched services with assignments:', services.length, 'services');
@@ -167,6 +183,10 @@ export function useServices(
     windowed ? [createServiceDateRange(startDate, windowDays)] : []
   ));
   const [actionError, setError] = useState<string | null>(null);
+  const [reorderingServiceIds, setReorderingServiceIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const reorderingServiceIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
     setServiceRanges(
@@ -312,7 +332,8 @@ export function useServices(
     serviceType: string,
     notes: string | undefined,
     roleSlots: string[], // Array of role names (strings)
-    time?: string // Optional time for special services
+    time?: string, // Optional time for special services
+    recurringServiceId?: string | null
   ) => {
     if (!serviceChurchId) {
       console.error('No church ID provided');
@@ -333,6 +354,9 @@ export function useServices(
       // Only add time if it's provided
       if (time) {
         newService.time = time;
+      }
+      if (recurringServiceId) {
+        newService.recurring_service_id = recurringServiceId;
       }
 
       console.log('Inserting service into database:', newService);
@@ -424,6 +448,7 @@ export function useServices(
       notes: draft.notes ?? null,
       roles: draft.roleSlots,
       time: draft.time ?? null,
+      recurring_service_id: draft.recurringServiceId ?? null,
     }));
 
     try {
@@ -471,7 +496,8 @@ export function useServices(
           draft.serviceType,
           draft.notes ?? undefined,
           draft.roleSlots,
-          draft.time ?? undefined
+          draft.time ?? undefined,
+          draft.recurringServiceId ?? null
         );
         if (result) createdCount += 1;
         else failedCount += 1;
@@ -537,6 +563,95 @@ export function useServices(
       return null;
     }
   }, [accountId, ensureServiceDateLoaded, queryClient]);
+
+  const previewBulkServiceDeletion = useCallback(async (
+    serviceChurchId: string,
+    selection: BulkServiceDeleteSelection
+  ): Promise<BulkServiceDeleteResult | null> => {
+    if (!serviceChurchId) return null;
+
+    try {
+      setError(null);
+      const { data, error: previewError } = await supabase.rpc(
+        'manage_scheduled_services_bulk',
+        {
+          target_church_id: serviceChurchId,
+          target_start_date: selection.startDate ?? null,
+          target_end_date: selection.endDate ?? null,
+          target_service_ids: selection.serviceIds ?? null,
+          dry_run: true,
+        }
+      );
+
+      if (previewError) {
+        const message = isMissingRpcFunctionError(previewError)
+          ? 'Bulk service deletion is not available yet. Deploy the required Supabase migration first.'
+          : previewError.message;
+        console.error('Error previewing bulk service deletion:', previewError);
+        setError(message);
+        return null;
+      }
+
+      return normalizeBulkServiceDeleteResult(data);
+    } catch (err) {
+      console.error('Error previewing bulk service deletion:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return null;
+    }
+  }, []);
+
+  const applyBulkServiceDeletion = useCallback(async (
+    serviceChurchId: string,
+    previewedServiceIds: string[]
+  ): Promise<BulkServiceDeleteResult | null> => {
+    if (!serviceChurchId || previewedServiceIds.length === 0) return null;
+
+    try {
+      setError(null);
+      const { data, error: applyError } = await supabase.rpc(
+        'manage_scheduled_services_bulk',
+        {
+          target_church_id: serviceChurchId,
+          target_start_date: null,
+          target_end_date: null,
+          target_service_ids: previewedServiceIds,
+          dry_run: false,
+        }
+      );
+
+      if (applyError) {
+        const message = isMissingRpcFunctionError(applyError)
+          ? 'Bulk service deletion is not available yet. Deploy the required Supabase migration first.'
+          : applyError.message;
+        console.error('Error applying bulk service deletion:', applyError);
+        setError(message);
+        return null;
+      }
+
+      const result = normalizeBulkServiceDeleteResult(data);
+      const deletedIds = new Set(result.deleted_service_ids);
+      if (
+        result.operation !== 'applied'
+        || deletedIds.size !== previewedServiceIds.length
+        || previewedServiceIds.some(id => !deletedIds.has(id))
+      ) {
+        setError('Supabase did not confirm the complete service deletion.');
+        return null;
+      }
+
+      setServices(previous => removeDeletedServices(previous, deletedIds));
+      if (accountId) {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.fillInRequests(accountId, serviceChurchId),
+        });
+      }
+      return result;
+    } catch (err) {
+      console.error('Error applying bulk service deletion:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return null;
+    }
+  }, [accountId, queryClient, setServices]);
 
   // Delete a service - OPTIMIZED: No need to refetch all services
   const deleteService = useCallback(async (serviceId: string) => {
@@ -832,14 +947,12 @@ export function useServices(
           service.id === serviceId
             ? {
               ...service,
-              service_comments: [
+              service_comments: sortSongs([
                 ...service.service_comments.filter(existing => (
                   !insertedComments.some(inserted => inserted.id === existing.id)
                 )),
                 ...insertedComments,
-              ].sort((a, b) => (
-                new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-              )),
+              ]),
             }
             : service
         )
@@ -939,9 +1052,10 @@ export function useServices(
           service.id === serviceId
             ? {
               ...service,
-              service_comments: service.service_comments
-                .map(comment => comment.id === commentId ? data : comment)
-                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+              service_comments: sortSongs(
+                service.service_comments
+                  .map(comment => comment.id === commentId ? data : comment)
+              ),
             }
             : service
         )
@@ -954,6 +1068,91 @@ export function useServices(
       return null;
     }
   }, [setServices]);
+
+  const reorderServiceComments = useCallback(async (
+    serviceId: string,
+    orderedCommentIds: string[]
+  ) => {
+    if (reorderingServiceIdsRef.current.has(serviceId)) {
+      return true;
+    }
+
+    const service = services.find(candidate => candidate.id === serviceId);
+    const currentComments = service?.service_comments ?? [];
+    const uniqueIds = new Set(orderedCommentIds);
+    if (
+      !service
+      || orderedCommentIds.length !== currentComments.length
+      || uniqueIds.size !== orderedCommentIds.length
+      || currentComments.some(comment => !uniqueIds.has(comment.id))
+    ) {
+      setError('The song list changed. Refresh the schedule and try again.');
+      return false;
+    }
+
+    const previousOrder = sortSongs(currentComments);
+    reorderingServiceIdsRef.current.add(serviceId);
+    setError(null);
+    setReorderingServiceIds(current => new Set(current).add(serviceId));
+    setServices(previous => previous.map(candidate => (
+      candidate.id === serviceId
+        ? {
+          ...candidate,
+          service_comments: applyDenseSongOrder(
+            candidate.service_comments,
+            orderedCommentIds
+          ),
+        }
+        : candidate
+    )));
+
+    try {
+      const { data, error: reorderError } = await supabase.rpc(
+        'reorder_service_songs',
+        {
+          target_service_id: serviceId,
+          ordered_comment_ids: orderedCommentIds,
+        }
+      );
+
+      if (reorderError) throw reorderError;
+
+      const existingById = new Map(
+        currentComments.map(comment => [comment.id, comment])
+      );
+      const reorderedComments = sortSongs((data ?? []).map(comment => ({
+        ...comment,
+        church_members: existingById.get(comment.id)?.church_members ?? null,
+      })));
+      setServices(previous => previous.map(candidate => (
+        candidate.id === serviceId
+          ? { ...candidate, service_comments: reorderedComments }
+          : candidate
+      )));
+      return true;
+    } catch (err) {
+      console.error('Error reordering service songs:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      setServices(previous => previous.map(candidate => (
+        candidate.id === serviceId
+          ? { ...candidate, service_comments: previousOrder }
+          : candidate
+      )));
+      try {
+        await refreshServices();
+      } catch (refreshError) {
+        console.error('Error refreshing songs after reorder failure:', refreshError);
+      }
+      return false;
+    } finally {
+      reorderingServiceIdsRef.current.delete(serviceId);
+      setReorderingServiceIds(current => {
+        const next = new Set(current);
+        next.delete(serviceId);
+        return next;
+      });
+    }
+  }, [refreshServices, services, setServices]);
 
   const deleteServiceComment = useCallback(async (commentId: string, serviceId: string) => {
     if (!commentId || !serviceId) {
@@ -1081,6 +1280,22 @@ export function useServices(
       }),
     [deleteService, runServiceMutation]
   );
+  const previewBulkServiceDeletionAction = useCallback(
+    (...args: Parameters<typeof previewBulkServiceDeletion>) =>
+      runServiceMutation({
+        operation: 'preview-bulk-service-deletion',
+        run: () => previewBulkServiceDeletion(...args),
+      }),
+    [previewBulkServiceDeletion, runServiceMutation]
+  );
+  const applyBulkServiceDeletionAction = useCallback(
+    (...args: Parameters<typeof applyBulkServiceDeletion>) =>
+      runServiceMutation({
+        operation: 'apply-bulk-service-deletion',
+        run: () => applyBulkServiceDeletion(...args),
+      }),
+    [applyBulkServiceDeletion, runServiceMutation]
+  );
   const addAssignmentAction = useCallback(
     (...args: Parameters<typeof addAssignment>) =>
       runServiceMutation({
@@ -1145,6 +1360,14 @@ export function useServices(
       }),
     [deleteServiceComment, runServiceMutation]
   );
+  const reorderServiceCommentsAction = useCallback(
+    (...args: Parameters<typeof reorderServiceComments>) =>
+      runServiceMutation({
+        operation: 'reorder-service-comments',
+        run: () => reorderServiceComments(...args),
+      }),
+    [reorderServiceComments, runServiceMutation]
+  );
   const notifyServiceCommentsAction = useCallback(
     (...args: Parameters<typeof notifyServiceComments>) =>
       runServiceMutation({
@@ -1162,6 +1385,8 @@ export function useServices(
     createServiceFromTemplate: createServiceFromTemplateAction,
     createServicesBatch: createServicesBatchAction,
     deleteService: deleteServiceAction,
+    previewBulkServiceDeletion: previewBulkServiceDeletionAction,
+    applyBulkServiceDeletion: applyBulkServiceDeletionAction,
     addAssignment: addAssignmentAction,
     updateAssignment: updateAssignmentAction,
     batchUpdateAssignments: batchUpdateAssignmentsAction,
@@ -1170,6 +1395,8 @@ export function useServices(
     addServiceComments: addServiceCommentsAction,
     updateServiceComment: updateServiceCommentAction,
     deleteServiceComment: deleteServiceCommentAction,
+    reorderServiceComments: reorderServiceCommentsAction,
+    reorderingServiceIds,
     notifyServiceComments: notifyServiceCommentsAction,
     refreshServices,
     loadMoreServices,

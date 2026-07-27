@@ -112,7 +112,8 @@ interface ChurchContextValue {
   fetchNotificationSettings: (churchId: string) => Promise<void>;
   updateNotificationSettings: (churchId: string, notificationHours: number[], enabled: boolean) => Promise<boolean>;
   updateChurchName: (churchId: string, name: string) => Promise<Church | null>;
-  updateChurchSongTypes: (churchId: string, songTypeOptions: string[]) => Promise<Church | null>;
+  updateChurchSongTypes: (churchId: string, songTypeOptions: string[], syncLocal?: boolean) => Promise<Church | null>;
+  applyChurchSongTypesLocally: (churchId: string, songTypeOptions: string[]) => void;
   updateChurchAutoAssignSettings: (churchId: string, allowMultipleRolesSameService: boolean) => Promise<Church | null>;
   createFillInRequest: (assignmentId: string, serviceId: string, churchId: string, requestingMemberId: string, roleName: string, reason?: string) => Promise<FillInRequest | null>;
   acceptFillInRequest: (requestId: string, filledByMemberId: string, churchId: string) => Promise<boolean>;
@@ -1023,7 +1024,37 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     }
   }, [invalidateUnavailability]);
 
-  const updateChurchSongTypes = useCallback(async (churchId: string, songTypeOptions: string[]): Promise<Church | null> => {
+  const applyChurchSongTypesLocally = useCallback((
+    churchId: string,
+    songTypeOptions: string[]
+  ) => {
+    const applyOptions = (church: Church) => (
+      church.id === churchId
+        ? { ...church, song_type_options: [...songTypeOptions] }
+        : church
+    );
+
+    setChurches(previous => previous.map(applyOptions));
+    setCurrentChurch(previous => previous ? applyOptions(previous) : previous);
+
+    const activeAccountId = activeUserIdRef.current;
+    if (!activeAccountId) return;
+
+    queryClient.setQueryData<Church[]>(
+      queryKeys.churches(activeAccountId),
+      previous => previous?.map(applyOptions)
+    );
+    queryClient.setQueryData<Church>(
+      queryKeys.church(activeAccountId, churchId),
+      previous => previous ? applyOptions(previous) : previous
+    );
+  }, [queryClient]);
+
+  const updateChurchSongTypes = useCallback(async (
+    churchId: string,
+    songTypeOptions: string[],
+    syncLocal = true
+  ): Promise<Church | null> => {
     console.log('Updating church song type options:', { churchId, count: songTypeOptions.length });
     try {
       setError(null);
@@ -1049,15 +1080,28 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
 
-      setChurches(prev => prev.map(church => church.id === churchId ? data : church));
-      setCurrentChurch(prev => prev?.id === churchId ? data : prev);
+      if (syncLocal) {
+        setChurches(prev => prev.map(church => church.id === churchId ? data : church));
+        setCurrentChurch(prev => prev?.id === churchId ? data : prev);
+        const activeAccountId = activeUserIdRef.current;
+        if (activeAccountId) {
+          queryClient.setQueryData<Church[]>(
+            queryKeys.churches(activeAccountId),
+            previous => previous?.map(church => church.id === churchId ? data : church)
+          );
+          queryClient.setQueryData<Church>(
+            queryKeys.church(activeAccountId, churchId),
+            data
+          );
+        }
+      }
       return data;
     } catch (err) {
       console.error('Error in updateChurchSongTypes:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  }, []);
+  }, [queryClient]);
 
   const updateChurchName = useCallback(async (churchId: string, name: string): Promise<Church | null> => {
     console.log('Updating church name:', { churchId });
@@ -1943,6 +1987,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     updateNotificationSettings,
     updateChurchName,
     updateChurchSongTypes,
+    applyChurchSongTypesLocally,
     updateChurchAutoAssignSettings,
     createFillInRequest,
     acceptFillInRequest,
@@ -1959,6 +2004,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     refreshFillInRequests,
   }), [
     acceptFillInRequest,
+    applyChurchSongTypesLocally,
     addChurchRole,
     addMember,
     addMemberRole,

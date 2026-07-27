@@ -4,6 +4,7 @@ import type {
 } from '@tanstack/react-query';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import type { CachedChurchMember, CachedFillInRequest } from '@/lib/query/church';
+import { sortSongs } from '../services/song-order.ts';
 import type { Tables } from '@/lib/supabase/types';
 
 type Service = Tables<'services'>;
@@ -70,9 +71,7 @@ function sortServices(rows: CachedService[]): CachedService[] {
 }
 
 function sortComments(rows: CachedServiceComment[]): CachedServiceComment[] {
-  return [...rows].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  );
+  return sortSongs(rows);
 }
 
 function sortFillInRequests(rows: CachedFillInRequest[]): CachedFillInRequest[] {
@@ -407,6 +406,7 @@ export function applyServiceCommentRealtimePayload(
       if (
         existing
         && existing.updated_at === nextComment.updated_at
+        && existing.display_order === nextComment.display_order
         && existing.church_members?.name === nextComment.church_members?.name
         && existing.church_members?.email === nextComment.church_members?.email
       ) {

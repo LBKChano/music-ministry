@@ -136,6 +136,7 @@ export type Database = {
           date: string
           id: string
           notes: string | null
+          recurring_service_id: string | null
           service_type: string
           time: string | null
           updated_at: string
@@ -146,6 +147,7 @@ export type Database = {
           date: string
           id?: string
           notes?: string | null
+          recurring_service_id?: string | null
           service_type: string
           time?: string | null
           updated_at?: string
@@ -156,6 +158,7 @@ export type Database = {
           date?: string
           id?: string
           notes?: string | null
+          recurring_service_id?: string | null
           service_type?: string
           time?: string | null
           updated_at?: string
@@ -168,6 +171,13 @@ export type Database = {
             referencedRelation: "churches"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "services_recurring_service_id_fkey"
+            columns: ["recurring_service_id"]
+            isOneToOne: false
+            referencedRelation: "recurring_services"
+            referencedColumns: ["id"]
+          },
         ]
       }
       service_comments: {
@@ -175,6 +185,7 @@ export type Database = {
           church_id: string
           comment_text: string
           created_at: string
+          display_order: number | null
           id: string
           member_id: string
           service_id: string
@@ -186,6 +197,7 @@ export type Database = {
           church_id: string
           comment_text: string
           created_at?: string
+          display_order?: number | null
           id?: string
           member_id: string
           service_id: string
@@ -197,6 +209,7 @@ export type Database = {
           church_id?: string
           comment_text?: string
           created_at?: string
+          display_order?: number | null
           id?: string
           member_id?: string
           service_id?: string
@@ -367,6 +380,58 @@ export type Database = {
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "church_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_scheduling_preferences: {
+        Row: {
+          church_id: string
+          created_at: string
+          id: string
+          member_id: string
+          recurring_service_id: string
+          role_id: string
+          updated_at: string
+        }
+        Insert: {
+          church_id: string
+          created_at?: string
+          id?: string
+          member_id: string
+          recurring_service_id: string
+          role_id: string
+          updated_at?: string
+        }
+        Update: {
+          church_id?: string
+          created_at?: string
+          id?: string
+          member_id?: string
+          recurring_service_id?: string
+          role_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_scheduling_preferences_church_id_fkey"
+            columns: ["church_id"]
+            isOneToOne: false
+            referencedRelation: "churches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_scheduling_preferences_member_role_fkey"
+            columns: ["member_id", "role_id"]
+            isOneToOne: false
+            referencedRelation: "member_roles"
+            referencedColumns: ["member_id", "role_id"]
+          },
+          {
+            foreignKeyName: "member_scheduling_preferences_recurring_service_id_fkey"
+            columns: ["recurring_service_id"]
+            isOneToOne: false
+            referencedRelation: "recurring_services"
             referencedColumns: ["id"]
           },
         ]
@@ -689,6 +754,23 @@ export type Database = {
           service_drafts: Json
         }
         Returns: Json
+      }
+      manage_scheduled_services_bulk: {
+        Args: {
+          target_church_id: string
+          target_start_date?: string | null
+          target_end_date?: string | null
+          target_service_ids?: string[] | null
+          dry_run?: boolean
+        }
+        Returns: Json
+      }
+      reorder_service_songs: {
+        Args: {
+          target_service_id: string
+          ordered_comment_ids: string[]
+        }
+        Returns: Database["public"]["Tables"]["service_comments"]["Row"][]
       }
       update_assignments_batch: {
         Args: {

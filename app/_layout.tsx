@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { Platform } from 'react-native';
+import * as Linking from 'expo-linking';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
@@ -22,6 +23,7 @@ import { CustomSplashScreen } from '@/components/CustomSplashScreen';
 import { supabase } from '@/lib/supabase/client';
 import { queryClient } from '@/lib/query/client';
 import { usePerformanceBaselineLifecycle } from '@/hooks/usePerformanceBaselineScreen';
+import { isPasswordRecoveryUrl } from '@/utils/passwordResetLinks';
 
 // Force expo-router to always start at index, never restore cached navigation state
 export const unstable_settings = {
@@ -84,6 +86,20 @@ function RootLayoutNav() {
   const { currentMember } = useChurchSession();
   const { hasPermission, onesignalSubscriptionId } = useNotifications();
   usePerformanceBaselineLifecycle();
+
+  useEffect(() => {
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      if (!isPasswordRecoveryUrl(url)) return;
+
+      console.log('[Layout] password recovery link received');
+      router.replace({
+        pathname: '/reset-password',
+        params: { recoveryUrl: encodeURIComponent(url) },
+      });
+    });
+
+    return () => subscription.remove();
+  }, [router]);
 
   useEffect(() => {
     if (!initialized || session) return;

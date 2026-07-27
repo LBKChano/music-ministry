@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -14,8 +15,9 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
+import { AuthTextInput } from '@/components/auth/AuthTextInput';
 import { supabase } from '@/lib/supabase/client';
-import { getAuthParamsFromUrl } from '@/utils/passwordResetLinks';
+import { establishPasswordRecoverySession } from '@/utils/passwordResetLinks';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
@@ -27,48 +29,73 @@ export default function ResetPasswordScreen() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>('Verifying your reset link...');
   const [canResetPassword, setCanResetPassword] = useState(false);
+  const [recoveryUserId, setRecoveryUserId] = useState<string | null>(null);
+  const confirmPasswordInputRef = useRef<TextInput>(null);
+  const processedRecoveryUrlsRef = useRef(new Set<string>());
+  const abandonedRecoveryRef = useRef(false);
 
   const handleRecoveryUrl = useCallback(async (url: string | null) => {
     if (!url) return false;
 
-    const authParams = getAuthParamsFromUrl(url);
-    const authError = authParams.get('error_description') ?? authParams.get('error');
-    const accessToken = authParams.get('access_token');
-    const refreshToken = authParams.get('refresh_token');
-    const type = authParams.get('type');
+    if (processedRecoveryUrlsRef.current.has(url)) {
+      return true;
+    }
+    processedRecoveryUrlsRef.current.add(url);
+    abandonedRecoveryRef.current = false;
 
-    if (authError) {
-      setError(authError.replace(/\+/g, ' '));
-      setMessage(null);
-      setCanResetPassword(false);
+    const result = await establishPasswordRecoverySession(supabase.auth, url);
+
+    if (abandonedRecoveryRef.current) {
+      if (
+        result.status === 'ready'
+        || (result.status === 'error' && result.clearSession)
+      ) {
+        await supabase.auth.signOut({ scope: 'local' }).catch((signOutError) => {
+          console.warn('Could not clear abandoned password recovery session:', signOutError);
+        });
+      }
       return true;
     }
 
-    if (type !== 'recovery' || !accessToken || !refreshToken) {
+    if (result.status === 'ignored') {
       return false;
     }
 
-    const { error: sessionError } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    });
-
-    if (sessionError) {
-      console.error('Error setting password recovery session:', sessionError);
-      setError('That reset link is invalid or expired. Please request a new one.');
+    if (result.status === 'error') {
+      if (result.clearSession) {
+        await supabase.auth.signOut({ scope: 'local' }).catch((signOutError) => {
+          console.warn('Could not clear rejected auth callback session:', signOutError);
+        });
+      }
+      setError(result.message);
       setMessage(null);
       setCanResetPassword(false);
+      setRecoveryUserId(null);
       return true;
     }
 
     setError(null);
     setMessage('Enter a new password for your account.');
     setCanResetPassword(true);
+    setRecoveryUserId(result.session.user.id);
     return true;
+  }, []);
+
+  useEffect(() => () => {
+    abandonedRecoveryRef.current = true;
   }, []);
 
   useEffect(() => {
     let mounted = true;
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted || event !== 'PASSWORD_RECOVERY' || !session) return;
+
+      setError(null);
+      setMessage('Enter a new password for your account.');
+      setCanResetPassword(true);
+      setRecoveryUserId(session.user.id);
+      setLoading(false);
+    });
 
     const prepare = async () => {
       setLoading(true);
@@ -95,19 +122,10 @@ export default function ResetPasswordScreen() {
         return;
       }
 
-      const { data, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) {
-        console.error('Error reading recovery session:', sessionError);
-      }
-
-      if (data.session) {
-        setCanResetPassword(true);
-        setMessage('Enter a new password for your account.');
-      } else {
-        setCanResetPassword(false);
-        setMessage(null);
-        setError('Open the password reset link from your email again, or request a new link.');
-      }
+      setCanResetPassword(false);
+      setRecoveryUserId(null);
+      setMessage(null);
+      setError('Open the password reset link from your email again, or request a new link.');
 
       if (mounted) setLoading(false);
     };
@@ -137,6 +155,7 @@ export default function ResetPasswordScreen() {
     return () => {
       mounted = false;
       subscription.remove();
+      authListener.subscription.unsubscribe();
     };
   }, [handleRecoveryUrl, params.recoveryUrl]);
 
@@ -166,6 +185,19 @@ export default function ResetPasswordScreen() {
     setMessage(null);
 
     try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (
+        sessionError
+        || !sessionData.session
+        || !recoveryUserId
+        || sessionData.session.user.id !== recoveryUserId
+      ) {
+        setCanResetPassword(false);
+        setRecoveryUserId(null);
+        setError('Your reset session is no longer valid. Please request a new link.');
+        return;
+      }
+
       const { error: updateError } = await supabase.auth.updateUser({
         password: newPassword,
       });
@@ -191,6 +223,21 @@ export default function ResetPasswordScreen() {
     }
   };
 
+  const leaveRecovery = async (requestNewLink = false) => {
+    abandonedRecoveryRef.current = true;
+    Keyboard.dismiss();
+    if (recoveryUserId) {
+      await supabase.auth.signOut({ scope: 'local' }).catch((signOutError) => {
+        console.warn('Could not clear local password recovery session:', signOutError);
+      });
+    }
+
+    router.replace({
+      pathname: '/onboarding',
+      params: requestNewLink ? { passwordReset: 'request' } : {},
+    });
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -201,6 +248,7 @@ export default function ResetPasswordScreen() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           <View style={styles.stepContainer}>
             <Text style={[styles.title, { color: colors.text }]}>Set New Password</Text>
@@ -209,7 +257,8 @@ export default function ResetPasswordScreen() {
             </Text>
 
             <View style={styles.formContainer}>
-              <TextInput
+              <AuthTextInput
+                credentialType="new-password"
                 style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                 placeholder="New Password"
                 placeholderTextColor={colors.textSecondary}
@@ -219,9 +268,14 @@ export default function ResetPasswordScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 editable={!loading && !saving && canResetPassword}
+                passwordRules="minlength: 6;"
+                returnKeyType="next"
+                onSubmitEditing={() => confirmPasswordInputRef.current?.focus()}
               />
 
-              <TextInput
+              <AuthTextInput
+                ref={confirmPasswordInputRef}
+                credentialType="new-password"
                 style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                 placeholder="Confirm New Password"
                 placeholderTextColor={colors.textSecondary}
@@ -231,6 +285,9 @@ export default function ResetPasswordScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 editable={!loading && !saving && canResetPassword}
+                passwordRules="minlength: 6;"
+                returnKeyType="done"
+                onSubmitEditing={handleUpdatePassword}
               />
 
               {message && (
@@ -262,13 +319,25 @@ export default function ResetPasswordScreen() {
 
               <TouchableOpacity
                 style={[styles.secondaryButton, { borderColor: colors.border }]}
-                onPress={() => router.replace('/onboarding')}
+                onPress={() => leaveRecovery(false)}
                 disabled={saving}
               >
                 <Text style={[styles.secondaryButtonText, { color: colors.text }]}>
                   Back to Login
                 </Text>
               </TouchableOpacity>
+
+              {!canResetPassword && !loading ? (
+                <TouchableOpacity
+                  style={styles.requestLinkButton}
+                  onPress={() => leaveRecovery(true)}
+                  disabled={saving}
+                >
+                  <Text style={[styles.requestLinkButtonText, { color: colors.primary }]}>
+                    Request New Reset Link
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           </View>
         </ScrollView>
@@ -336,6 +405,16 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     fontSize: 16,
+    fontWeight: '600',
+  },
+  requestLinkButton: {
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  requestLinkButtonText: {
+    fontSize: 15,
     fontWeight: '600',
   },
   messageContainer: {

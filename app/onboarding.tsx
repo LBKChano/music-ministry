@@ -13,13 +13,13 @@ import {
   Alert,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import * as Linking from 'expo-linking';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@react-navigation/native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { AuthTextInput } from '@/components/auth/AuthTextInput';
 import { supabase } from '@/lib/supabase/client';
-import { getAuthParamsFromUrl, PASSWORD_RESET_REDIRECT_URL } from '@/utils/passwordResetLinks';
+import { PASSWORD_RESET_REDIRECT_URL } from '@/utils/passwordResetLinks';
 import { useChurch } from '@/hooks/useChurch';
 
 const SCHEDULES_ROUTE = '/(tabs)/(home)';
@@ -31,10 +31,10 @@ const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export default function OnboardingScreen() {
   const { colors: themeColors } = useTheme();
   const router = useRouter();
-  const routeParams = useLocalSearchParams<{ passwordReset?: string }>();
+  const routeParams = useLocalSearchParams<{ passwordReset?: 'complete' | 'request' }>();
   const { refreshChurches, setCurrentChurch } = useChurch();
 
-  const [step, setStep] = useState<'welcome' | 'church' | 'admin' | 'adminLogin' | 'member' | 'memberSignup' | 'forgotPassword' | 'resetPassword'>('welcome');
+  const [step, setStep] = useState<'welcome' | 'church' | 'admin' | 'adminLogin' | 'member' | 'memberSignup' | 'forgotPassword'>('welcome');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -42,7 +42,14 @@ export default function OnboardingScreen() {
 
   // Always reset to welcome step on mount so sign-out → re-open starts fresh
   useEffect(() => {
-    setStep('welcome');
+    if (routeParams.passwordReset === 'request') {
+      setStep('forgotPassword');
+      setMessage(null);
+      setError(null);
+    } else {
+      setStep('welcome');
+    }
+
     if (routeParams.passwordReset === 'complete') {
       setMessage('Password updated. Please log in with your new password.');
       setError(null);
@@ -88,14 +95,17 @@ export default function OnboardingScreen() {
 
   // Password reset data
   const [resetEmail, setResetEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
   // Member signup data
   const [memberSignupEmail, setMemberSignupEmail] = useState('');
   const [memberSignupPassword, setMemberSignupPassword] = useState('');
   const [memberSignupName, setMemberSignupName] = useState('');
   const [memberInvitationCode, setMemberInvitationCode] = useState('');
+  const adminPasswordInputRef = useRef<TextInput>(null);
+  const adminLoginPasswordInputRef = useRef<TextInput>(null);
+  const memberPasswordInputRef = useRef<TextInput>(null);
+  const memberSignupPasswordInputRef = useRef<TextInput>(null);
+  const memberInvitationCodeInputRef = useRef<TextInput>(null);
 
   const waitForChurchMembership = useCallback(async (churchId: string, userId: string) => {
     for (let attempt = 0; attempt < ONBOARDING_READY_ATTEMPTS; attempt += 1) {
@@ -154,75 +164,6 @@ export default function OnboardingScreen() {
     router.replace(SCHEDULES_ROUTE);
   }, [refreshChurches, router, setCurrentChurch, waitForChurchMembership]);
 
-  const handlePasswordRecoveryUrl = useCallback(async (url: string | null) => {
-    if (!url) return;
-
-    const params = getAuthParamsFromUrl(url);
-    const authError = params.get('error_description') ?? params.get('error');
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    const type = params.get('type');
-
-    if (authError) {
-      setStep('forgotPassword');
-      setError(authError.replace(/\+/g, ' '));
-      setMessage(null);
-      return;
-    }
-
-    if (type !== 'recovery' || !accessToken || !refreshToken) {
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    const { error: sessionError } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    });
-
-    setLoading(false);
-
-    if (sessionError) {
-      console.error('Error setting password recovery session:', sessionError);
-      setStep('forgotPassword');
-      setError('That reset link is invalid or expired. Please request a new one.');
-      return;
-    }
-
-    setNewPassword('');
-    setConfirmNewPassword('');
-    setStep('resetPassword');
-    setMessage('Enter a new password for your account.');
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-
-    Linking.getInitialURL()
-      .then((url) => {
-        if (mounted) {
-          handlePasswordRecoveryUrl(url).catch((err) => {
-            console.error('Error handling initial password recovery URL:', err);
-          });
-        }
-      })
-      .catch((err) => console.error('Error reading initial URL:', err));
-
-    const subscription = Linking.addEventListener('url', ({ url }) => {
-      handlePasswordRecoveryUrl(url).catch((err) => {
-        console.error('Error handling password recovery URL:', err);
-      });
-    });
-
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, [handlePasswordRecoveryUrl]);
-
   const openForgotPassword = (prefillEmail?: string) => {
     setResetEmail(prefillEmail?.trim() ?? '');
     setError(null);
@@ -260,57 +201,16 @@ export default function OnboardingScreen() {
     }
   };
 
-  const handleUpdatePassword = async () => {
-    if (!newPassword.trim() || !confirmNewPassword.trim()) {
-      setError('Please enter and confirm your new password');
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
-
-    if (newPassword !== confirmNewPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-
-    try {
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-
-      if (updateError) {
-        console.error('Error updating password:', updateError);
-        setError(updateError.message);
-        return;
-      }
-
-      await supabase.auth.signOut();
-      setNewPassword('');
-      setConfirmNewPassword('');
-      setAdminLoginPassword('');
-      setMemberPassword('');
-      setStep('welcome');
-      setMessage('Password updated. Please log in with your new password.');
-    } catch (err) {
-      console.error('Unexpected update password error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to update password');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleCreateChurchAndAdmin = async () => {
     console.log('User creating church and admin account');
     
     if (!churchName.trim()) {
       setError('Please enter a church name');
+      return;
+    }
+
+    if (!adminName.trim()) {
+      setError('Please enter your name');
       return;
     }
 
@@ -335,7 +235,7 @@ export default function OnboardingScreen() {
         password: adminPassword,
         options: {
           data: {
-            name: adminName.trim() || undefined,
+            name: adminName.trim(),
           },
         },
       });
@@ -398,7 +298,7 @@ export default function OnboardingScreen() {
           church_id: churchResult.data.id,
           member_id: user.id,
           email: adminEmail.trim(),
-          name: adminName.trim() || adminEmail.trim(),
+          name: adminName.trim(),
           role: 'Admin',
           is_admin: true,
         })
@@ -647,15 +547,12 @@ export default function OnboardingScreen() {
   const memberSignupSubtitle = 'Register with your church invitation code';
   const forgotPasswordTitle = 'Reset Password';
   const forgotPasswordSubtitle = 'Enter your account email and we will send you a reset link';
-  const resetPasswordTitle = 'Set New Password';
-  const resetPasswordSubtitle = 'Choose a new password for your account';
   const backButton = 'Back';
   const continueButton = 'Continue';
   const createButton = 'Create & Start';
   const loginButton = 'Login';
   const signupButton = 'Create Account';
   const sendResetEmailButton = 'Send Reset Email';
-  const updatePasswordButton = 'Update Password';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -672,6 +569,7 @@ export default function OnboardingScreen() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           {/* Welcome Step */}
           {step === 'welcome' && (
@@ -820,14 +718,17 @@ export default function OnboardingScreen() {
               <View style={styles.formContainer}>
                 <TextInput
                   style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="Your Name (optional)"
+                  placeholder="Your Name"
                   placeholderTextColor={colors.textSecondary}
                   value={adminName}
                   onChangeText={setAdminName}
                   autoCapitalize="words"
+                  autoComplete="name"
+                  textContentType="name"
                 />
 
-                <TextInput
+                <AuthTextInput
+                  credentialType="new-username"
                   style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                   placeholder="Email"
                   placeholderTextColor={colors.textSecondary}
@@ -836,9 +737,13 @@ export default function OnboardingScreen() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  returnKeyType="next"
+                  onSubmitEditing={() => adminPasswordInputRef.current?.focus()}
                 />
 
-                <TextInput
+                <AuthTextInput
+                  ref={adminPasswordInputRef}
+                  credentialType="new-password"
                   style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                   placeholder="Password (min 6 characters)"
                   placeholderTextColor={colors.textSecondary}
@@ -847,6 +752,9 @@ export default function OnboardingScreen() {
                   secureTextEntry
                   autoCapitalize="none"
                   autoCorrect={false}
+                  passwordRules="minlength: 6;"
+                  returnKeyType="done"
+                  onSubmitEditing={handleCreateChurchAndAdmin}
                 />
 
                 {error && (
@@ -897,7 +805,8 @@ export default function OnboardingScreen() {
               </Text>
 
               <View style={styles.formContainer}>
-                <TextInput
+                <AuthTextInput
+                  credentialType="username"
                   style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                   placeholder="Email"
                   placeholderTextColor={colors.textSecondary}
@@ -906,9 +815,13 @@ export default function OnboardingScreen() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  returnKeyType="next"
+                  onSubmitEditing={() => adminLoginPasswordInputRef.current?.focus()}
                 />
 
-                <TextInput
+                <AuthTextInput
+                  ref={adminLoginPasswordInputRef}
+                  credentialType="current-password"
                   style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                   placeholder="Password"
                   placeholderTextColor={colors.textSecondary}
@@ -917,6 +830,8 @@ export default function OnboardingScreen() {
                   secureTextEntry
                   autoCapitalize="none"
                   autoCorrect={false}
+                  returnKeyType="done"
+                  onSubmitEditing={handleAdminLogin}
                 />
 
                 <TouchableOpacity
@@ -977,7 +892,8 @@ export default function OnboardingScreen() {
               </Text>
 
               <View style={styles.formContainer}>
-                <TextInput
+                <AuthTextInput
+                  credentialType="username"
                   style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                   placeholder="Email"
                   placeholderTextColor={colors.textSecondary}
@@ -986,9 +902,13 @@ export default function OnboardingScreen() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  returnKeyType="next"
+                  onSubmitEditing={() => memberPasswordInputRef.current?.focus()}
                 />
 
-                <TextInput
+                <AuthTextInput
+                  ref={memberPasswordInputRef}
+                  credentialType="current-password"
                   style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                   placeholder="Password"
                   placeholderTextColor={colors.textSecondary}
@@ -997,6 +917,8 @@ export default function OnboardingScreen() {
                   secureTextEntry
                   autoCapitalize="none"
                   autoCorrect={false}
+                  returnKeyType="done"
+                  onSubmitEditing={handleMemberLogin}
                 />
 
                 <TouchableOpacity
@@ -1064,9 +986,12 @@ export default function OnboardingScreen() {
                   value={memberSignupName}
                   onChangeText={setMemberSignupName}
                   autoCapitalize="words"
+                  autoComplete="name"
+                  textContentType="name"
                 />
 
-                <TextInput
+                <AuthTextInput
+                  credentialType="new-username"
                   style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                   placeholder="Email"
                   placeholderTextColor={colors.textSecondary}
@@ -1075,9 +1000,13 @@ export default function OnboardingScreen() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  returnKeyType="next"
+                  onSubmitEditing={() => memberSignupPasswordInputRef.current?.focus()}
                 />
 
-                <TextInput
+                <AuthTextInput
+                  ref={memberSignupPasswordInputRef}
+                  credentialType="new-password"
                   style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                   placeholder="Password (min 6 characters)"
                   placeholderTextColor={colors.textSecondary}
@@ -1086,9 +1015,13 @@ export default function OnboardingScreen() {
                   secureTextEntry
                   autoCapitalize="none"
                   autoCorrect={false}
+                  passwordRules="minlength: 6;"
+                  returnKeyType="next"
+                  onSubmitEditing={() => memberInvitationCodeInputRef.current?.focus()}
                 />
 
                 <TextInput
+                  ref={memberInvitationCodeInputRef}
                   style={[styles.input, styles.invitationCodeInput, { color: colors.text, borderColor: colors.primary }]}
                   placeholder="Church Invitation Code"
                   placeholderTextColor={colors.textSecondary}
@@ -1097,6 +1030,8 @@ export default function OnboardingScreen() {
                   autoCapitalize="characters"
                   autoCorrect={false}
                   maxLength={8}
+                  returnKeyType="done"
+                  onSubmitEditing={handleMemberSignup}
                 />
                 <Text style={[styles.helperText, { color: colors.textSecondary }]}>
                   Enter the 8-character code provided by your church admin
@@ -1150,7 +1085,8 @@ export default function OnboardingScreen() {
               </Text>
 
               <View style={styles.formContainer}>
-                <TextInput
+                <AuthTextInput
+                  credentialType="email"
                   style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                   placeholder="Email"
                   placeholderTextColor={colors.textSecondary}
@@ -1159,6 +1095,8 @@ export default function OnboardingScreen() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  returnKeyType="send"
+                  onSubmitEditing={handleSendPasswordReset}
                 />
 
                 {message && (
@@ -1205,65 +1143,6 @@ export default function OnboardingScreen() {
             </View>
           )}
 
-          {/* Password Recovery Step */}
-          {step === 'resetPassword' && (
-            <View style={styles.stepContainer}>
-              <Text style={[styles.title, { color: colors.text }]}>
-                {resetPasswordTitle}
-              </Text>
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                {resetPasswordSubtitle}
-              </Text>
-
-              <View style={styles.formContainer}>
-                <TextInput
-                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="New Password"
-                  placeholderTextColor={colors.textSecondary}
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-
-                <TextInput
-                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="Confirm New Password"
-                  placeholderTextColor={colors.textSecondary}
-                  value={confirmNewPassword}
-                  onChangeText={setConfirmNewPassword}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-
-                {message && (
-                  <View style={styles.messageContainer}>
-                    <Text style={styles.messageText}>{message}</Text>
-                  </View>
-                )}
-
-                {error && (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{error}</Text>
-                  </View>
-                )}
-
-                <TouchableOpacity
-                  style={[styles.primaryButton, { backgroundColor: colors.primary }]}
-                  onPress={handleUpdatePassword}
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.primaryButtonText}>{updatePasswordButton}</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

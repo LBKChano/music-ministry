@@ -34,6 +34,18 @@ export const queryKeys = {
       'member-unavailability',
       memberId,
     ] as const,
+  memberSchedulingPreferences: (
+    accountId: string,
+    churchId: string,
+    memberId: string
+  ) =>
+    [
+      ...queryKeys.church(accountId, churchId),
+      'member-scheduling-preferences',
+      memberId,
+    ] as const,
   memberNotifications: (accountId: string, memberId: string) =>
     [...queryKeys.account(accountId), 'member-notifications', memberId] as const,
+  disabled: (feature: string) =>
+    [...appQueryRoot, 'disabled', feature] as const,
 };

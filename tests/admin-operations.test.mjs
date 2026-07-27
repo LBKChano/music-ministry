@@ -120,6 +120,20 @@ test('auto-assign preview key changes when range or church settings change', () 
   assert.notEqual(changedSetting, first);
 });
 
+test('auto-assign preview key changes when a service source template changes', () => {
+  const first = createAutoAssignPreviewKey(baseInput);
+  const changed = createAutoAssignPreviewKey({
+    ...baseInput,
+    services: baseInput.services.map(service => (
+      service.id === 'service-2'
+        ? { ...service, recurring_service_id: 'weekly-service-1' }
+        : service
+    )),
+  });
+
+  assert.notEqual(changed, first);
+});
+
 test('missing RPC detection permits compatibility fallback only for missing functions', () => {
   assert.equal(isMissingRpcFunctionError({ code: 'PGRST202' }), true);
   assert.equal(isMissingRpcFunctionError({ code: '42883' }), true);
@@ -354,6 +368,7 @@ test('duplicate song and notification realtime events remain idempotent', () => 
     service_id: 'service-1',
     member_id: 'member-1',
     comment_text: 'Amazing Grace',
+    display_order: 0,
     song_type: 'Opening',
     song_number: '1',
     created_at: '2026-07-26T12:00:00Z',
@@ -388,6 +403,60 @@ test('duplicate song and notification realtime events remain idempotent', () => 
   notifications = applyNotificationRealtimePayload(notifications, notificationPayload);
 
   assert.equal(notifications.length, 1);
+});
+
+test('song realtime updates converge on persisted display order', () => {
+  const client = new QueryClient();
+  const root = queryKeys.servicesRoot('account-1', 'church-1');
+  const windowKey = queryKeys.services('account-1', 'church-1', 'all');
+  const first = {
+    id: 'comment-first',
+    church_id: 'church-1',
+    service_id: 'service-1',
+    member_id: 'member-1',
+    comment_text: 'First',
+    display_order: 0,
+    song_type: 'Opening',
+    song_number: null,
+    created_at: '2026-07-26T12:00:00Z',
+    updated_at: '2026-07-26T12:00:00Z',
+  };
+  const second = {
+    ...first,
+    id: 'comment-second',
+    comment_text: 'Second',
+    display_order: 1,
+    created_at: '2026-07-26T12:01:00Z',
+  };
+  client.setQueryData(windowKey, [{
+    ...service,
+    service_comments: [first, second],
+  }]);
+
+  applyServiceCommentRealtimePayload(
+    client,
+    root,
+    realtimePayload('UPDATE', {
+      ...second,
+      display_order: 0,
+      updated_at: '2026-07-26T12:05:00Z',
+    })
+  );
+  applyServiceCommentRealtimePayload(
+    client,
+    root,
+    realtimePayload('UPDATE', {
+      ...first,
+      display_order: 1,
+      updated_at: '2026-07-26T12:05:00Z',
+    })
+  );
+
+  const cachedServices = client.getQueryData(windowKey);
+  assert.deepEqual(
+    cachedServices[0].service_comments.map(comment => comment.id),
+    ['comment-second', 'comment-first']
+  );
 });
 
 test('account-scoped cache removal cannot remove another account', () => {
