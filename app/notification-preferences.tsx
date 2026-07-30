@@ -13,8 +13,6 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
-  Platform,
-  Linking,
   ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -45,8 +43,15 @@ const NOTIFICATION_CATEGORIES = [
 
 export default function NotificationPreferencesScreen() {
   const router = useRouter();
-  const { hasPermission, permissionDenied, isWeb, requestPermission, sendTag, deleteTag } =
-    useNotifications();
+  const {
+    hasPermission,
+    permissionDenied,
+    isWeb,
+    openNotificationSettings,
+    requestPermission,
+    sendTag,
+    deleteTag,
+  } = useNotifications();
 
   // Track category toggles locally
   const [categories, setCategories] = useState<Record<string, boolean>>(
@@ -65,11 +70,7 @@ export default function NotificationPreferencesScreen() {
           {
             text: "Open Settings",
             onPress: () => {
-              if (Platform.OS === "ios") {
-                Linking.openURL("app-settings:");
-              } else {
-                Linking.openSettings();
-              }
+              void openNotificationSettings();
             },
           },
         ]
@@ -77,7 +78,14 @@ export default function NotificationPreferencesScreen() {
       return;
     }
 
-    await requestPermission();
+    try {
+      await requestPermission();
+    } catch {
+      Alert.alert(
+        "Notifications Unavailable",
+        "Notification permission could not be opened. Please try again."
+      );
+    }
   };
 
   const handleCategoryToggle = (key: string, value: boolean) => {

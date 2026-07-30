@@ -15,6 +15,7 @@ type CleanupStats = {
   deletedMemberNotifications: number
   deletedMemberUnavailability: number
   deletedMemberRoles: number
+  deactivatedNotificationDevices: number
   deletedOneSignalSubscriptions: number
   deletedPushTokens: number
   deletedServiceComments: number
@@ -137,6 +138,7 @@ Deno.serve(async (req) => {
       deletedMemberNotifications: 0,
       deletedMemberUnavailability: 0,
       deletedMemberRoles: 0,
+      deactivatedNotificationDevices: 0,
       deletedOneSignalSubscriptions: 0,
       deletedPushTokens: 0,
       deletedServiceComments: 0,
@@ -148,6 +150,28 @@ Deno.serve(async (req) => {
       deletedServices: 0,
       deletedChurches: 0,
     }
+
+    const {
+      count: deactivatedNotificationDevices,
+      error: deactivateNotificationDevicesError,
+    } = await adminClient
+      .from('account_notification_devices')
+      .update(
+        {
+          active: false,
+          updated_at: new Date().toISOString(),
+        },
+        { count: 'exact' },
+      )
+      .eq('account_id', userId)
+      .eq('active', true)
+
+    if (deactivateNotificationDevicesError) {
+      throw deactivateNotificationDevicesError
+    }
+    stats.deactivatedNotificationDevices = rowCount(
+      deactivatedNotificationDevices,
+    )
 
     if (ownedChurchIds.length > 0) {
       const { count: fillInRequestsByChurch, error: fillInByChurchError } = await adminClient

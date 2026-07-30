@@ -1,6 +1,5 @@
 
 import { useChurch } from '@/hooks/useChurch';
-import { useNotifications } from '@/contexts/NotificationContext';
 import type { FillInRequestWithMemberInfo } from '@/contexts/ChurchContext';
 import { colors } from '@/styles/commonStyles';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -11,11 +10,21 @@ import { moveItemById } from '@/lib/services/song-order';
 import { IconSymbol } from '@/components/IconSymbol';
 import { NotificationBell } from "@/components/NotificationBell";
 import {
+  NotificationPermissionOnboarding,
+} from '@/components/notifications/NotificationPermissionOnboarding';
+import {
   ResponsiveTabHeader,
   TabHeaderMetaText,
   TabHeaderPill,
 } from '@/components/navigation/responsive-tab-header';
 import { ScheduleServiceCard } from '@/components/schedules/schedule-service-card';
+import { RefreshErrorNotice } from '@/components/RefreshErrorNotice';
+import { useRefreshController } from '@/hooks/useRefreshController';
+import {
+  runRefreshBatch,
+  shouldShowInitialLoader,
+} from '@/lib/query/refresh-coordinator';
+import { HEADER_ACTION_LANE_WIDTHS } from '@/lib/ui/header-typography';
 import {
   StyleSheet,
   View,
@@ -661,7 +670,7 @@ export default function HomeScreen() {
     isAdmin,
     currentMember,
     notificationSettings,
-    loading: churchLoading,
+    initializing: churchInitializing,
     createFillInRequest,
     acceptFillInRequest,
     cancelFillInRequest,
@@ -669,9 +678,6 @@ export default function HomeScreen() {
     refreshMembers,
     user,
   } = useChurch();
-
-  // Notification context — OneSignal handles token registration automatically
-  const { requestPermission, hasPermission, loading: notificationLoading } = useNotifications();
 
   const {
     services,
@@ -695,7 +701,7 @@ export default function HomeScreen() {
 
   usePerformanceBaselineScreen(
     'Schedules',
-    !churchLoading && !servicesLoading && !!currentChurch && !!user,
+    !churchInitializing && !servicesLoading && !!currentChurch && !!user,
     {
       implementation: 'ios',
       services: services.length,
@@ -711,7 +717,11 @@ export default function HomeScreen() {
   const [deleteAssignmentModalVisible, setDeleteAssignmentModalVisible] = useState(false);
   const [fillInRequestModalVisible, setFillInRequestModalVisible] = useState(false);
   const [commentModalVisible, setCommentModalVisible] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const {
+    refreshing,
+    refreshError,
+    runRefresh,
+  } = useRefreshController(currentChurch?.id ?? null);
   const [isCreatingFillInRequest, setIsCreatingFillInRequest] = useState(false);
   const [isSavingServiceComment, setIsSavingServiceComment] = useState(false);
   const [isAssigningMember, setIsAssigningMember] = useState(false);
@@ -740,18 +750,6 @@ export default function HomeScreen() {
   );
 
   // ── useEffect hooks (after all useState/useRef/other hooks) ──────────────
-
-  // Request notification permission on first load if not yet granted
-  // OneSignal handles token registration automatically — no manual Supabase upsert needed
-  useEffect(() => {
-    if (!currentMember || hasPermission || notificationLoading) return;
-    console.log('[Notifications] [iOS] Requesting OneSignal permission for member:', currentMember.id);
-    requestPermission().then((granted) => {
-      console.log('[Notifications] [iOS] Permission result:', granted);
-    }).catch((err) => {
-      console.warn('[Notifications] [iOS] Permission request error:', err);
-    });
-  }, [currentMember, hasPermission, notificationLoading, requestPermission]);
 
   useEffect(() => {
     if (!commentModalVisible || serviceSongType === OTHER_SONG_TYPE_OPTION) return;
@@ -813,22 +811,22 @@ export default function HomeScreen() {
     [currentMember?.memberRoles]
   );
 
-  const onRefresh = useCallback(async () => {
+  const onRefresh = useCallback(() => {
     console.log('User pulled to refresh schedules');
-    setRefreshing(true);
-    try {
-      await Promise.all([
-        refreshServices(),
-        refreshMembers ? refreshMembers() : Promise.resolve(),
-        refreshFillInRequests ? refreshFillInRequests() : Promise.resolve()
+    void runRefresh(async () => {
+      await runRefreshBatch([
+        refreshServices,
+        refreshMembers ?? (async () => {}),
+        refreshFillInRequests ?? (async () => {}),
       ]);
       console.log('Refresh completed successfully');
-    } catch (error) {
-      console.error('Error refreshing data:', error);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refreshServices, refreshMembers, refreshFillInRequests]);
+    });
+  }, [
+    refreshFillInRequests,
+    refreshMembers,
+    refreshServices,
+    runRefresh,
+  ]);
 
   const handleDeleteService = async () => {
     console.log('User confirmed delete service');
@@ -1367,7 +1365,10 @@ export default function HomeScreen() {
     ]
   );
 
-  if (churchLoading || servicesLoading) {
+  if (
+    servicesLoading
+    || shouldShowInitialLoader(churchInitializing, Boolean(currentChurch))
+  ) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -1392,6 +1393,8 @@ export default function HomeScreen() {
       <ResponsiveTabHeader
         eyebrow="Schedule"
         title={churchName}
+        titleVariant="primaryTitle"
+        trailingWidth={HEADER_ACTION_LANE_WIDTHS.bell}
         accessibilityTitle={`Schedule for ${churchName}`}
         trailing={<NotificationBell />}
       >
@@ -1401,6 +1404,10 @@ export default function HomeScreen() {
         />
         <TabHeaderMetaText>{schedulePeriod}</TabHeaderMetaText>
       </ResponsiveTabHeader>
+
+      <RefreshErrorNotice message={refreshError} />
+
+      <NotificationPermissionOnboarding scheduleReady />
 
       <FlatList
         style={styles.container}

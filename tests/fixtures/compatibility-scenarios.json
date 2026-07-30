@@ -1,0 +1,140 @@
+{
+  "accounts": [
+    {
+      "id": "account-owner-a",
+      "email": "owner-a@example.test"
+    },
+    {
+      "id": "account-multi-church",
+      "email": "multi-church@example.test"
+    },
+    {
+      "id": "account-regular",
+      "email": "regular@example.test"
+    }
+  ],
+  "churches": [
+    {
+      "id": "church-a",
+      "name": "Baseline Church A",
+      "admin_id": "account-owner-a",
+      "invitation_code": "BASEA001"
+    },
+    {
+      "id": "church-b",
+      "name": "Baseline Church B",
+      "admin_id": "account-multi-church",
+      "invitation_code": "BASEB001"
+    }
+  ],
+  "memberships": [
+    {
+      "id": "member-owner-a",
+      "church_id": "church-a",
+      "member_id": "account-owner-a",
+      "email": "owner-a@example.test",
+      "name": "Owner A",
+      "is_admin": true
+    },
+    {
+      "id": "member-multi-a",
+      "church_id": "church-a",
+      "member_id": "account-multi-church",
+      "email": "multi-church@example.test",
+      "name": "Multi Church Member",
+      "is_admin": false
+    },
+    {
+      "id": "member-multi-b",
+      "church_id": "church-b",
+      "member_id": "account-multi-church",
+      "email": "multi-church@example.test",
+      "name": "Multi Church Admin",
+      "is_admin": true
+    },
+    {
+      "id": "member-regular-a",
+      "church_id": "church-a",
+      "member_id": "account-regular",
+      "email": "regular@example.test",
+      "name": "Regular Member",
+      "is_admin": false
+    },
+    {
+      "id": "member-invited-b",
+      "church_id": "church-b",
+      "member_id": null,
+      "email": "invited@example.test",
+      "name": "Invited Singer",
+      "is_admin": false
+    }
+  ],
+  "roles": [
+    {
+      "id": "role-vocals-a",
+      "church_id": "church-a",
+      "name": "Vocals"
+    },
+    {
+      "id": "role-piano-a",
+      "church_id": "church-a",
+      "name": "Piano"
+    }
+  ],
+  "memberRoles": [
+    {
+      "member_id": "member-multi-a",
+      "role_id": "role-vocals-a"
+    },
+    {
+      "member_id": "member-regular-a",
+      "role_id": "role-piano-a"
+    }
+  ],
+  "recurringServices": [
+    {
+      "id": "recurring-sunday-a",
+      "church_id": "church-a",
+      "name": "Sunday Service",
+      "day_of_week": 0,
+      "time": "09:00:00",
+      "roles": [
+        "Vocals",
+        "Piano"
+      ]
+    }
+  ],
+  "unavailability": [
+    {
+      "member_id": "member-multi-a",
+      "unavailable_date": "2026-08-09"
+    }
+  ],
+  "schedulingPreferences": [
+    {
+      "church_id": "church-a",
+      "member_id": "member-multi-a",
+      "recurring_service_id": "recurring-sunday-a",
+      "role_id": "role-vocals-a"
+    }
+  ],
+  "subscriptions": [
+    {
+      "member_id": "member-multi-a",
+      "subscription_id": "device-multi-1"
+    },
+    {
+      "member_id": "member-multi-a",
+      "subscription_id": "device-multi-2"
+    }
+  ],
+  "expected": {
+    "multiChurchAccount": {
+      "account_id": "account-multi-church",
+      "church-a": "member",
+      "church-b": "admin"
+    },
+    "memberWithTwoDevices": "member-multi-a",
+    "unclaimedInvitation": "member-invited-b"
+  }
+}

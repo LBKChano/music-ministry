@@ -21,8 +21,6 @@ import {
   View,
   StyleSheet,
   Alert,
-  Platform,
-  Linking,
   Modal,
   ScrollView,
   ActivityIndicator,
@@ -40,6 +38,9 @@ import {
   removeRealtimeChannel,
 } from "@/lib/realtime/channels";
 import { applyNotificationRealtimePayload } from "@/lib/realtime/cache-updates";
+import {
+  saveNotificationPermissionDecision,
+} from "@/lib/notifications/permission-onboarding-storage";
 import { supabase } from "@/lib/supabase/client";
 import type { Tables } from "@/lib/supabase/types";
 
@@ -71,8 +72,14 @@ export function NotificationBell({
   variant = "default",
   size = 24,
 }: NotificationBellProps) {
-  const { hasPermission, permissionDenied, loading, isWeb, requestPermission } =
-    useNotifications();
+  const {
+    hasPermission,
+    permissionDenied,
+    loading,
+    isWeb,
+    openNotificationSettings,
+    requestPermission,
+  } = useNotifications();
   const { session } = useAuth();
   const { currentMember } = useChurchSession();
   const queryClient = useQueryClient();
@@ -200,11 +207,7 @@ export function NotificationBell({
           {
             text: "Open Settings",
             onPress: () => {
-              if (Platform.OS === "ios") {
-                Linking.openURL("app-settings:");
-              } else {
-                Linking.openSettings();
-              }
+              void openNotificationSettings();
             },
           },
         ]
@@ -212,8 +215,30 @@ export function NotificationBell({
       return;
     }
 
-    // Request permission
-    await requestPermission();
+    Alert.alert(
+      "Enable Notifications",
+      "Receive service reminders and fill-in requests that affect your schedule.",
+      [
+        {
+          text: "Not Now",
+          style: "cancel",
+          onPress: () => {
+            void saveNotificationPermissionDecision("not_now");
+          },
+        },
+        {
+          text: "Enable Notifications",
+          onPress: () => {
+            void requestPermission().catch(() => {
+              Alert.alert(
+                "Notifications Unavailable",
+                "Notification permission could not be opened. Please try again."
+              );
+            });
+          },
+        },
+      ]
+    );
   };
 
   const loadNotificationsForOpen = async (): Promise<MemberNotification[]> => {

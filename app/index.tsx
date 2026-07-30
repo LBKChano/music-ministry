@@ -2,8 +2,11 @@ import { ActivityIndicator, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { useAuth } from '@/contexts/AuthContext';
+import { useChurchSession } from '@/hooks/useChurch';
 import { useEffect, useRef } from 'react';
 import { isPasswordRecoveryUrl } from '@/utils/passwordResetLinks';
+import { resolveStartupDestination } from '@/lib/church/startup-coordinator';
+import { isSignupVerificationUrl } from '@/utils/signupVerificationLinks';
 
 /**
  * Root index screen — the sole place that decides where to navigate.
@@ -15,12 +18,19 @@ import { isPasswordRecoveryUrl } from '@/utils/passwordResetLinks';
  * - Use router.replace so the index screen is removed from the history stack.
  */
 export default function Index() {
-  const { session, initialized } = useAuth();
+  const { session, initialized, initializationError } = useAuth();
+  const { sessionStatus } = useChurchSession();
   const router = useRouter();
   const checkedInitialUrlRef = useRef(false);
 
   useEffect(() => {
-    if (!initialized) return;
+    const destination = resolveStartupDestination({
+      authInitialized: initialized,
+      hasSession: Boolean(session),
+      authError: initializationError,
+      churchStatus: sessionStatus,
+    });
+    if (destination === 'wait') return;
 
     const routeAfterInitialUrlCheck = async () => {
       if (!checkedInitialUrlRef.current) {
@@ -38,22 +48,37 @@ export default function Index() {
           });
           return;
         }
+
+        if (isSignupVerificationUrl(initialUrl)) {
+          console.log('[Index] signup verification link found');
+          router.replace({
+            pathname: '/verify-email',
+            params: { verificationUrl: encodeURIComponent(initialUrl ?? '') },
+          });
+          return;
+        }
       }
 
-      if (session) {
-        console.log('[Index] session found — navigating to /(tabs)');
-        router.replace('/(tabs)');
-      } else {
-        console.log('[Index] no session — navigating to /onboarding');
-        router.replace('/onboarding');
-      }
+      const route = destination === 'tabs'
+        ? '/(tabs)/(home)'
+        : destination === 'no-membership'
+          ? '/no-membership'
+          : '/onboarding';
+      console.log('[Index] startup destination:', destination);
+      router.replace(route);
     };
 
     routeAfterInitialUrlCheck().catch((err) => {
       console.error('[Index] route check failed:', err);
-      router.replace(session ? '/(tabs)' : '/onboarding');
+      router.replace(destination === 'tabs' ? '/(tabs)/(home)' : '/onboarding');
     });
-  }, [initialized, session, router]);
+  }, [
+    initializationError,
+    initialized,
+    router,
+    session,
+    sessionStatus,
+  ]);
 
   // Show a loading indicator while auth initializes.
   // The splash screen is still visible on top of this (controlled by AuthContext).

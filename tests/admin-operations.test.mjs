@@ -8,6 +8,7 @@ import {
 } from '../lib/admin/operations.ts';
 import {
   buildNotificationTargets,
+  resolveNotificationSubscriptions,
   sendOneSignalNotification,
   successfulSubscriptionMembers,
 } from '../supabase/functions/_shared/onesignal.ts';
@@ -173,6 +174,70 @@ test('notification targeting retains every unique device for the same member', (
     targets.subscriptionRows.map((row) => row.member_id),
     ['member-1', 'member-1'],
   );
+});
+
+test('one account device covers multiple memberships without alias duplication', () => {
+  const targets = buildNotificationTargets(
+    ['member-church-a', 'member-church-b'],
+    [
+      {
+        member_id: 'member-church-a',
+        subscription_id: 'shared-device',
+      },
+      {
+        member_id: 'member-church-b',
+        subscription_id: 'shared-device',
+      },
+    ],
+  );
+
+  assert.deepEqual(targets.subscriptionIds, ['shared-device']);
+  assert.deepEqual(targets.externalIds, []);
+  assert.deepEqual(targets.subscriptionRows, [
+    {
+      member_id: 'member-church-a',
+      subscription_id: 'shared-device',
+    },
+    {
+      member_id: 'member-church-b',
+      subscription_id: 'shared-device',
+    },
+  ]);
+  assert.deepEqual(
+    Array.from(successfulSubscriptionMembers(targets.subscriptionRows, [])),
+    ['member-church-a', 'member-church-b'],
+  );
+});
+
+test('notification subscription resolver normalizes service-role RPC rows', async () => {
+  const calls = [];
+  const rows = await resolveNotificationSubscriptions({
+    rpc: async (functionName, args) => {
+      calls.push({ functionName, args });
+      return {
+        data: [
+          {
+            member_id: 'member-1',
+            subscription_id: ' device-1 ',
+          },
+          {
+            member_id: null,
+            subscription_id: 'ignored',
+          },
+        ],
+        error: null,
+      };
+    },
+  }, ['member-1', 'member-1']);
+
+  assert.deepEqual(calls, [{
+    functionName: 'resolve_notification_recipient_subscriptions',
+    args: { target_member_ids: ['member-1'] },
+  }]);
+  assert.deepEqual(rows, [{
+    member_id: 'member-1',
+    subscription_id: ' device-1 ',
+  }]);
 });
 
 test('partial OneSignal validation errors do not retry healthy devices', async () => {

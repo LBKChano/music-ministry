@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   buildNotificationTargets,
+  resolveNotificationSubscriptions,
   sendOneSignalNotification,
   successfulSubscriptionMembers,
 } from '../_shared/onesignal.ts'
@@ -130,14 +131,14 @@ Deno.serve(async (req) => {
       )
     }
 
-    const { data: subscriptionRows } = await supabase
-      .from('onesignal_subscriptions')
-      .select('member_id, subscription_id, updated_at')
-      .in('member_id', eligibleMemberIds)
+    const subscriptionRows = await resolveNotificationSubscriptions(
+      supabase,
+      eligibleMemberIds,
+    )
 
     const targets = buildNotificationTargets(
       eligibleMemberIds,
-      subscriptionRows ?? [],
+      subscriptionRows,
     )
 
     const service = Array.isArray(comment.services) ? comment.services[0] : comment.services

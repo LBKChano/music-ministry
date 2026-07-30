@@ -13,6 +13,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_notification_devices: {
+        Row: {
+          account_id: string
+          active: boolean
+          created_at: string
+          id: string
+          last_seen_at: string
+          platform: string | null
+          subscription_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          active?: boolean
+          created_at?: string
+          id?: string
+          last_seen_at?: string
+          platform?: string | null
+          subscription_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          active?: boolean
+          created_at?: string
+          id?: string
+          last_seen_at?: string
+          platform?: string | null
+          subscription_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       assignments: {
         Row: {
           created_at: string
@@ -584,7 +617,7 @@ export type Database = {
           {
             foreignKeyName: "onesignal_subscriptions_member_id_fkey"
             columns: ["member_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "church_members"
             referencedColumns: ["id"]
           },
@@ -793,6 +826,23 @@ export type Database = {
         }
         Returns: Database["public"]["Tables"]["onesignal_subscriptions"]["Row"]
       }
+      create_church_with_owner_membership: {
+        Args: {
+          target_church_name: string
+          target_owner_name?: string
+          target_request_id: string
+        }
+        Returns: {
+          church_record: Database["public"]["Tables"]["churches"]["Row"]
+          membership_record: Database["public"]["Tables"]["church_members"]["Row"]
+        }[]
+      }
+      deactivate_account_notification_device: {
+        Args: {
+          target_subscription_id: string
+        }
+        Returns: boolean
+      }
       get_fill_in_requests_with_member_info: {
         Args: {
           target_church_id: string
@@ -813,6 +863,32 @@ export type Database = {
           requesting_member_email: string
           filled_by_member_name: string | null
           filled_by_member_email: string | null
+        }[]
+      }
+      join_church_by_invitation: {
+        Args: {
+          target_invitation_code: string
+          target_member_name?: string
+        }
+        Returns: {
+          church_record: Database["public"]["Tables"]["churches"]["Row"]
+          membership_record: Database["public"]["Tables"]["church_members"]["Row"]
+        }[]
+      }
+      register_account_notification_device: {
+        Args: {
+          target_platform?: string
+          target_subscription_id: string
+        }
+        Returns: Database["public"]["Tables"]["account_notification_devices"]["Row"]
+      }
+      resolve_notification_recipient_subscriptions: {
+        Args: {
+          target_member_ids: string[]
+        }
+        Returns: {
+          member_id: string
+          subscription_id: string
         }[]
       }
       delete_account: {

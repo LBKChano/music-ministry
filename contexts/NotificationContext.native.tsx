@@ -23,9 +23,13 @@ import React, {
   useCallback,
   ReactNode,
 } from "react";
-import { Platform } from "react-native";
+import { AppState, Linking, Platform } from "react-native";
 import { OneSignal, NotificationWillDisplayEvent } from "react-native-onesignal";
 import Constants from "expo-constants";
+import {
+  readNotificationPermissionOnboardingState,
+  saveNotificationPermissionDecision,
+} from "@/lib/notifications/permission-onboarding-storage";
 
 // Read App ID from app.json (expo.extra)
 const extra = Constants.expoConfig?.extra || {};
@@ -39,12 +43,16 @@ interface NotificationContextType {
   hasPermission: boolean;
   /** Whether permission has been requested but not yet granted */
   permissionDenied: boolean;
+  /** Whether the operating system can still show its native permission prompt */
+  canRequestPermission: boolean;
   /** Loading state during initialization */
   loading: boolean;
   /** Whether running on web (notifications not available) */
   isWeb: boolean;
   /** Request notification permission from the user */
   requestPermission: () => Promise<boolean>;
+  /** Open this app's native notification settings */
+  openNotificationSettings: () => Promise<void>;
   /** Set a tag for user segmentation */
   sendTag: (key: string, value: string) => void;
   /** Remove a tag */
@@ -53,6 +61,17 @@ interface NotificationContextType {
   lastNotification: Record<string, unknown> | null;
   /** OneSignal push subscription ID (UUID) for backend targeting */
   onesignalSubscriptionId: string | null;
+  /** Exact church membership currently linked to OneSignal */
+  linkedIdentity: LinkedNotificationIdentity | null;
+  /** Link OneSignal only after Auth and church startup are fully ready */
+  linkIdentity: (identity: LinkedNotificationIdentity) => Promise<boolean>;
+  /** Clear the local OneSignal identity and its readiness state */
+  clearIdentity: () => void;
+}
+
+interface LinkedNotificationIdentity {
+  memberId: string;
+  churchId: string;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(
@@ -66,9 +85,37 @@ interface NotificationProviderProps {
 export function NotificationProvider({ children }: NotificationProviderProps) {
   const [hasPermission, setHasPermission] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [canRequestPermission, setCanRequestPermission] = useState(true);
   const [loading, setLoading] = useState(true);
   const [lastNotification, setLastNotification] = useState<Record<string, unknown> | null>(null);
   const [onesignalSubscriptionId, setOnesignalSubscriptionId] = useState<string | null>(null);
+  const [linkedIdentity, setLinkedIdentity] = useState<LinkedNotificationIdentity | null>(null);
+
+  const refreshPermissionState = useCallback(async () => {
+    if (isWeb || !ONESIGNAL_APP_ID) {
+      return { granted: false, canRequest: false };
+    }
+
+    const [granted, canRequest, storedState] = await Promise.all([
+      OneSignal.Notifications.getPermissionAsync(),
+      OneSignal.Notifications.canRequestPermission(),
+      readNotificationPermissionOnboardingState(),
+    ]);
+    const wasPreviouslyRequested = (
+      storedState?.decision === "enabled"
+      || storedState?.decision === "denied"
+    );
+
+    setHasPermission(granted);
+    setCanRequestPermission(canRequest);
+    setPermissionDenied(!granted && (!canRequest || wasPreviouslyRequested));
+
+    if (granted && storedState?.decision !== "enabled") {
+      void saveNotificationPermissionDecision("enabled");
+    }
+
+    return { granted, canRequest };
+  }, []);
 
   // Initialize OneSignal on mount
   useEffect(() => {
@@ -94,10 +141,9 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
         console.log("[OneSignal] Initialized with App ID:", ONESIGNAL_APP_ID.substring(0, 8) + "...");
       }
 
-      // Get the push subscription ID for backend targeting
+      // Get the push subscription ID for backend targeting.
       OneSignal.User.pushSubscription.getIdAsync().then((subscriptionId) => {
         if (subscriptionId) {
-          console.log("[OneSignal] Subscription ID:", subscriptionId);
           setOnesignalSubscriptionId(subscriptionId);
         }
       }).catch((err) => {
@@ -106,24 +152,9 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
 
       // Listen for subscription ID changes (e.g. after permission granted)
       const subscriptionChangeHandler = (subscription: { current: { id?: string } }) => {
-        if (subscription.current.id) {
-          console.log("[OneSignal] Subscription ID updated:", subscription.current.id);
-          setOnesignalSubscriptionId(subscription.current.id);
-        }
+        setOnesignalSubscriptionId(subscription.current.id ?? null);
       };
       OneSignal.User.pushSubscription.addEventListener("change", subscriptionChangeHandler);
-
-      const userChangeHandler = (event: { current: { externalId?: string; onesignalId?: string } }) => {
-        console.log("[OneSignal] User state changed:", {
-          externalId: event.current.externalId,
-          onesignalId: event.current.onesignalId,
-        });
-      };
-      OneSignal.User.addEventListener("change", userChangeHandler);
-
-      // Check current permission status
-      const permissionStatus = OneSignal.Notifications.hasPermission();
-      setHasPermission(permissionStatus);
 
       // Listen for notification events
       const foregroundHandler = (event: NotificationWillDisplayEvent) => {
@@ -139,42 +170,129 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
       // Listen for permission changes
       const permissionHandler = (granted: boolean) => {
         setHasPermission(granted);
-        setPermissionDenied(!granted);
+        if (granted) {
+          setPermissionDenied(false);
+          void saveNotificationPermissionDecision("enabled");
+        } else {
+          setPermissionDenied(true);
+          void saveNotificationPermissionDecision("denied");
+        }
+        void OneSignal.Notifications.canRequestPermission().then(setCanRequestPermission);
       };
       OneSignal.Notifications.addEventListener("permissionChange", permissionHandler);
 
+      const appStateSubscription = AppState.addEventListener("change", nextState => {
+        if (nextState === "active") {
+          void refreshPermissionState();
+        }
+      });
+
+      void refreshPermissionState()
+        .catch(error => {
+          console.warn("[OneSignal] Failed to read notification permission:", error);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+
       return () => {
+        appStateSubscription.remove();
         OneSignal.Notifications.removeEventListener("foregroundWillDisplay", foregroundHandler);
         OneSignal.Notifications.removeEventListener("permissionChange", permissionHandler);
         OneSignal.User.pushSubscription.removeEventListener("change", subscriptionChangeHandler);
-        OneSignal.User.removeEventListener("change", userChangeHandler);
       };
     } catch (error) {
       console.error("[OneSignal] Failed to initialize:", error);
-    } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshPermissionState]);
 
   const requestPermission = useCallback(async (): Promise<boolean> => {
     if (isWeb) return false;
 
     try {
-      const granted = await OneSignal.Notifications.requestPermission(true);
+      const currentPermission = await OneSignal.Notifications.getPermissionAsync();
+      if (currentPermission) {
+        setHasPermission(true);
+        setPermissionDenied(false);
+        void saveNotificationPermissionDecision("enabled");
+        return true;
+      }
+
+      const canRequest = await OneSignal.Notifications.canRequestPermission();
+      setCanRequestPermission(canRequest);
+      if (!canRequest) {
+        setPermissionDenied(true);
+        void saveNotificationPermissionDecision("denied");
+        return false;
+      }
+
+      const granted = await OneSignal.Notifications.requestPermission(false);
       setHasPermission(granted);
       setPermissionDenied(!granted);
+      setCanRequestPermission(
+        granted
+          ? false
+          : await OneSignal.Notifications.canRequestPermission()
+      );
       if (granted) {
         OneSignal.User.pushSubscription.optIn();
         const subscriptionId = await OneSignal.User.pushSubscription.getIdAsync();
         if (subscriptionId) {
-          console.log("[OneSignal] Subscription ID after permission:", subscriptionId);
           setOnesignalSubscriptionId(subscriptionId);
         }
       }
+      void saveNotificationPermissionDecision(granted ? "enabled" : "denied");
       return granted;
     } catch (error) {
       console.error("[OneSignal] Permission request failed:", error);
+      void refreshPermissionState();
+      throw error;
+    }
+  }, [refreshPermissionState]);
+
+  const openNotificationSettings = useCallback(async () => {
+    if (isWeb) return;
+    try {
+      await Linking.openSettings();
+    } catch (error) {
+      console.warn("[OneSignal] Could not open notification settings:", error);
+    }
+  }, []);
+
+  const linkIdentity = useCallback(async (
+    identity: LinkedNotificationIdentity,
+  ): Promise<boolean> => {
+    if (isWeb || !ONESIGNAL_APP_ID) return false;
+
+    try {
+      if (hasPermission) {
+        OneSignal.User.pushSubscription.optIn();
+      }
+      OneSignal.login(identity.memberId);
+      OneSignal.User.addTags({
+        member_id: identity.memberId,
+        church_id: identity.churchId,
+      });
+      setLinkedIdentity(identity);
+      return true;
+    } catch (error) {
+      console.warn("[OneSignal] Failed to link the current membership:", error);
+      setLinkedIdentity(null);
       return false;
+    }
+  }, [hasPermission]);
+
+  const clearIdentity = useCallback(() => {
+    setLinkedIdentity(null);
+    if (isWeb) return;
+
+    try {
+      OneSignal.User.removeTag("member_id");
+      OneSignal.User.removeTag("church_id");
+      OneSignal.logout();
+    } catch (error) {
+      console.warn("[OneSignal] Failed to clear the current membership:", error);
     }
   }, []);
 
@@ -201,13 +319,18 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
       value={{
         hasPermission,
         permissionDenied,
+        canRequestPermission,
         loading,
         isWeb,
         requestPermission,
+        openNotificationSettings,
         sendTag,
         deleteTag,
         lastNotification,
         onesignalSubscriptionId,
+        linkedIdentity,
+        linkIdentity,
+        clearIdentity,
       }}
     >
       {children}

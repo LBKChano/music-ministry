@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase/client';
 interface AuthContextType {
   session: Session | null;
   initialized: boolean;
+  initializationError: string | null;
+  retryInitialization: () => Promise<void>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
 }
@@ -14,6 +16,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   session: null,
   initialized: false,
+  initializationError: null,
+  retryInitialization: async () => {},
   signOut: async () => {},
   deleteAccount: async () => {},
 });
@@ -22,8 +26,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [session, setSession] = useState<Session | null>(null);
   const [initialized, setInitialized] = useState(false);
+  const [initializationError, setInitializationError] = useState<string | null>(null);
   const splashHidden = useRef(false);
-  const initializedRef = useRef(false);
+  const mountedRef = useRef(false);
+  const authEventRevisionRef = useRef(0);
   const activeAccountIdRef = useRef<string | null>(null);
 
   const replaceSession = useCallback((newSession: Session | null) => {
@@ -38,7 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(newSession);
   }, [queryClient]);
 
-  const hideSplash = () => {
+  const hideSplash = useCallback(() => {
     if (!splashHidden.current) {
       splashHidden.current = true;
       console.log('[AuthContext] hiding splash screen');
@@ -50,31 +56,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('[AuthContext] SplashScreen.hideAsync threw (ignored):', err);
       }
     }
-  };
+  }, []);
+
+  const initializeAuth = useCallback(async () => {
+    const startingRevision = authEventRevisionRef.current;
+    setInitializationError(null);
+    setInitialized(false);
+
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (!mountedRef.current) return;
+
+      if (error) {
+        setInitializationError(error.message);
+        setInitialized(true);
+        hideSplash();
+        return;
+      }
+
+      if (authEventRevisionRef.current === startingRevision) {
+        replaceSession(data.session ?? null);
+      }
+      setInitialized(true);
+      hideSplash();
+    } catch (error) {
+      if (!mountedRef.current) return;
+      const message = error instanceof Error
+        ? error.message
+        : 'Unable to restore your session.';
+      console.error('[AuthContext] Session initialization failed:', error);
+      setInitializationError(message);
+      setInitialized(true);
+      hideSplash();
+    }
+  }, [hideSplash, replaceSession]);
 
   useEffect(() => {
-    let mounted = true;
-    let subscription: any = null;
-
-    // Safety timeout: if INITIAL_SESSION never fires within 4s (network issue,
-    // cold start delay, Supabase misconfiguration), force initialized=true so
-    // the app doesn't hang forever on a black screen.
-    const timeout = setTimeout(() => {
-      if (mounted && !initializedRef.current) {
-        console.warn('[AuthContext] INITIAL_SESSION timeout — forcing initialized=true');
-        if (mounted) {
-          initializedRef.current = true;
-          setInitialized(true);
-          hideSplash();
-        }
-      }
-    }, 4000);
+    mountedRef.current = true;
+    let subscription: { unsubscribe: () => void } | null = null;
 
     try {
       const { data } = supabase.auth.onAuthStateChange((event: string, newSession: Session | null) => {
-        if (!mounted) return;
+        if (!mountedRef.current) return;
 
         console.log('[AuthContext] onAuthStateChange:', event, newSession ? `user=${newSession.user?.id}` : 'no session');
+        authEventRevisionRef.current += 1;
+        setInitializationError(null);
 
         if (event === 'SIGNED_OUT') {
           console.log('[AuthContext] SIGNED_OUT — clearing session');
@@ -89,38 +116,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           replaceSession(newSession ?? null);
         }
 
-        // INITIAL_SESSION fires exactly once after storage is fully hydrated.
-        if (event === 'INITIAL_SESSION') {
-          console.log('[AuthContext] INITIAL_SESSION received — marking initialized');
-          initializedRef.current = true;
-          clearTimeout(timeout);
-          setInitialized(true);
-          hideSplash();
-        }
-      });
-
-      subscription = data?.subscription;
-    } catch (err) {
-      console.error('[AuthContext] Error setting up auth listener:', err);
-      if (mounted) {
-        clearTimeout(timeout);
-        initializedRef.current = true;
-        setSession(null);
         setInitialized(true);
         hideSplash();
-      }
+      });
+
+      subscription = data?.subscription ?? null;
+    } catch (err) {
+      console.error('[AuthContext] Error setting up auth listener:', err);
+      setInitializationError(
+        err instanceof Error ? err.message : 'Unable to monitor your session.',
+      );
     }
 
+    void initializeAuth();
+
     return () => {
-      mounted = false;
-      clearTimeout(timeout);
+      mountedRef.current = false;
       try {
         subscription?.unsubscribe();
       } catch (e) {
         // ignore cleanup errors
       }
     };
-  }, [replaceSession]);
+  }, [hideSplash, initializeAuth, replaceSession]);
 
   const signOut = async () => {
     console.log('[AuthContext] signOut called');
@@ -157,7 +175,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ session, initialized, signOut, deleteAccount }}>
+    <AuthContext.Provider
+      value={{
+        session,
+        initialized,
+        initializationError,
+        retryInitialization: initializeAuth,
+        signOut,
+        deleteAccount,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

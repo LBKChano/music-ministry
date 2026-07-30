@@ -44,6 +44,7 @@ The hosted Supabase Auth redirect allowlist must continue to include:
 
 ```text
 musicministry://reset-password
+musicministry://verify-email
 ```
 
 The mobile client remains on the implicit flow so recovery links produced by

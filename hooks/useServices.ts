@@ -16,6 +16,7 @@ import {
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { queryKeys } from '@/lib/query/keys';
+import { RefreshCoordinator } from '@/lib/query/refresh-coordinator';
 import {
   addDaysToDate,
   createNextServiceDateRange,
@@ -50,6 +51,7 @@ export type { CachedService as ServiceWithAssignments } from '@/lib/realtime/cac
 interface CombinedServiceQueries {
   services: ServiceWithAssignments[];
   isPending: boolean;
+  isFetching: boolean;
   lastIsFetching: boolean;
   lastError: Error | null;
   firstError: Error | null;
@@ -94,6 +96,7 @@ function combineServiceQueries(
   return {
     services,
     isPending: results.some(result => result.isPending),
+    isFetching: results.some(result => result.isFetching),
     lastIsFetching: Boolean(results.at(-1)?.isFetching),
     lastError: results.at(-1)?.error ?? null,
     firstError: results.find(result => result.error)?.error ?? null,
@@ -187,6 +190,7 @@ export function useServices(
     () => new Set()
   );
   const reorderingServiceIdsRef = useRef(new Set<string>());
+  const refreshCoordinatorRef = useRef(new RefreshCoordinator());
 
   useEffect(() => {
     setServiceRanges(
@@ -217,6 +221,9 @@ export function useServices(
   const loading = queryEnabled
     && services.length === 0
     && combinedServicesQuery.isPending;
+  const refreshing = queryEnabled
+    && services.length > 0
+    && combinedServicesQuery.isFetching;
   const loadingMoreServices = windowed
     && serviceRanges.length > 1
     && combinedServicesQuery.lastIsFetching;
@@ -247,9 +254,12 @@ export function useServices(
 
   const refreshServices = useCallback(async () => {
     if (!queryEnabled) return;
-    await queryClient.refetchQueries(
-      { queryKey: servicesQueryRoot, type: 'active' },
-      { throwOnError: true }
+    await refreshCoordinatorRef.current.run(
+      `services:${servicesQueryRoot.join(':')}`,
+      () => queryClient.refetchQueries(
+        { queryKey: servicesQueryRoot, type: 'active' },
+        { throwOnError: true }
+      )
     );
   }, [queryClient, queryEnabled, servicesQueryRoot]);
 
@@ -1380,6 +1390,7 @@ export function useServices(
   return {
     services,
     loading,
+    refreshing,
     error,
     createService: createServiceAction,
     createServiceFromTemplate: createServiceFromTemplateAction,

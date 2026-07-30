@@ -20,6 +20,8 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { AdminFormModal } from '@/components/admin/admin-form-modal';
 import { BulkServiceDeleteModal } from '@/components/admin/bulk-service-delete-modal';
+import { RefreshErrorNotice } from '@/components/RefreshErrorNotice';
+import { WordSafeHeaderText } from '@/components/navigation/word-safe-header-text';
 import {
   ResponsiveTabHeader,
   TabHeaderIconButton,
@@ -28,8 +30,14 @@ import {
 import { useChurch } from '@/hooks/useChurch';
 import { useServices } from '@/hooks/useServices';
 import { usePerformanceBaselineScreen } from '@/hooks/usePerformanceBaselineScreen';
+import { useRefreshController } from '@/hooks/useRefreshController';
 import { supabase } from '@/lib/supabase/client';
 import { createAutoAssignPreviewKey } from '@/lib/admin/operations';
+import {
+  runRefreshBatch,
+  shouldShowInitialLoader,
+} from '@/lib/query/refresh-coordinator';
+import { HEADER_ACTION_LANE_WIDTHS } from '@/lib/ui/header-typography';
 import {
   LatestStateSaveQueue,
   type LatestStateSaveStatus,
@@ -348,14 +356,16 @@ export default function ChurchScreen() {
     churches,
     currentChurch,
     setCurrentChurch,
+    switchChurch,
     members,
     recurringServices,
     churchRoles,
     notificationSettings,
-    loading,
+    initializing,
     error,
     user,
     isAdmin,
+    sessionStatus,
     createChurch,
     deleteMember,
     updateMember,
@@ -395,7 +405,7 @@ export default function ChurchScreen() {
 
   usePerformanceBaselineScreen(
     'Church',
-    !loading && !servicesLoading && !!user,
+    !initializing && !servicesLoading && !!user,
     {
       services: services.length,
       members: members.length,
@@ -512,8 +522,11 @@ export default function ChurchScreen() {
   const [isPreparing, setIsPreparing] = useState(false);
   const [quarterOperationStatus, setQuarterOperationStatus] = useState<string | null>(null);
 
-  // Pull-to-refresh state
-  const [refreshing, setRefreshing] = useState(false);
+  const {
+    refreshing,
+    refreshError,
+    runRefresh,
+  } = useRefreshController(currentChurch?.id ?? null);
 
   // Update notification states when settings change
   React.useEffect(() => {
@@ -600,26 +613,36 @@ export default function ChurchScreen() {
   }, [currentChurch?.id, currentChurch?.allow_member_multiple_roles_same_service]);
 
   // Pull-to-refresh handler
-  const onRefresh = React.useCallback(async () => {
+  const onRefresh = React.useCallback(() => {
     console.log('User pulled to refresh Church Management data');
-    setRefreshing(true);
-    try {
-      // Refresh all church-related data
-      await Promise.all([
-        refreshChurches(),
-        currentChurch ? refreshMembers() : Promise.resolve(),
-        currentChurch ? refreshRecurringServices() : Promise.resolve(),
-        currentChurch ? refreshChurchRoles() : Promise.resolve(),
-        currentChurch ? refreshNotificationSettings() : Promise.resolve(),
-        currentChurch ? refreshServicesHook() : Promise.resolve(),
+    void runRefresh(async () => {
+      const refreshChurchList = async () => {
+        const result = await refreshChurches();
+        if (result.status === 'error') {
+          throw new Error(result.error);
+        }
+      };
+
+      await runRefreshBatch([
+        refreshChurchList,
+        currentChurch ? refreshMembers : async () => {},
+        currentChurch ? refreshRecurringServices : async () => {},
+        currentChurch ? refreshChurchRoles : async () => {},
+        currentChurch ? refreshNotificationSettings : async () => {},
+        currentChurch ? refreshServicesHook : async () => {},
       ]);
       console.log('Church Management data refreshed successfully');
-    } catch (err) {
-      console.error('Error refreshing Church Management data:', err);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refreshChurches, refreshMembers, refreshRecurringServices, refreshChurchRoles, refreshNotificationSettings, refreshServicesHook, currentChurch]);
+    });
+  }, [
+    currentChurch,
+    refreshChurches,
+    refreshChurchRoles,
+    refreshMembers,
+    refreshNotificationSettings,
+    refreshRecurringServices,
+    refreshServicesHook,
+    runRefresh,
+  ]);
 
   const handleAddSongType = () => {
     const normalizedName = normalizeSongTypeLabel(newSongTypeName);
@@ -724,7 +747,7 @@ export default function ChurchScreen() {
     return sections;
   }, [autoAssignPreview]);
 
-  if (!isAdmin) {
+  if (sessionStatus !== 'ready' || !isAdmin) {
     console.log('[ChurchScreen] Non-admin user attempted to access church screen, redirecting');
     return <Redirect href="/(tabs)/(home)" />;
   }
@@ -747,7 +770,13 @@ export default function ChurchScreen() {
         return;
       }
 
-      setCurrentChurch(result);
+      const transition = await switchChurch(result.id);
+      if (transition.status !== 'ready') {
+        Alert.alert(
+          'Church Created',
+          'The church was created, but it could not be opened yet. Please select it from the church list.'
+        );
+      }
       setNewChurchName('');
       setCreateChurchModalVisible(false);
     } catch (err) {
@@ -1693,8 +1722,14 @@ export default function ChurchScreen() {
   // Show spinner while auth is initializing OR while the first church fetch is in flight.
   // loading starts true and only becomes false once fetchChurches (or the no-session branch)
   // completes, so this guard reliably prevents a blank/empty flash on Android.
-  if (loading || !user) {
-    console.log('[ChurchScreen] Showing loading state — loading:', loading, 'user:', !!user);
+  if (
+    !user
+    || shouldShowInitialLoader(
+      initializing,
+      Boolean(currentChurch || churches.length > 0),
+    )
+  ) {
+    console.log('[ChurchScreen] Showing initial loading state');
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <Stack.Screen
@@ -1763,6 +1798,8 @@ export default function ChurchScreen() {
       <ResponsiveTabHeader
         eyebrow="Church"
         title={churchHeaderTitle}
+        titleVariant="primaryTitle"
+        trailingWidth={HEADER_ACTION_LANE_WIDTHS.churchActions}
         accessibilityTitle={`Church management for ${churchHeaderTitle}`}
         trailing={(
           <>
@@ -1841,6 +1878,8 @@ export default function ChurchScreen() {
         )}
       </ResponsiveTabHeader>
 
+      <RefreshErrorNotice message={refreshError} />
+
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -1875,6 +1914,9 @@ export default function ChurchScreen() {
                 return (
                   <TouchableOpacity
                     key={church.id}
+                    accessibilityLabel={church.name}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
                     style={[
                       styles.churchCard,
                       { backgroundColor: colors.cardBackground },
@@ -1882,7 +1924,7 @@ export default function ChurchScreen() {
                     ]}
                     onPress={() => {
                       console.log('User selected church:', church.name);
-                      setCurrentChurch(church);
+                      void switchChurch(church.id);
                     }}
                   >
                     <IconSymbol
@@ -1891,14 +1933,15 @@ export default function ChurchScreen() {
                       size={24}
                       color={isSelected ? colors.primary : colors.text}
                     />
-                    <Text
+                    <WordSafeHeaderText
+                      accessible={false}
+                      maxFontSizeMultiplier={1.35}
                       style={[
                         styles.churchName,
                         { color: isSelected ? colors.primary : colors.text },
                       ]}
-                    >
-                      {church.name}
-                    </Text>
+                      text={church.name}
+                    />
                   </TouchableOpacity>
                 );
               })}
@@ -1985,6 +2028,50 @@ export default function ChurchScreen() {
               />
               <Text style={styles.actionButtonText}>Add Single Service</Text>
             </TouchableOpacity>
+            <View
+              style={[
+                styles.scheduledServiceManager,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: colors.cardBackground,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.scheduledServiceManagerIcon,
+                  { backgroundColor: colors.primary + '14' },
+                ]}
+              >
+                <IconSymbol
+                  ios_icon_name="calendar.badge.minus"
+                  android_material_icon_name="event-busy"
+                  size={24}
+                  color={colors.primary}
+                />
+              </View>
+              <View style={styles.scheduledServiceManagerText}>
+                <Text style={[styles.scheduledServiceManagerTitle, { color: colors.text }]}>
+                  Delete Scheduled Services
+                </Text>
+                <Text style={[styles.scheduledServiceManagerDescription, { color: colors.textSecondary }]}>
+                  Preview and delete by date range or individual service. Weekly templates stay unchanged.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.scheduledServiceManagerButton,
+                  { borderColor: colors.primary },
+                ]}
+                onPress={() => setShowBulkServiceDeleteModal(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Delete scheduled services"
+              >
+                <Text style={[styles.scheduledServiceManagerButtonText, { color: colors.primary }]}>
+                  Open
+                </Text>
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity
               style={[
                 styles.autoAssignSettingsCard,
@@ -2436,50 +2523,6 @@ export default function ChurchScreen() {
                   </View>
                 )}
 
-                <View
-                  style={[
-                    styles.scheduledServiceManager,
-                    {
-                      borderColor: colors.border,
-                      backgroundColor: colors.cardBackground,
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.scheduledServiceManagerIcon,
-                      { backgroundColor: colors.primary + '14' },
-                    ]}
-                  >
-                    <IconSymbol
-                      ios_icon_name="calendar.badge.minus"
-                      android_material_icon_name="event-busy"
-                      size={24}
-                      color={colors.primary}
-                    />
-                  </View>
-                  <View style={styles.scheduledServiceManagerText}>
-                    <Text style={[styles.scheduledServiceManagerTitle, { color: colors.text }]}>
-                      Manage Scheduled Services
-                    </Text>
-                    <Text style={[styles.scheduledServiceManagerDescription, { color: colors.textSecondary }]}>
-                      Preview and delete services by date range or individual selection. Weekly templates stay unchanged.
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[
-                      styles.scheduledServiceManagerButton,
-                      { borderColor: colors.primary },
-                    ]}
-                    onPress={() => setShowBulkServiceDeleteModal(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Manage scheduled services"
-                  >
-                    <Text style={[styles.scheduledServiceManagerButtonText, { color: colors.primary }]}>
-                      Open
-                    </Text>
-                  </TouchableOpacity>
-                </View>
               </View>
             )}
 
@@ -4490,7 +4533,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   churchName: {
+    flex: 1,
+    minWidth: 0,
     fontSize: 18,
+    lineHeight: 23,
     fontWeight: '800',
   },
   helperText: {

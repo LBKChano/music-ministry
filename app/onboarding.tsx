@@ -1,567 +1,617 @@
-
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
-  ActivityIndicator,
-  Alert,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@react-navigation/native';
-import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
-import { AuthTextInput } from '@/components/auth/AuthTextInput';
+import { LabeledTextInput } from '@/components/auth/LabeledTextInput';
+import { useAuth } from '@/contexts/AuthContext';
+import { useChurch } from '@/hooks/useChurch';
+import {
+  clearPendingOnboardingIntent,
+  loadPendingOnboardingIntent,
+  savePendingOnboardingIntent,
+} from '@/lib/auth/onboarding-intent-storage';
+import { completeOnboardingIntent } from '@/lib/auth/onboarding-service';
+import { saveLastSelectedChurchId } from '@/lib/church/session-storage';
+import {
+  classifySignUpOutcome,
+  createChurchIntent,
+  createJoinIntent,
+  createOnboardingRequestId,
+  normalizeAccountEmail,
+  type PendingOnboardingIntent,
+} from '@/lib/auth/onboarding-workflow';
 import { supabase } from '@/lib/supabase/client';
 import { PASSWORD_RESET_REDIRECT_URL } from '@/utils/passwordResetLinks';
-import { useChurch } from '@/hooks/useChurch';
+import { SIGNUP_VERIFICATION_REDIRECT_URL } from '@/utils/signupVerificationLinks';
+
+type OnboardingStep = 'welcome' | 'signIn' | 'join' | 'create' | 'forgotPassword';
+type FieldErrors = Partial<Record<
+  'churchName' | 'name' | 'email' | 'password' | 'invitationCode' | 'resetEmail',
+  string
+>>;
 
 const SCHEDULES_ROUTE = '/(tabs)/(home)';
-const ONBOARDING_READY_RETRY_MS = 300;
-const ONBOARDING_READY_ATTEMPTS = 6;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+function resolveRequestedStep(mode?: string): OnboardingStep {
+  switch (mode) {
+    case 'signIn':
+    case 'adminLogin':
+    case 'member':
+      return 'signIn';
+    case 'join':
+    case 'memberSignup':
+      return 'join';
+    case 'create':
+    case 'church':
+    case 'admin':
+      return 'create';
+    default:
+      return 'welcome';
+  }
+}
 
 export default function OnboardingScreen() {
-  const { colors: themeColors } = useTheme();
   const router = useRouter();
-  const routeParams = useLocalSearchParams<{ passwordReset?: 'complete' | 'request' }>();
-  const { refreshChurches, setCurrentChurch } = useChurch();
+  const { colors: themeColors, dark } = useTheme();
+  const { session } = useAuth();
+  const { refreshChurches } = useChurch();
+  const routeParams = useLocalSearchParams<{
+    passwordReset?: 'complete' | 'request';
+    mode?: string;
+    email?: string;
+  }>();
 
-  const [step, setStep] = useState<'welcome' | 'church' | 'admin' | 'adminLogin' | 'member' | 'memberSignup' | 'forgotPassword'>('welcome');
+  const screenColors = {
+    text: themeColors.text,
+    textSecondary: dark ? '#A7B0BE' : '#64748B',
+    border: themeColors.border,
+    primary: themeColors.primary,
+    background: themeColors.background,
+    surface: themeColors.card,
+  };
+
+  const [step, setStep] = useState<OnboardingStep>('welcome');
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [churchName, setChurchName] = useState('');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [invitationCode, setInvitationCode] = useState('');
+  const [resetEmail, setResetEmail] = useState('');
+  const passwordInputRef = useRef<TextInput>(null);
+  const invitationCodeInputRef = useRef<TextInput>(null);
+  const submissionInFlightRef = useRef(false);
+  const createRequestRef = useRef<{ key: string; requestId: string } | null>(null);
 
-  // Always reset to welcome step on mount so sign-out → re-open starts fresh
+  const signedInEmail = normalizeAccountEmail(session?.user.email ?? '');
+  const signedInName = typeof session?.user.user_metadata?.name === 'string'
+    ? session.user.user_metadata.name.trim()
+    : '';
+
   useEffect(() => {
     if (routeParams.passwordReset === 'request') {
       setStep('forgotPassword');
+      setResetEmail(
+        typeof routeParams.email === 'string' ? routeParams.email : '',
+      );
       setMessage(null);
       setError(null);
-    } else {
-      setStep('welcome');
-    }
-
-    if (routeParams.passwordReset === 'complete') {
-      setMessage('Password updated. Please log in with your new password.');
-      setError(null);
-    }
-  }, [routeParams.passwordReset]);
-
-  // Safety timeout: if loading stays true for 8s (e.g. navigation fails), reset it
-  useEffect(() => {
-    if (loading) {
-      loadingTimeoutRef.current = setTimeout(() => {
-        setLoading(false);
-        Alert.alert('Something went wrong', 'Please try again.');
-      }, 8000);
-    } else {
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-        loadingTimeoutRef.current = null;
-      }
-    }
-    return () => {
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-        loadingTimeoutRef.current = null;
-      }
-    };
-  }, [loading]);
-
-  // Church data
-  const [churchName, setChurchName] = useState('');
-
-  // Admin account data
-  const [adminEmail, setAdminEmail] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
-  const [adminName, setAdminName] = useState('');
-
-  // Admin login data
-  const [adminLoginEmail, setAdminLoginEmail] = useState('');
-  const [adminLoginPassword, setAdminLoginPassword] = useState('');
-
-  // Member login data
-  const [memberEmail, setMemberEmail] = useState('');
-  const [memberPassword, setMemberPassword] = useState('');
-
-  // Password reset data
-  const [resetEmail, setResetEmail] = useState('');
-
-  // Member signup data
-  const [memberSignupEmail, setMemberSignupEmail] = useState('');
-  const [memberSignupPassword, setMemberSignupPassword] = useState('');
-  const [memberSignupName, setMemberSignupName] = useState('');
-  const [memberInvitationCode, setMemberInvitationCode] = useState('');
-  const adminPasswordInputRef = useRef<TextInput>(null);
-  const adminLoginPasswordInputRef = useRef<TextInput>(null);
-  const memberPasswordInputRef = useRef<TextInput>(null);
-  const memberSignupPasswordInputRef = useRef<TextInput>(null);
-  const memberInvitationCodeInputRef = useRef<TextInput>(null);
-
-  const waitForChurchMembership = useCallback(async (churchId: string, userId: string) => {
-    for (let attempt = 0; attempt < ONBOARDING_READY_ATTEMPTS; attempt += 1) {
-      const { data, error: membershipError } = await supabase
-        .from('church_members')
-        .select('id')
-        .eq('church_id', churchId)
-        .eq('member_id', userId)
-        .maybeSingle();
-
-      if (data?.id) {
-        return true;
-      }
-
-      if (membershipError) {
-        console.warn('Membership readiness check failed:', membershipError.message);
-      }
-
-      await wait(ONBOARDING_READY_RETRY_MS);
-    }
-
-    return false;
-  }, []);
-
-  const finishOnboardingToSchedules = useCallback(async (churchId: string, userId: string) => {
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-
-    if (sessionError) {
-      console.warn('Unable to verify onboarding session:', sessionError.message);
-    }
-
-    if (!sessionData.session) {
-      setMessage('Account created. Please confirm your email, then log in to continue.');
-      setStep('welcome');
       return;
     }
 
-    const membershipReady = await waitForChurchMembership(churchId, userId);
-    if (!membershipReady) {
-      console.warn('Membership row was not visible before navigation. Continuing to schedules.');
+    setStep(resolveRequestedStep(routeParams.mode));
+    if (typeof routeParams.email === 'string') {
+      setEmail(routeParams.email);
     }
-
-    const { data: churchData, error: churchFetchError } = await supabase
-      .from('churches')
-      .select('*')
-      .eq('id', churchId)
-      .maybeSingle();
-
-    if (churchFetchError) {
-      console.warn('Unable to preload church before navigation:', churchFetchError.message);
-    } else if (churchData) {
-      setCurrentChurch(churchData);
+    if (routeParams.passwordReset === 'complete') {
+      setMessage('Password updated. Sign in with your new password.');
+      setStep('signIn');
     }
+  }, [
+    routeParams.email,
+    routeParams.mode,
+    routeParams.passwordReset,
+  ]);
 
-    await refreshChurches();
-    router.replace(SCHEDULES_ROUTE);
-  }, [refreshChurches, router, setCurrentChurch, waitForChurchMembership]);
+  useEffect(() => {
+    if (!session) return;
+    if (!email) setEmail(signedInEmail);
+    if (!name && signedInName) setName(signedInName);
+  }, [email, name, session, signedInEmail, signedInName]);
 
-  const openForgotPassword = (prefillEmail?: string) => {
-    setResetEmail(prefillEmail?.trim() ?? '');
+  const resetFeedback = useCallback(() => {
+    setFieldErrors({});
     setError(null);
     setMessage(null);
-    setStep('forgotPassword');
-  };
+  }, []);
 
-  const handleSendPasswordReset = async () => {
-    if (!resetEmail.trim()) {
-      setError('Please enter your email address');
-      return;
-    }
+  const openStep = useCallback((nextStep: OnboardingStep) => {
+    resetFeedback();
+    setPassword('');
+    setStep(nextStep);
+  }, [resetFeedback]);
 
+  const runSubmission = useCallback(async (work: () => Promise<void>) => {
+    if (submissionInFlightRef.current) return;
+    submissionInFlightRef.current = true;
     setLoading(true);
     setError(null);
     setMessage(null);
 
     try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
-        redirectTo: PASSWORD_RESET_REDIRECT_URL,
+      await work();
+    } catch (submissionError) {
+      console.error('[Onboarding] Submission failed:', submissionError);
+      setError(
+        submissionError instanceof Error
+          ? submissionError.message
+          : 'Something went wrong. Please try again.',
+      );
+    } finally {
+      submissionInFlightRef.current = false;
+      setLoading(false);
+    }
+  }, []);
+
+  const routeAfterChurchRefresh = useCallback(async (
+    preferredChurchId?: string,
+  ) => {
+    const transition = await refreshChurches(preferredChurchId);
+    if (transition.status === 'ready') {
+      router.replace(SCHEDULES_ROUTE);
+      return true;
+    }
+    if (transition.status === 'no-membership') {
+      router.replace('/no-membership');
+      return false;
+    }
+    if (transition.status === 'error') {
+      setError(transition.error);
+    }
+    return false;
+  }, [refreshChurches, router]);
+
+  const routeAfterCompletedIntent = useCallback(async (completion: {
+    accountId: string;
+    churchId: string;
+  }) => {
+    await saveLastSelectedChurchId(
+      completion.accountId,
+      completion.churchId,
+    );
+
+    if (session?.user.id === completion.accountId) {
+      await routeAfterChurchRefresh(completion.churchId);
+      return;
+    }
+
+    router.replace('/');
+  }, [routeAfterChurchRefresh, router, session?.user.id]);
+
+  const completeIntent = useCallback(async (
+    intent: PendingOnboardingIntent,
+  ) => {
+    const completion = await completeOnboardingIntent(intent, session);
+
+    if (completion.status === 'ready') {
+      await clearPendingOnboardingIntent();
+      await routeAfterCompletedIntent(completion);
+      return;
+    }
+
+    if (completion.status === 'authentication-required') {
+      setEmail(intent.email);
+      setPassword('');
+      setStep('signIn');
+      setMessage('Sign in to finish this church setup.');
+      return;
+    }
+
+    if (completion.status === 'account-mismatch') {
+      setError(
+        `This setup belongs to ${completion.expectedEmail}. Sign in with that account to continue.`,
+      );
+      return;
+    }
+
+    setError(completion.message);
+    if (intent.kind === 'join') {
+      setInvitationCode(intent.invitationCode);
+      setStep('join');
+    }
+  }, [routeAfterCompletedIntent, session]);
+
+  const submitIntent = useCallback(async (
+    intent: PendingOnboardingIntent,
+  ) => {
+    await savePendingOnboardingIntent(intent);
+
+    if (session) {
+      await completeIntent(intent);
+      return;
+    }
+
+    const signUpResult = await supabase.auth.signUp({
+      email: intent.email,
+      password,
+      options: {
+        data: { name: intent.name },
+        emailRedirectTo: SIGNUP_VERIFICATION_REDIRECT_URL,
+      },
+    });
+
+    const outcome = classifySignUpOutcome({
+      error: signUpResult.error,
+      user: signUpResult.data.user,
+      hasSession: Boolean(signUpResult.data.session),
+    });
+
+    if (outcome.status === 'error') {
+      setError(outcome.message);
+      return;
+    }
+
+    if (outcome.status === 'existing-account') {
+      setEmail(intent.email);
+      setPassword('');
+      setStep('signIn');
+      setMessage(
+        'An account already uses this email. Sign in and the church action will continue automatically.',
+      );
+      return;
+    }
+
+    if (outcome.status === 'verification-required') {
+      setPassword('');
+      router.replace({
+        pathname: '/verify-email',
+        params: { email: intent.email },
+      });
+      return;
+    }
+
+    await completeIntent(intent);
+  }, [completeIntent, password, router, session]);
+
+  const validateAccountFields = useCallback(() => {
+    const nextErrors: FieldErrors = {};
+    const activeEmail = session ? signedInEmail : normalizeAccountEmail(email);
+
+    if (!name.trim()) nextErrors.name = 'Enter your name.';
+    if (!session && !activeEmail) {
+      nextErrors.email = 'Enter your email address.';
+    } else if (!session && !EMAIL_PATTERN.test(activeEmail)) {
+      nextErrors.email = 'Enter a valid email address.';
+    }
+    if (!session && !password) {
+      nextErrors.password = 'Enter a password.';
+    } else if (!session && password.length < 6) {
+      nextErrors.password = 'Use at least 6 characters.';
+    }
+
+    setFieldErrors(nextErrors);
+    return {
+      valid: Object.keys(nextErrors).length === 0,
+      accountEmail: activeEmail,
+    };
+  }, [email, name, password, session, signedInEmail]);
+
+  const handleCreateChurch = useCallback(() => {
+    const accountValidation = validateAccountFields();
+    const nextErrors: FieldErrors = {};
+    if (!churchName.trim()) nextErrors.churchName = 'Enter the church name.';
+
+    if (!accountValidation.valid || Object.keys(nextErrors).length > 0) {
+      setFieldErrors(previous => ({ ...previous, ...nextErrors }));
+      return;
+    }
+
+    void runSubmission(async () => {
+      const requestKey = [
+        accountValidation.accountEmail,
+        name.trim(),
+        churchName.trim(),
+      ].join('|');
+      if (createRequestRef.current?.key !== requestKey) {
+        createRequestRef.current = {
+          key: requestKey,
+          requestId: createOnboardingRequestId(),
+        };
+      }
+
+      const intent = createChurchIntent({
+        email: accountValidation.accountEmail,
+        name,
+        churchName,
+        requestId: createRequestRef.current.requestId,
+      });
+      await submitIntent(intent);
+    });
+  }, [
+    churchName,
+    name,
+    runSubmission,
+    submitIntent,
+    validateAccountFields,
+  ]);
+
+  const handleJoinChurch = useCallback(() => {
+    const accountValidation = validateAccountFields();
+    const nextErrors: FieldErrors = {};
+    if (!invitationCode.trim()) {
+      nextErrors.invitationCode = 'Enter the invitation code.';
+    }
+
+    if (!accountValidation.valid || Object.keys(nextErrors).length > 0) {
+      setFieldErrors(previous => ({ ...previous, ...nextErrors }));
+      return;
+    }
+
+    void runSubmission(async () => {
+      const intent = createJoinIntent({
+        email: accountValidation.accountEmail,
+        name,
+        invitationCode,
+      });
+      await submitIntent(intent);
+    });
+  }, [
+    invitationCode,
+    name,
+    runSubmission,
+    submitIntent,
+    validateAccountFields,
+  ]);
+
+  const handleSignIn = useCallback(() => {
+    const normalizedEmail = normalizeAccountEmail(email);
+    const nextErrors: FieldErrors = {};
+    if (!normalizedEmail) {
+      nextErrors.email = 'Enter your email address.';
+    } else if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      nextErrors.email = 'Enter a valid email address.';
+    }
+    if (!password) nextErrors.password = 'Enter your password.';
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
+    void runSubmission(async () => {
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
       });
 
+      if (signInError || !data.session) {
+        setError(signInError?.message ?? 'Could not sign in.');
+        return;
+      }
+
+      setPassword('');
+      const pendingIntent = await loadPendingOnboardingIntent();
+      if (pendingIntent?.email === normalizedEmail) {
+        const completion = await completeOnboardingIntent(
+          pendingIntent,
+          data.session,
+        );
+        if (completion.status === 'ready') {
+          await clearPendingOnboardingIntent();
+          await saveLastSelectedChurchId(
+            completion.accountId,
+            completion.churchId,
+          );
+          router.replace('/');
+          return;
+        }
+        if (completion.status === 'error') {
+          setError(completion.message);
+          setName(pendingIntent.name);
+          if (pendingIntent.kind === 'join') {
+            setInvitationCode(pendingIntent.invitationCode);
+            setStep('join');
+          } else {
+            setChurchName(pendingIntent.churchName);
+            setStep('create');
+          }
+          return;
+        }
+      } else if (pendingIntent) {
+        await clearPendingOnboardingIntent();
+      }
+
+      router.replace('/');
+    });
+  }, [email, password, router, runSubmission]);
+
+  const handleSendPasswordReset = useCallback(() => {
+    const normalizedEmail = normalizeAccountEmail(resetEmail);
+    const nextErrors: FieldErrors = {};
+    if (!normalizedEmail) {
+      nextErrors.resetEmail = 'Enter your email address.';
+    } else if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      nextErrors.resetEmail = 'Enter a valid email address.';
+    }
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
+    void runSubmission(async () => {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        normalizedEmail,
+        { redirectTo: PASSWORD_RESET_REDIRECT_URL },
+      );
       if (resetError) {
-        console.error('Error sending password reset email:', resetError);
         setError(resetError.message);
         return;
       }
+      setMessage(
+        'Reset email sent. Open its link to choose a new password.',
+      );
+    });
+  }, [resetEmail, runSubmission]);
 
-      setMessage('Password reset email sent. Open the link in that email to set a new password.');
-    } catch (err) {
-      console.error('Unexpected password reset email error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to send password reset email');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCreateChurchAndAdmin = async () => {
-    console.log('User creating church and admin account');
-    
-    if (!churchName.trim()) {
-      setError('Please enter a church name');
-      return;
-    }
-
-    if (!adminName.trim()) {
-      setError('Please enter your name');
-      return;
-    }
-
-    if (!adminEmail.trim() || !adminPassword.trim()) {
-      setError('Please enter email and password');
-      return;
-    }
-
-    if (adminPassword.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Step 1: Sign up the admin user
-      console.log('Signing up admin user:', adminEmail);
-      const signUpResult = await supabase.auth.signUp({
-        email: adminEmail.trim(),
-        password: adminPassword,
-        options: {
-          data: {
-            name: adminName.trim(),
-          },
-        },
-      });
-
-      if (signUpResult.error) {
-        console.error('Error signing up:', signUpResult.error);
-        setError(signUpResult.error.message);
-        setLoading(false);
-        return;
-      }
-
-      const user = signUpResult.data.user;
-      const session = signUpResult.data.session;
-      
-      if (!user) {
-        setError('Failed to create user account');
-        setLoading(false);
-        return;
-      }
-
-      console.log('Admin user created:', user.id);
-      console.log('Session created:', session ? 'Yes' : 'No');
-
-      // If signUp returned a session immediately (email confirmation disabled),
-      // navigate now. Otherwise onAuthStateChange will fire when confirmed.
-      if (session) {
-        console.log('Session available immediately after signUp — navigating to tabs');
-      }
-
-      // Step 2: Generate unique invitation code
-      const invitationCode = generateInvitationCode();
-      console.log('Generated invitation code:', invitationCode);
-
-      // Step 3: Create the church with invitation code
-      console.log('Creating church:', churchName);
-      const churchResult = await supabase
-        .from('churches')
-        .insert({
-          name: churchName.trim(),
-          admin_id: user.id,
-          invitation_code: invitationCode,
-        })
-        .select()
-        .single();
-
-      if (churchResult.error) {
-        console.error('Error creating church:', churchResult.error);
-        setError(churchResult.error.message);
-        setLoading(false);
-        return;
-      }
-
-      console.log('Church created successfully:', churchResult.data);
-
-      // Step 4: Add admin as a member of the church with is_admin flag and member_id
-      console.log('Adding admin as church member with email:', adminEmail.trim(), 'and member_id:', user.id);
-      const memberResult = await supabase
-        .from('church_members')
-        .insert({
-          church_id: churchResult.data.id,
-          member_id: user.id,
-          email: adminEmail.trim(),
-          name: adminName.trim(),
-          role: 'Admin',
-          is_admin: true,
-        })
-        .select()
-        .single();
-
-      if (memberResult.error) {
-        console.error('Error adding admin as member:', memberResult.error);
-        setError('Church created but failed to add you as a member. Please contact support.');
-        setLoading(false);
-        return;
-      }
-
-      console.log('Admin added as member successfully:', memberResult.data);
-      console.log('Church and admin account created successfully — navigating to schedules');
-
-      setLoading(false);
-      // Explicitly navigate now that all DB operations are complete.
-      // Do NOT rely on onAuthStateChange — it may fire before the church row
-      // exists, causing it to redirect back to onboarding.
-      await finishOnboardingToSchedules(churchResult.data.id, user.id);
-    } catch (err) {
-      console.error('Error in onboarding:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      setLoading(false);
-    }
-  };
-
-  const generateInvitationCode = (): string => {
-    // Generate an 8-character alphanumeric code
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Exclude similar looking characters
-    let code = '';
-    for (let i = 0; i < 8; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
-  };
-
-  const handleAdminLogin = async () => {
-    console.log('Admin logging in with email:', adminLoginEmail);
-
-    if (!adminLoginEmail.trim() || !adminLoginPassword.trim()) {
-      setError('Please enter email and password');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const signInResult = await supabase.auth.signInWithPassword({
-        email: adminLoginEmail.trim(),
-        password: adminLoginPassword,
-      });
-
-      if (signInResult.error) {
-        console.error('Error signing in as admin:', signInResult.error);
-        setError(signInResult.error.message);
-        setLoading(false);
-        return;
-      }
-
-      console.log('Admin logged in successfully! User ID:', signInResult.data.user?.id);
-      setLoading(false);
-      // Explicitly navigate after successful login so the guard is never stuck.
-      router.replace('/(tabs)');
-    } catch (err) {
-      console.error('Error in admin login:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      setLoading(false);
-    }
-  };
-
-  const handleMemberLogin = async () => {
-    console.log('User logging in as member');
-
-    if (!memberEmail.trim() || !memberPassword.trim()) {
-      setError('Please enter email and password');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const signInResult = await supabase.auth.signInWithPassword({
-        email: memberEmail.trim(),
-        password: memberPassword,
-      });
-
-      if (signInResult.error) {
-        console.error('Error signing in:', signInResult.error);
-        setError(signInResult.error.message);
-        setLoading(false);
-        return;
-      }
-
-      console.log('Member logged in successfully!');
-      setLoading(false);
-      // Explicitly navigate after successful login so the guard is never stuck.
-      router.replace('/(tabs)');
-    } catch (err) {
-      console.error('Error in member login:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      setLoading(false);
-    }
-  };
-
-  const handleMemberSignup = async () => {
-    console.log('User creating member account with invitation code');
-
-    if (!memberSignupEmail.trim() || !memberSignupPassword.trim()) {
-      setError('Please enter email and password');
-      return;
-    }
-
-    if (!memberSignupName.trim()) {
-      setError('Please enter your name');
-      return;
-    }
-
-    if (!memberInvitationCode.trim()) {
-      setError('Please enter an invitation code');
-      return;
-    }
-
-    if (memberSignupPassword.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Step 1: Validate invitation code and find church (this now works for unauthenticated users)
-      console.log('Validating invitation code:', memberInvitationCode.trim().toUpperCase());
-      const churchQuery = supabase
-        .from('churches')
-        .select('id, name')
-        .eq('invitation_code', memberInvitationCode.trim().toUpperCase())
-        .single();
-
-      console.log('Executing church query...');
-      const { data: churchData, error: churchError } = await churchQuery;
-
-      if (churchError) {
-        console.error('Church query error:', churchError);
-        setError('Invalid invitation code. Please check with your church admin.');
-        setLoading(false);
-        return;
-      }
-
-      if (!churchData) {
-        console.error('No church found with invitation code');
-        setError('Invalid invitation code. Please check with your church admin.');
-        setLoading(false);
-        return;
-      }
-
-      console.log('Valid invitation code! Church found:', churchData.name, 'ID:', churchData.id);
-
-      // Step 2: Sign up the member user
-      console.log('Signing up member user:', memberSignupEmail);
-      const signUpResult = await supabase.auth.signUp({
-        email: memberSignupEmail.trim(),
-        password: memberSignupPassword,
-        options: {
-          data: {
-            name: memberSignupName.trim(),
-          },
-        },
-      });
-
-      if (signUpResult.error) {
-        console.error('Error signing up member:', signUpResult.error);
-        setError(signUpResult.error.message);
-        setLoading(false);
-        return;
-      }
-
-      const user = signUpResult.data.user;
-      const session = signUpResult.data.session;
-      
-      if (!user) {
-        console.error('No user returned from signup');
-        setError('Failed to create user account');
-        setLoading(false);
-        return;
-      }
-
-      console.log('Member user created successfully! User ID:', user.id);
-      console.log('Session created:', session ? 'Yes' : 'No');
-
-      // Step 3: Add member to church with member_id linking to auth.users
-      console.log('Adding member to church:', churchData.id, 'with member_id:', user.id);
-      const memberInsert = supabase
-        .from('church_members')
-        .insert({
-          church_id: churchData.id,
-          member_id: user.id,
-          email: memberSignupEmail.trim(),
-          name: memberSignupName.trim(),
-          is_admin: false,
-        })
-        .select()
-        .single();
-
-      console.log('Executing member insert...');
-      const { data: memberData, error: memberError } = await memberInsert;
-
-      if (memberError) {
-        console.error('Error adding member to church:', memberError);
-        setError('Account created but failed to join church. Please contact your admin.');
-        setLoading(false);
-        return;
-      }
-
-      console.log('Member successfully joined church:', churchData.name);
-      console.log('Member data:', memberData);
-      console.log('Member account created successfully — navigating to schedules');
-      setLoading(false);
-      await finishOnboardingToSchedules(churchData.id, user.id);
-    } catch (err) {
-      console.error('Unexpected error in member signup:', err);
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
-      setLoading(false);
-    }
-  };
-
-  const welcomeTitle = 'Welcome to Music Ministry';
-  const welcomeSubtitle = 'Streamline your worship team scheduling with smart assignments, role management, and automated reminders for every service';
-  const createChurchButton = 'Create Church & Admin Account';
-  const loginAsAdminButton = 'Login as Admin';
-  const loginAsMemberButton = 'Login as Member';
-  const createMemberAccountButton = 'Create Member Account';
-  const churchStepTitle = 'Create Your Church';
-  const churchStepSubtitle = 'Enter the name of your church';
-  const adminStepTitle = 'Create Admin Account';
-  const adminStepSubtitle = 'Set up your administrator account';
-  const adminLoginTitle = 'Admin Login';
-  const adminLoginSubtitle = 'Sign in with your admin credentials';
-  const memberStepTitle = 'Member Login';
-  const memberStepSubtitle = 'Sign in with your member credentials';
-  const memberSignupTitle = 'Create Member Account';
-  const memberSignupSubtitle = 'Register with your church invitation code';
-  const forgotPasswordTitle = 'Reset Password';
-  const forgotPasswordSubtitle = 'Enter your account email and we will send you a reset link';
-  const backButton = 'Back';
-  const continueButton = 'Continue';
-  const createButton = 'Create & Start';
-  const loginButton = 'Login';
-  const signupButton = 'Create Account';
-  const sendResetEmailButton = 'Send Reset Email';
-
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen
-        options={{
-          headerShown: false,
+  const renderAccountFields = () => (
+    <>
+      <LabeledTextInput
+        label="Your name"
+        colors={screenColors}
+        error={fieldErrors.name}
+        placeholder="Full name"
+        value={name}
+        onChangeText={(value) => {
+          setName(value);
+          setFieldErrors(previous => ({ ...previous, name: undefined }));
         }}
+        autoCapitalize="words"
+        autoComplete="name"
+        textContentType="name"
+        returnKeyType={session ? 'done' : 'next'}
       />
 
+      {session ? (
+        <View
+          style={[styles.signedInNotice, { borderColor: screenColors.border }]}
+          accessibilityRole="text"
+        >
+          <IconSymbol
+            ios_icon_name="person.crop.circle.badge.checkmark"
+            android_material_icon_name="verified-user"
+            size={22}
+            color={screenColors.primary}
+          />
+          <View style={styles.signedInCopy}>
+            <Text style={[styles.noticeLabel, { color: screenColors.textSecondary }]}>
+              Signed in as
+            </Text>
+            <Text selectable style={[styles.noticeValue, { color: screenColors.text }]}>
+              {signedInEmail}
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <>
+          <LabeledTextInput
+            label="Email"
+            colors={screenColors}
+            error={fieldErrors.email}
+            credentialType="new-username"
+            placeholder="name@example.com"
+            value={email}
+            onChangeText={(value) => {
+              setEmail(value);
+              setFieldErrors(previous => ({ ...previous, email: undefined }));
+            }}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="next"
+            onSubmitEditing={() => passwordInputRef.current?.focus()}
+          />
+          <LabeledTextInput
+            ref={passwordInputRef}
+            label="Password"
+            colors={screenColors}
+            error={fieldErrors.password}
+            credentialType="new-password"
+            placeholder="At least 6 characters"
+            value={password}
+            onChangeText={(value) => {
+              setPassword(value);
+              setFieldErrors(previous => ({ ...previous, password: undefined }));
+            }}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            passwordRules="minlength: 6;"
+            returnKeyType="next"
+          />
+        </>
+      )}
+    </>
+  );
+
+  const renderFeedback = () => (
+    <>
+      {message ? (
+        <View
+          style={styles.messageContainer}
+          accessibilityLiveRegion="polite"
+        >
+          <Text style={styles.messageText}>{message}</Text>
+        </View>
+      ) : null}
+      {error ? (
+        <View
+          style={styles.errorContainer}
+          accessibilityLiveRegion="assertive"
+        >
+          <Text selectable style={styles.errorText}>{error}</Text>
+        </View>
+      ) : null}
+    </>
+  );
+
+  const renderBackButton = () => (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Back"
+      disabled={loading}
+      onPress={() => openStep('welcome')}
+      style={({ pressed }) => [
+        styles.backButton,
+        { borderColor: screenColors.border },
+        pressed && styles.pressed,
+        loading && styles.disabled,
+      ]}
+    >
+      <Text style={[styles.backButtonText, { color: screenColors.text }]}>
+        Back
+      </Text>
+    </Pressable>
+  );
+
+  const renderSubmitButton = (
+    label: string,
+    onPress: () => void,
+  ) => (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ busy: loading, disabled: loading }}
+      disabled={loading}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.submitButton,
+        { backgroundColor: screenColors.primary },
+        pressed && styles.pressed,
+        loading && styles.disabled,
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator color="#FFFFFF" />
+      ) : (
+        <Text style={styles.submitButtonText}>{label}</Text>
+      )}
+    </Pressable>
+  );
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: screenColors.background }]}>
+      <Stack.Screen options={{ headerShown: false }} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -571,581 +621,327 @@ export default function OnboardingScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          {/* Welcome Step */}
-          {step === 'welcome' && (
-            <View style={styles.stepContainer}>
-              <View style={styles.iconContainer}>
+          {step === 'welcome' ? (
+            <View style={styles.content}>
+              <View
+                style={[styles.brandIcon, { backgroundColor: screenColors.primary }]}
+                accessibilityElementsHidden
+              >
                 <IconSymbol
-                  ios_icon_name="building.2"
-                  android_material_icon_name="home"
-                  size={80}
-                  color={colors.primary}
+                  ios_icon_name="music.note.house.fill"
+                  android_material_icon_name="church"
+                  size={42}
+                  color="#FFFFFF"
                 />
               </View>
-
-              <Text style={[styles.title, { color: colors.text }]}>
-                {welcomeTitle}
+              <Text style={[styles.title, { color: screenColors.text }]}>
+                Music Ministry
               </Text>
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                {welcomeSubtitle}
+              <Text style={[styles.subtitle, { color: screenColors.textSecondary }]}>
+                Sign in to your account, join your church team, or create a church workspace.
               </Text>
+              {renderFeedback()}
 
-              {message && (
-                <View style={styles.messageContainer}>
-                  <Text style={styles.messageText}>{message}</Text>
-                </View>
-              )}
-
-              <View style={styles.buttonContainer}>
-                <TouchableOpacity
-                  style={[styles.primaryButton, { backgroundColor: colors.primary }]}
-                  onPress={() => {
-                    console.log('User selected: Create Church');
-                    setStep('church');
-                  }}
-                >
-                  <Text style={styles.primaryButtonText}>{createChurchButton}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.secondaryButton, { borderColor: colors.primary }]}
-                  onPress={() => {
-                    console.log('User selected: Create Member Account');
-                    setStep('memberSignup');
-                  }}
-                >
-                  <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
-                    {createMemberAccountButton}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.secondaryButton, { borderColor: colors.primary }]}
-                  onPress={() => {
-                    console.log('User selected: Login as Admin');
-                    setStep('adminLogin');
-                  }}
-                >
-                  <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
-                    {loginAsAdminButton}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.secondaryButton, { borderColor: colors.primary }]}
-                  onPress={() => {
-                    console.log('User selected: Login as Member');
-                    setStep('member');
-                  }}
-                >
-                  <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
-                    {loginAsMemberButton}
-                  </Text>
-                </TouchableOpacity>
+              <View style={styles.actionList}>
+                {!session ? (
+                  <WelcomeAction
+                    title="Sign In"
+                    subtitle="Use your existing Music Ministry account"
+                    iconIos="person.crop.circle"
+                    iconAndroid="login"
+                    primary
+                    colors={screenColors}
+                    onPress={() => openStep('signIn')}
+                  />
+                ) : null}
+                <WelcomeAction
+                  title="Join a Church"
+                  subtitle="Use an invitation code from your church admin"
+                  iconIos="person.badge.plus"
+                  iconAndroid="group-add"
+                  primary={Boolean(session)}
+                  colors={screenColors}
+                  onPress={() => openStep('join')}
+                />
+                <WelcomeAction
+                  title="Create a Church"
+                  subtitle="Set up a new church and become its first admin"
+                  iconIos="building.2.crop.circle"
+                  iconAndroid="add-business"
+                  colors={screenColors}
+                  onPress={() => openStep('create')}
+                />
               </View>
             </View>
-          )}
+          ) : null}
 
-          {/* Church Creation Step */}
-          {step === 'church' && (
-            <View style={styles.stepContainer}>
-              <Text style={[styles.title, { color: colors.text }]}>
-                {churchStepTitle}
-              </Text>
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                {churchStepSubtitle}
-              </Text>
-
-              <View style={styles.formContainer}>
-                <TextInput
-                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="Church Name"
-                  placeholderTextColor={colors.textSecondary}
-                  value={churchName}
-                  onChangeText={setChurchName}
-                  autoCapitalize="words"
-                />
-
-                {error && (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{error}</Text>
-                  </View>
-                )}
-
-                <View style={styles.navigationButtons}>
-                  <TouchableOpacity
-                    style={[styles.backButton, { borderColor: colors.border }]}
-                    onPress={() => {
-                      console.log('User tapped Back');
-                      setStep('welcome');
-                      setError(null);
-                    }}
-                  >
-                    <Text style={[styles.backButtonText, { color: colors.text }]}>
-                      {backButton}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.continueButton, { backgroundColor: colors.primary }]}
-                    onPress={() => {
-                      console.log('User tapped Continue from church step');
-                      if (!churchName.trim()) {
-                        setError('Please enter a church name');
-                        return;
-                      }
-                      setError(null);
-                      setStep('admin');
-                    }}
-                  >
-                    <Text style={styles.continueButtonText}>{continueButton}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* Admin Account Creation Step */}
-          {step === 'admin' && (
-            <View style={styles.stepContainer}>
-              <Text style={[styles.title, { color: colors.text }]}>
-                {adminStepTitle}
-              </Text>
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                {adminStepSubtitle}
-              </Text>
-
-              <View style={styles.formContainer}>
-                <TextInput
-                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="Your Name"
-                  placeholderTextColor={colors.textSecondary}
-                  value={adminName}
-                  onChangeText={setAdminName}
-                  autoCapitalize="words"
-                  autoComplete="name"
-                  textContentType="name"
-                />
-
-                <AuthTextInput
-                  credentialType="new-username"
-                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="Email"
-                  placeholderTextColor={colors.textSecondary}
-                  value={adminEmail}
-                  onChangeText={setAdminEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="next"
-                  onSubmitEditing={() => adminPasswordInputRef.current?.focus()}
-                />
-
-                <AuthTextInput
-                  ref={adminPasswordInputRef}
-                  credentialType="new-password"
-                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="Password (min 6 characters)"
-                  placeholderTextColor={colors.textSecondary}
-                  value={adminPassword}
-                  onChangeText={setAdminPassword}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  passwordRules="minlength: 6;"
-                  returnKeyType="done"
-                  onSubmitEditing={handleCreateChurchAndAdmin}
-                />
-
-                {error && (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{error}</Text>
-                  </View>
-                )}
-
-                <View style={styles.navigationButtons}>
-                  <TouchableOpacity
-                    style={[styles.backButton, { borderColor: colors.border }]}
-                    onPress={() => {
-                      console.log('User tapped Back');
-                      setStep('church');
-                      setError(null);
-                    }}
-                    disabled={loading}
-                  >
-                    <Text style={[styles.backButtonText, { color: colors.text }]}>
-                      {backButton}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.continueButton, { backgroundColor: colors.primary }]}
-                    onPress={handleCreateChurchAndAdmin}
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.continueButtonText}>{createButton}</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* Admin Login Step */}
-          {step === 'adminLogin' && (
-            <View style={styles.stepContainer}>
-              <Text style={[styles.title, { color: colors.text }]}>
-                {adminLoginTitle}
-              </Text>
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                {adminLoginSubtitle}
-              </Text>
-
-              <View style={styles.formContainer}>
-                <AuthTextInput
-                  credentialType="username"
-                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="Email"
-                  placeholderTextColor={colors.textSecondary}
-                  value={adminLoginEmail}
-                  onChangeText={setAdminLoginEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="next"
-                  onSubmitEditing={() => adminLoginPasswordInputRef.current?.focus()}
-                />
-
-                <AuthTextInput
-                  ref={adminLoginPasswordInputRef}
-                  credentialType="current-password"
-                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="Password"
-                  placeholderTextColor={colors.textSecondary}
-                  value={adminLoginPassword}
-                  onChangeText={setAdminLoginPassword}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="done"
-                  onSubmitEditing={handleAdminLogin}
-                />
-
-                <TouchableOpacity
-                  style={styles.forgotPasswordButton}
-                  onPress={() => openForgotPassword(adminLoginEmail)}
-                  disabled={loading}
-                >
-                  <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>
-                    Forgot Password?
-                  </Text>
-                </TouchableOpacity>
-
-                {error && (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{error}</Text>
-                  </View>
-                )}
-
-                <View style={styles.navigationButtons}>
-                  <TouchableOpacity
-                    style={[styles.backButton, { borderColor: colors.border }]}
-                    onPress={() => {
-                      console.log('User tapped Back');
-                      setStep('welcome');
-                      setError(null);
-                    }}
-                    disabled={loading}
-                  >
-                    <Text style={[styles.backButtonText, { color: colors.text }]}>
-                      {backButton}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.continueButton, { backgroundColor: colors.primary }]}
-                    onPress={handleAdminLogin}
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.continueButtonText}>{loginButton}</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* Member Login Step */}
-          {step === 'member' && (
-            <View style={styles.stepContainer}>
-              <Text style={[styles.title, { color: colors.text }]}>
-                {memberStepTitle}
-              </Text>
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                {memberStepSubtitle}
-              </Text>
-
-              <View style={styles.formContainer}>
-                <AuthTextInput
-                  credentialType="username"
-                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="Email"
-                  placeholderTextColor={colors.textSecondary}
-                  value={memberEmail}
-                  onChangeText={setMemberEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="next"
-                  onSubmitEditing={() => memberPasswordInputRef.current?.focus()}
-                />
-
-                <AuthTextInput
-                  ref={memberPasswordInputRef}
-                  credentialType="current-password"
-                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="Password"
-                  placeholderTextColor={colors.textSecondary}
-                  value={memberPassword}
-                  onChangeText={setMemberPassword}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="done"
-                  onSubmitEditing={handleMemberLogin}
-                />
-
-                <TouchableOpacity
-                  style={styles.forgotPasswordButton}
-                  onPress={() => openForgotPassword(memberEmail)}
-                  disabled={loading}
-                >
-                  <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>
-                    Forgot Password?
-                  </Text>
-                </TouchableOpacity>
-
-                {error && (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{error}</Text>
-                  </View>
-                )}
-
-                <View style={styles.navigationButtons}>
-                  <TouchableOpacity
-                    style={[styles.backButton, { borderColor: colors.border }]}
-                    onPress={() => {
-                      console.log('User tapped Back');
-                      setStep('welcome');
-                      setError(null);
-                    }}
-                    disabled={loading}
-                  >
-                    <Text style={[styles.backButtonText, { color: colors.text }]}>
-                      {backButton}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.continueButton, { backgroundColor: colors.primary }]}
-                    onPress={handleMemberLogin}
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.continueButtonText}>{loginButton}</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* Member Signup Step - UPDATED WITH INVITATION CODE */}
-          {step === 'memberSignup' && (
-            <View style={styles.stepContainer}>
-              <Text style={[styles.title, { color: colors.text }]}>
-                {memberSignupTitle}
-              </Text>
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                {memberSignupSubtitle}
-              </Text>
-
-              <View style={styles.formContainer}>
-                <TextInput
-                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="Your Name"
-                  placeholderTextColor={colors.textSecondary}
-                  value={memberSignupName}
-                  onChangeText={setMemberSignupName}
-                  autoCapitalize="words"
-                  autoComplete="name"
-                  textContentType="name"
-                />
-
-                <AuthTextInput
-                  credentialType="new-username"
-                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="Email"
-                  placeholderTextColor={colors.textSecondary}
-                  value={memberSignupEmail}
-                  onChangeText={setMemberSignupEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="next"
-                  onSubmitEditing={() => memberSignupPasswordInputRef.current?.focus()}
-                />
-
-                <AuthTextInput
-                  ref={memberSignupPasswordInputRef}
-                  credentialType="new-password"
-                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="Password (min 6 characters)"
-                  placeholderTextColor={colors.textSecondary}
-                  value={memberSignupPassword}
-                  onChangeText={setMemberSignupPassword}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  passwordRules="minlength: 6;"
-                  returnKeyType="next"
-                  onSubmitEditing={() => memberInvitationCodeInputRef.current?.focus()}
-                />
-
-                <TextInput
-                  ref={memberInvitationCodeInputRef}
-                  style={[styles.input, styles.invitationCodeInput, { color: colors.text, borderColor: colors.primary }]}
-                  placeholder="Church Invitation Code"
-                  placeholderTextColor={colors.textSecondary}
-                  value={memberInvitationCode}
-                  onChangeText={(text) => setMemberInvitationCode(text.toUpperCase())}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  maxLength={8}
-                  returnKeyType="done"
-                  onSubmitEditing={handleMemberSignup}
-                />
-                <Text style={[styles.helperText, { color: colors.textSecondary }]}>
-                  Enter the 8-character code provided by your church admin
+          {step === 'signIn' ? (
+            <OnboardingFormHeader
+              title="Sign In"
+              subtitle="One account works for every church you belong to."
+              colors={screenColors}
+            >
+              <LabeledTextInput
+                label="Email"
+                colors={screenColors}
+                error={fieldErrors.email}
+                credentialType="username"
+                placeholder="name@example.com"
+                value={email}
+                onChangeText={(value) => {
+                  setEmail(value);
+                  setFieldErrors(previous => ({ ...previous, email: undefined }));
+                }}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="next"
+                onSubmitEditing={() => passwordInputRef.current?.focus()}
+              />
+              <LabeledTextInput
+                ref={passwordInputRef}
+                label="Password"
+                colors={screenColors}
+                error={fieldErrors.password}
+                credentialType="current-password"
+                placeholder="Your password"
+                value={password}
+                onChangeText={(value) => {
+                  setPassword(value);
+                  setFieldErrors(previous => ({ ...previous, password: undefined }));
+                }}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="go"
+                onSubmitEditing={handleSignIn}
+              />
+              <Pressable
+                accessibilityRole="button"
+                disabled={loading}
+                onPress={() => {
+                  setResetEmail(email);
+                  openStep('forgotPassword');
+                }}
+                style={styles.forgotButton}
+              >
+                <Text style={[styles.linkText, { color: screenColors.primary }]}>
+                  Forgot your password?
                 </Text>
-
-                {error && (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{error}</Text>
-                  </View>
-                )}
-
-                <View style={styles.navigationButtons}>
-                  <TouchableOpacity
-                    style={[styles.backButton, { borderColor: colors.border }]}
-                    onPress={() => {
-                      console.log('User tapped Back');
-                      setStep('welcome');
-                      setError(null);
-                    }}
-                    disabled={loading}
-                  >
-                    <Text style={[styles.backButtonText, { color: colors.text }]}>
-                      {backButton}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.continueButton, { backgroundColor: colors.primary }]}
-                    onPress={handleMemberSignup}
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.continueButtonText}>{signupButton}</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
+              </Pressable>
+              {renderFeedback()}
+              <View style={styles.navigationButtons}>
+                {renderBackButton()}
+                {renderSubmitButton('Sign In', handleSignIn)}
               </View>
-            </View>
-          )}
+            </OnboardingFormHeader>
+          ) : null}
 
-          {/* Forgot Password Step */}
-          {step === 'forgotPassword' && (
-            <View style={styles.stepContainer}>
-              <Text style={[styles.title, { color: colors.text }]}>
-                {forgotPasswordTitle}
-              </Text>
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                {forgotPasswordSubtitle}
-              </Text>
-
-              <View style={styles.formContainer}>
-                <AuthTextInput
-                  credentialType="email"
-                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                  placeholder="Email"
-                  placeholderTextColor={colors.textSecondary}
-                  value={resetEmail}
-                  onChangeText={setResetEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="send"
-                  onSubmitEditing={handleSendPasswordReset}
-                />
-
-                {message && (
-                  <View style={styles.messageContainer}>
-                    <Text style={styles.messageText}>{message}</Text>
-                  </View>
-                )}
-
-                {error && (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{error}</Text>
-                  </View>
-                )}
-
-                <View style={styles.navigationButtons}>
-                  <TouchableOpacity
-                    style={[styles.backButton, { borderColor: colors.border }]}
-                    onPress={() => {
-                      console.log('User tapped Back');
-                      setStep('welcome');
-                      setError(null);
-                      setMessage(null);
-                    }}
-                    disabled={loading}
-                  >
-                    <Text style={[styles.backButtonText, { color: colors.text }]}>
-                      {backButton}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.continueButton, { backgroundColor: colors.primary }]}
-                    onPress={handleSendPasswordReset}
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.continueButtonText}>{sendResetEmailButton}</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
+          {step === 'join' ? (
+            <OnboardingFormHeader
+              title="Join a Church"
+              subtitle="Your invitation code connects this account to the right church."
+              colors={screenColors}
+            >
+              {renderAccountFields()}
+              <LabeledTextInput
+                ref={invitationCodeInputRef}
+                label="Invitation code"
+                colors={screenColors}
+                error={fieldErrors.invitationCode}
+                placeholder="8-character code"
+                value={invitationCode}
+                onChangeText={(value) => {
+                  setInvitationCode(value.toUpperCase());
+                  setFieldErrors(previous => ({
+                    ...previous,
+                    invitationCode: undefined,
+                  }));
+                }}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={8}
+                returnKeyType="done"
+                onSubmitEditing={handleJoinChurch}
+                style={styles.codeInput}
+              />
+              {renderFeedback()}
+              <View style={styles.navigationButtons}>
+                {renderBackButton()}
+                {renderSubmitButton('Join Church', handleJoinChurch)}
               </View>
-            </View>
-          )}
+            </OnboardingFormHeader>
+          ) : null}
 
+          {step === 'create' ? (
+            <OnboardingFormHeader
+              title="Create a Church"
+              subtitle="Create the workspace first, then configure roles and weekly services."
+              colors={screenColors}
+            >
+              <LabeledTextInput
+                label="Church name"
+                colors={screenColors}
+                error={fieldErrors.churchName}
+                placeholder="Church name"
+                value={churchName}
+                onChangeText={(value) => {
+                  setChurchName(value);
+                  setFieldErrors(previous => ({
+                    ...previous,
+                    churchName: undefined,
+                  }));
+                }}
+                autoCapitalize="words"
+                returnKeyType="next"
+              />
+              {renderAccountFields()}
+              {renderFeedback()}
+              <View style={styles.navigationButtons}>
+                {renderBackButton()}
+                {renderSubmitButton('Create Church', handleCreateChurch)}
+              </View>
+            </OnboardingFormHeader>
+          ) : null}
+
+          {step === 'forgotPassword' ? (
+            <OnboardingFormHeader
+              title="Reset Password"
+              subtitle="We will email you a secure link to choose a new password."
+              colors={screenColors}
+            >
+              <LabeledTextInput
+                label="Account email"
+                colors={screenColors}
+                error={fieldErrors.resetEmail}
+                credentialType="email"
+                placeholder="name@example.com"
+                value={resetEmail}
+                onChangeText={(value) => {
+                  setResetEmail(value);
+                  setFieldErrors(previous => ({
+                    ...previous,
+                    resetEmail: undefined,
+                  }));
+                }}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="send"
+                onSubmitEditing={handleSendPasswordReset}
+              />
+              {renderFeedback()}
+              <View style={styles.navigationButtons}>
+                {renderBackButton()}
+                {renderSubmitButton('Send Reset Email', handleSendPasswordReset)}
+              </View>
+            </OnboardingFormHeader>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+function WelcomeAction({
+  title,
+  subtitle,
+  iconIos,
+  iconAndroid,
+  primary = false,
+  colors,
+  onPress,
+}: {
+  title: string;
+  subtitle: string;
+  iconIos: string;
+  iconAndroid: React.ComponentProps<
+    typeof IconSymbol
+  >['android_material_icon_name'];
+  primary?: boolean;
+  colors: {
+    text: string;
+    textSecondary: string;
+    border: string;
+    primary: string;
+    surface: string;
+  };
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityHint={subtitle}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.welcomeAction,
+        {
+          backgroundColor: primary ? colors.primary : colors.surface,
+          borderColor: primary ? colors.primary : colors.border,
+        },
+        pressed && styles.pressed,
+      ]}
+    >
+      <IconSymbol
+        ios_icon_name={iconIos}
+        android_material_icon_name={iconAndroid}
+        size={25}
+        color={primary ? '#FFFFFF' : colors.primary}
+      />
+      <View style={styles.welcomeActionCopy}>
+        <Text
+          style={[
+            styles.welcomeActionTitle,
+            { color: primary ? '#FFFFFF' : colors.text },
+          ]}
+        >
+          {title}
+        </Text>
+        <Text
+          style={[
+            styles.welcomeActionSubtitle,
+            {
+              color: primary
+                ? 'rgba(255,255,255,0.82)'
+                : colors.textSecondary,
+            },
+          ]}
+        >
+          {subtitle}
+        </Text>
+      </View>
+      <IconSymbol
+        ios_icon_name="chevron.right"
+        android_material_icon_name="chevron-right"
+        size={20}
+        color={primary ? '#FFFFFF' : colors.textSecondary}
+      />
+    </Pressable>
+  );
+}
+
+function OnboardingFormHeader({
+  title,
+  subtitle,
+  colors,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  colors: { text: string; textSecondary: string };
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.content}>
+      <Text accessibilityRole="header" style={[styles.formTitle, { color: colors.text }]}>
+        {title}
+      </Text>
+      <Text style={[styles.formSubtitle, { color: colors.textSecondary }]}>
+        {subtitle}
+      </Text>
+      <View style={styles.form}>{children}</View>
+    </View>
   );
 }
 
@@ -1159,133 +955,172 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 24,
+    paddingHorizontal: 22,
+    paddingVertical: 32,
   },
-  stepContainer: {
+  content: {
+    width: '100%',
+    maxWidth: 460,
+    alignSelf: 'center',
+  },
+  brandIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 8,
     alignItems: 'center',
-  },
-  iconContainer: {
-    marginBottom: 32,
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 22,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: 30,
+    lineHeight: 37,
+    fontWeight: '800',
     textAlign: 'center',
-    marginBottom: 12,
   },
   subtitle: {
+    marginTop: 10,
+    marginBottom: 28,
     fontSize: 16,
+    lineHeight: 23,
     textAlign: 'center',
-    marginBottom: 40,
-    lineHeight: 24,
-    paddingHorizontal: 8,
   },
-  formContainer: {
-    width: '100%',
-    maxWidth: 400,
+  actionList: {
+    gap: 12,
   },
-  input: {
+  welcomeAction: {
+    minHeight: 78,
+    borderRadius: 8,
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 13,
   },
-  invitationCodeInput: {
-    borderWidth: 2,
-    fontWeight: '600',
-    letterSpacing: 2,
+  welcomeActionCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  welcomeActionTitle: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '800',
+  },
+  welcomeActionSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  formTitle: {
+    fontSize: 28,
+    lineHeight: 35,
+    fontWeight: '800',
     textAlign: 'center',
-    fontSize: 18,
   },
-  helperText: {
-    fontSize: 12,
+  formSubtitle: {
+    marginTop: 8,
+    marginBottom: 26,
+    fontSize: 15,
+    lineHeight: 22,
     textAlign: 'center',
-    marginTop: -8,
-    marginBottom: 16,
-    fontStyle: 'italic',
   },
-  forgotPasswordButton: {
-    alignItems: 'flex-end',
-    marginTop: -6,
-    marginBottom: 16,
-  },
-  forgotPasswordText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  buttonContainer: {
-    width: '100%',
-    maxWidth: 400,
+  form: {
     gap: 16,
   },
-  primaryButton: {
-    padding: 16,
-    borderRadius: 12,
+  codeInput: {
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  signedInNotice: {
+    minHeight: 56,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 11,
   },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+  signedInCopy: {
+    flex: 1,
   },
-  secondaryButton: {
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 2,
+  noticeLabel: {
+    fontSize: 12,
+    lineHeight: 16,
   },
-  secondaryButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+  noticeValue: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
   },
   navigationButtons: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
+    gap: 10,
+    paddingTop: 2,
   },
   backButton: {
+    minHeight: 52,
     flex: 1,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
+    borderRadius: 8,
     borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
   },
   backButtonText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  continueButton: {
+  submitButton: {
+    minHeight: 52,
     flex: 2,
-    padding: 16,
-    borderRadius: 12,
+    borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
   },
-  continueButtonText: {
-    color: '#fff',
+  submitButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  forgotButton: {
+    minHeight: 36,
+    alignSelf: 'flex-end',
+    justifyContent: 'center',
+    marginTop: -7,
+  },
+  linkText: {
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: '700',
   },
   errorContainer: {
-    backgroundColor: '#ffebee',
-    padding: 12,
+    backgroundColor: '#FDECEC',
     borderRadius: 8,
-    marginBottom: 16,
+    padding: 12,
   },
   errorText: {
-    color: '#c62828',
+    color: '#A51D1D',
     fontSize: 14,
-    textAlign: 'center',
+    lineHeight: 20,
   },
   messageContainer: {
-    backgroundColor: '#e8f5e9',
-    padding: 12,
+    backgroundColor: '#EAF7EF',
     borderRadius: 8,
-    marginBottom: 16,
+    padding: 12,
   },
   messageText: {
-    color: '#2e7d32',
+    color: '#176B3A',
     fontSize: 14,
-    textAlign: 'center',
+    lineHeight: 20,
+  },
+  pressed: {
+    opacity: 0.78,
+  },
+  disabled: {
+    opacity: 0.55,
   },
 });

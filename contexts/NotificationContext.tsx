@@ -11,25 +11,40 @@ import React, { createContext, useContext, ReactNode } from "react";
 interface NotificationContextType {
   hasPermission: boolean;
   permissionDenied: boolean;
+  canRequestPermission: boolean;
   loading: boolean;
   isWeb: boolean;
   requestPermission: () => Promise<boolean>;
+  openNotificationSettings: () => Promise<void>;
   sendTag: (key: string, value: string) => void;
   deleteTag: (key: string) => void;
   lastNotification: Record<string, unknown> | null;
   onesignalSubscriptionId: string | null;
+  linkedIdentity: LinkedNotificationIdentity | null;
+  linkIdentity: (identity: LinkedNotificationIdentity) => Promise<boolean>;
+  clearIdentity: () => void;
+}
+
+interface LinkedNotificationIdentity {
+  memberId: string;
+  churchId: string;
 }
 
 const NotificationContext = createContext<NotificationContextType>({
   hasPermission: false,
   permissionDenied: false,
+  canRequestPermission: false,
   loading: false,
   isWeb: true,
   requestPermission: async () => false,
+  openNotificationSettings: async () => {},
   sendTag: () => {},
   deleteTag: () => {},
   lastNotification: null,
   onesignalSubscriptionId: null,
+  linkedIdentity: null,
+  linkIdentity: async () => false,
+  clearIdentity: () => {},
 });
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
@@ -38,13 +53,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       value={{
         hasPermission: false,
         permissionDenied: false,
+        canRequestPermission: false,
         loading: false,
         isWeb: true,
         requestPermission: async () => false,
+        openNotificationSettings: async () => {},
         sendTag: () => {},
         deleteTag: () => {},
         lastNotification: null,
         onesignalSubscriptionId: null,
+        linkedIdentity: null,
+        linkIdentity: async () => false,
+        clearIdentity: () => {},
       }}
     >
       {children}

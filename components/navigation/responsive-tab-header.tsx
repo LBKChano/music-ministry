@@ -1,13 +1,18 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { ReactNode, useCallback, useState } from 'react';
+import React, { ReactNode } from 'react';
 import {
-  LayoutChangeEvent,
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AdaptiveHeaderText } from '@/components/navigation/adaptive-header-text';
+import {
+  calculateHeaderTitleLaneWidth,
+  type HeaderTypographyVariant,
+} from '@/lib/ui/header-typography';
 
 type ResponsiveTabHeaderProps = {
   eyebrow: string;
@@ -16,6 +21,9 @@ type ResponsiveTabHeaderProps = {
   trailing?: ReactNode;
   children?: ReactNode;
   accessibilityTitle?: string;
+  titleVariant?: HeaderTypographyVariant;
+  subtitleVariant?: HeaderTypographyVariant;
+  trailingWidth?: number;
 };
 
 type TabHeaderPillProps = {
@@ -40,20 +48,17 @@ export function ResponsiveTabHeader({
   trailing,
   children,
   accessibilityTitle,
+  titleVariant = 'primaryTitle',
+  subtitleVariant = 'secondaryChurchName',
+  trailingWidth,
 }: ResponsiveTabHeaderProps) {
   const insets = useSafeAreaInsets();
-  const [titleLaneWidth, setTitleLaneWidth] = useState<number | null>(null);
-
-  const handleTitleLaneLayout = useCallback((event: LayoutChangeEvent) => {
-    const nextWidth = Math.round(event.nativeEvent.layout.width);
-    setTitleLaneWidth(previous => previous === nextWidth ? previous : nextWidth);
-  }, []);
-
-  const titleFontSize = titleLaneWidth === null || titleLaneWidth >= 250
-    ? 30
-    : titleLaneWidth >= 180
-      ? 28
-      : 26;
+  const { width: windowWidth, fontScale } = useWindowDimensions();
+  const reservedTrailingWidth = trailing ? trailingWidth ?? 54 : 0;
+  const titleLaneWidth = calculateHeaderTitleLaneWidth({
+    windowWidth,
+    trailingWidth: reservedTrailingWidth,
+  });
 
   return (
     <View style={styles.shadowContainer}>
@@ -67,39 +72,39 @@ export function ResponsiveTabHeader({
         <View style={styles.accentLine} pointerEvents="none" />
 
         <View style={styles.topRow}>
-          <View style={styles.titleLane} onLayout={handleTitleLaneLayout}>
+          <View style={styles.titleLane}>
             <Text style={styles.eyebrow}>{eyebrow}</Text>
-            <Text
-              accessibilityRole="header"
+            <AdaptiveHeaderText
               accessibilityLabel={accessibilityTitle ?? title}
-              adjustsFontSizeToFit
-              minimumFontScale={0.78}
-              numberOfLines={2}
-              selectable
-              style={[
-                styles.title,
-                {
-                  fontSize: titleFontSize,
-                  lineHeight: titleFontSize + 6,
-                },
-              ]}
-            >
-              {title}
-            </Text>
+              accessibilityRole="header"
+              availableWidth={titleLaneWidth}
+              color="#FFFFFF"
+              fontScale={fontScale}
+              text={title}
+              variant={titleVariant}
+            />
             {subtitle ? (
-              <Text
-                adjustsFontSizeToFit
-                minimumFontScale={0.82}
-                numberOfLines={2}
-                selectable
+              <AdaptiveHeaderText
+                availableWidth={titleLaneWidth}
+                color="#DBEAFE"
+                fontScale={fontScale}
                 style={styles.subtitle}
-              >
-                {subtitle}
-              </Text>
+                text={subtitle}
+                variant={subtitleVariant}
+              />
             ) : null}
           </View>
 
-          {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
+          {trailing ? (
+            <View
+              style={[
+                styles.trailing,
+                { width: reservedTrailingWidth },
+              ]}
+            >
+              {trailing}
+            </View>
+          ) : null}
         </View>
 
         {children ? <View style={styles.metaRow}>{children}</View> : null}
@@ -242,6 +247,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: 7,
   },
   eyebrow: {
@@ -252,20 +258,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     textTransform: 'uppercase',
   },
-  title: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-    letterSpacing: 0,
-    textAlign: 'left',
-  },
   subtitle: {
     marginTop: 5,
-    color: '#DBEAFE',
-    fontSize: 18,
-    lineHeight: 23,
-    fontWeight: '800',
-    letterSpacing: 0,
-    textAlign: 'left',
   },
   metaRow: {
     flexDirection: 'row',

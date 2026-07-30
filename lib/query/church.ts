@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase/client';
+import { mergeVisibleChurches } from '@/lib/church/session-baseline';
 import type { Tables } from '@/lib/supabase/types';
 
+type Church = Tables<'churches'>;
 type ChurchMember = Tables<'church_members'>;
 type RecurringService = Tables<'recurring_services'>;
 type ChurchRole = Tables<'church_roles'>;
@@ -21,6 +23,68 @@ export interface CachedFillInRequest extends FillInRequest {
   requesting_member_email: string;
   filled_by_member_name?: string;
   filled_by_member_email?: string;
+}
+
+export interface AccountChurchDiscovery {
+  churches: Church[];
+  memberships: ChurchMember[];
+}
+
+export async function fetchAccountChurchDiscovery(
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<AccountChurchDiscovery> {
+  let ownedRequest = supabase
+    .from('churches')
+    .select('*')
+    .eq('admin_id', accountId)
+    .order('created_at', { ascending: false });
+  if (signal) ownedRequest = ownedRequest.abortSignal(signal);
+
+  let membershipsRequest = supabase
+    .from('church_members')
+    .select('*')
+    .eq('member_id', accountId);
+  if (signal) membershipsRequest = membershipsRequest.abortSignal(signal);
+
+  const [
+    { data: ownedChurches, error: ownedError },
+    { data: memberships, error: membershipsError },
+  ] = await Promise.all([ownedRequest, membershipsRequest]);
+
+  if (ownedError) throw ownedError;
+  if (membershipsError) throw membershipsError;
+
+  const churchIds = [...new Set(
+    (memberships ?? []).map(membership => membership.church_id),
+  )];
+  let memberChurches: Church[] = [];
+
+  if (churchIds.length > 0) {
+    let memberChurchesRequest = supabase
+      .from('churches')
+      .select('*')
+      .in('id', churchIds)
+      .order('created_at', { ascending: false });
+    if (signal) memberChurchesRequest = memberChurchesRequest.abortSignal(signal);
+
+    const { data, error } = await memberChurchesRequest;
+    if (error) throw error;
+    memberChurches = data ?? [];
+  }
+
+  return {
+    churches: mergeVisibleChurches(ownedChurches ?? [], memberChurches),
+    memberships: memberships ?? [],
+  };
+}
+
+export async function fetchVisibleChurches(
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<Church[]> {
+  const discovery = await fetchAccountChurchDiscovery(accountId, signal);
+  return discovery.churches;
 }
 
 export async function fetchChurchMembers(

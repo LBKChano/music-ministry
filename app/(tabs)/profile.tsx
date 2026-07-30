@@ -17,13 +17,16 @@ import type { Tables } from "@/lib/supabase/types";
 import { usePerformanceBaselineScreen } from "@/hooks/usePerformanceBaselineScreen";
 import { performanceBaselineEnabled } from "@/lib/performance/baseline";
 import { SchedulingPreferencesCard } from "@/components/profile/scheduling-preferences-card";
+import { ChurchSwitcher } from "@/components/profile/ChurchSwitcher";
+import { shouldShowInitialLoader } from "@/lib/query/refresh-coordinator";
+import { HEADER_ACTION_LANE_WIDTHS } from "@/lib/ui/header-typography";
 
 type MemberUnavailability = Tables<'member_unavailability'>;
 
 type ToastType = 'success' | 'error';
 
 export default function ProfileScreen() {
-  const { user, loading, currentMember, currentChurch, recurringServices, isAdmin, signOut, deleteAccount, fetchMemberUnavailability, saveUnavailableDates } = useChurch();
+  const { user, initializing, currentMember, currentChurch, recurringServices, isAdmin, signOut, deleteAccount, fetchMemberUnavailability, saveUnavailableDates } = useChurch();
   const router = useRouter();
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -79,7 +82,7 @@ export default function ProfileScreen() {
 
   usePerformanceBaselineScreen(
     'Profile',
-    !loading &&
+    !initializing &&
       !!user &&
       !!currentMember &&
       (!performanceBaselineEnabled || loadedUnavailabilityMemberId === currentMember.id),
@@ -168,8 +171,14 @@ export default function ProfileScreen() {
     }
   };
 
-  if (loading || !user) {
-    console.log('[ProfileScreen] Showing loading state — loading:', loading, 'user:', !!user);
+  if (
+    !user
+    || shouldShowInitialLoader(
+      initializing,
+      Boolean(currentChurch && currentMember),
+    )
+  ) {
+    console.log('[ProfileScreen] Showing initial loading state');
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
         <Stack.Screen
@@ -218,7 +227,10 @@ export default function ProfileScreen() {
       <ResponsiveTabHeader
         eyebrow="Profile"
         title={displayName}
+        titleVariant="profileName"
         subtitle={currentChurch?.name}
+        subtitleVariant="secondaryChurchName"
+        trailingWidth={HEADER_ACTION_LANE_WIDTHS.profile}
         accessibilityTitle={`Profile for ${displayName}`}
         trailing={(
           <TabHeaderIconSurface>
@@ -238,6 +250,8 @@ export default function ProfileScreen() {
         <TabHeaderMetaText>{displayEmail}</TabHeaderMetaText>
       </ResponsiveTabHeader>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+        <ChurchSwitcher />
+
         {currentMember && (
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.cardHeader}>

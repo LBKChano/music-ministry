@@ -6,6 +6,8 @@ export const queryKeys = {
     [...appQueryRoot, 'account', accountId] as const,
   churches: (accountId: string) =>
     [...queryKeys.account(accountId), 'churches'] as const,
+  churchDiscovery: (accountId: string) =>
+    [...queryKeys.account(accountId), 'church-discovery'] as const,
   church: (accountId: string, churchId: string) =>
     [...queryKeys.account(accountId), 'church', churchId] as const,
   servicesRoot: (accountId: string, churchId: string) =>

@@ -13,11 +13,12 @@ const baseTabs: TabBarItem[] = [
 const adminTab: TabBarItem = { name: 'church', route: '/(tabs)/church' as any, icon: 'home', iosIcon: 'building.2', label: 'Church' };
 
 export default function TabLayout() {
-  const { isAdmin } = useChurchSession();
+  const { isAdmin, sessionStatus } = useChurchSession();
+  const showAdminTab = sessionStatus === 'ready' && isAdmin;
 
-  console.log('[TabLayout] isAdmin:', isAdmin);
+  console.log('[TabLayout] admin access:', { isAdmin, sessionStatus });
 
-  const tabs = isAdmin
+  const tabs = showAdminTab
     ? [baseTabs[0], adminTab, baseTabs[1]]
     : baseTabs;
 
@@ -30,7 +31,7 @@ export default function TabLayout() {
       tabBar={() => <FloatingTabBar tabs={tabs} />}
     >
       <Tabs.Screen name="(home)" options={{ title: 'Schedule' }} />
-      {isAdmin && <Tabs.Screen name="church" options={{ title: 'Church' }} />}
+      {showAdminTab && <Tabs.Screen name="church" options={{ title: 'Church' }} />}
       <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
     </Tabs>
   );

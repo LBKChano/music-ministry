@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   buildNotificationTargets,
+  resolveNotificationSubscriptions,
   sendOneSignalNotification,
   successfulSubscriptionMembers,
 } from '../_shared/onesignal.ts'
@@ -174,14 +175,14 @@ Deno.serve(async (req) => {
 
     // 6. Prefer saved OneSignal subscription IDs because they target the exact
     // device. Fall back to external_id aliases for members without a saved row.
-    const { data: subscriptionRows } = await supabase
-      .from('onesignal_subscriptions')
-      .select('member_id, subscription_id, updated_at')
-      .in('member_id', recipientMemberIds)
+    const subscriptionRows = await resolveNotificationSubscriptions(
+      supabase,
+      recipientMemberIds,
+    )
 
     const targets = buildNotificationTargets(
       recipientMemberIds,
-      subscriptionRows ?? [],
+      subscriptionRows,
     )
     stats.subscriptions = targets.subscriptionRows.length
 

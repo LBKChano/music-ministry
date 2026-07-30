@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-29",
+  "sourceCommit": "df37048",
+  "mobileSource": {
+    "version": "1.1.1",
+    "iosBundleIdentifier": "com.lbkchano.musicministry",
+    "iosSourceBuildNumber": "3",
+    "androidPackage": "com.lbkchano.musicministry",
+    "androidSourceVersionCode": 12,
+    "urlScheme": "musicministry",
+    "androidTargetSdkVersion": 36
+  },
+  "routes": [
+    "app/index.tsx",
+    "app/onboarding.tsx",
+    "app/reset-password.tsx",
+    "app/(tabs)/(home)/index.tsx",
+    "app/(tabs)/(home)/index.ios.tsx",
+    "app/(tabs)/church.tsx",
+    "app/(tabs)/profile.tsx",
+    "app/(tabs)/profile.ios.tsx",
+    "app/notification-preferences.tsx"
+  ],
+  "auth": {
+    "storageKey": "supabase.auth.token",
+    "flowType": "implicit",
+    "persistSession": true,
+    "autoRefreshToken": true,
+    "detectSessionInUrl": false,
+    "passwordResetRoute": "reset-password",
+    "signedOutRoute": "/onboarding"
+  },
+  "supabase": {
+    "projectRef": "cvgdxmmtrukahyvkgazj",
+    "liveAudit": {
+      "capturedAt": "2026-07-29",
+      "migrationCount": 130,
+      "latestMigrationName": "index_member_scheduling_preference_role",
+      "oneSignalSubscriptionConstraints": [
+        "PRIMARY KEY (id)",
+        "UNIQUE (subscription_id)",
+        "FOREIGN KEY (member_id) REFERENCES church_members(id) ON DELETE CASCADE"
+      ],
+      "oneSignalMemberRelationshipIsOneToOne": false
+    },
+    "clientTables": [
+      "assignments",
+      "church_members",
+      "church_roles",
+      "churches",
+      "fill_in_requests",
+      "member_notifications",
+      "member_roles",
+      "member_scheduling_preferences",
+      "member_unavailability",
+      "notification_settings",
+      "onesignal_subscriptions",
+      "recurring_service_roles",
+      "recurring_services",
+      "service_comments",
+      "services"
+    ],
+    "publicRpcs": [
+      "accept_fill_in_request",
+      "auto_assign_service_slots",
+      "claim_onesignal_subscription",
+      "create_services_with_assignments_batch",
+      "get_fill_in_requests_with_member_info",
+      "manage_scheduled_services_bulk",
+      "reorder_service_songs",
+      "update_assignments_batch",
+      "update_church_auto_assign_settings",
+      "update_church_name",
+      "update_church_song_type_options"
+    ],
+    "edgeFunctions": [
+      {
+        "name": "delete-account",
+        "verifyJwt": true
+      },
+      {
+        "name": "send-fill-in-accepted-notification",
+        "verifyJwt": true
+      },
+      {
+        "name": "send-fill-in-notifications",
+        "verifyJwt": true
+      },
+      {
+        "name": "send-service-comment-notifications",
+        "verifyJwt": true
+      },
+      {
+        "name": "send-service-reminders",
+        "verifyJwt": false
+      }
+    ],
+    "notificationTypes": [
+      "fill_in_accepted",
+      "fill_in_request",
+      "service_comment",
+      "service_reminder"
+    ]
+  }
+}

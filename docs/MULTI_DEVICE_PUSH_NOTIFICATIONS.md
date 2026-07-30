@@ -44,16 +44,24 @@ Android or iOS device where that member is currently signed in.
 
 ## Sign-Out and Account Switching
 
-The current app reads the physical device subscription ID before calling
-`OneSignal.logout`, then deletes only the matching `(member_id, subscription_id)`
-row. Other signed-in devices remain registered. When the same physical device
-signs into a different account, the unchanged claim RPC moves that subscription
-to the new member.
+Package 4 clients read the physical device subscription ID before calling
+`OneSignal.logout`. They deactivate that one account-device record and delete
+only the matching legacy `(member_id, subscription_id)` row. Other signed-in
+devices remain active. Registration and deactivation for the same subscription
+are serialized so an in-flight registration cannot complete after sign-out and
+silently reactivate the device.
 
-Older app versions remain usable. If an older sign-out removes all saved rows for
-the member, OneSignal's external-ID fallback still targets the other device; each
-remaining signed-in device restores its exact subscription row the next time it
-opens the app.
+When a physical device signs into another account, the account registration RPC
+reassigns its globally unique subscription to the authenticated account. The
+unchanged legacy claim RPC then moves the member-scoped compatibility row to the
+selected membership. Delivery resolves all active account devices plus
+unbridged legacy subscriptions and deduplicates the final subscription IDs.
+
+Older app versions remain usable. They continue using the unchanged
+`OneSignal.login(member_id)` and `claim_onesignal_subscription(uuid, text)`
+contracts. The database triggers mirror their legacy claims and deletes into
+the account-device registry, and the external-ID fallback remains available
+when no saved subscription can be resolved.
 
 ## Production Deployment
 
@@ -64,6 +72,10 @@ Deployed on 2026-07-26:
 - `send-fill-in-notifications` version 39, `verify_jwt=true`
 - `send-fill-in-accepted-notification` version 5, `verify_jwt=true`
 - `send-service-comment-notifications` version 5, `verify_jwt=true`
+
+The additive account-device extension was deployed with Package 1 on
+2026-07-29. Package 4 itself is client-only and requires no additional Supabase
+migration or Edge Function deployment.
 
 The live rollback test confirmed:
 

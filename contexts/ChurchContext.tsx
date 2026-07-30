@@ -24,6 +24,7 @@ import {
   fetchRoles as fetchChurchRolesQuery,
   fetchSettings as fetchNotificationSettingsQuery,
   fetchUnavailability as fetchMemberUnavailabilityQuery,
+  fetchAccountChurchDiscovery,
 } from '@/lib/query/church';
 import { queryKeys } from '@/lib/query/keys';
 import {
@@ -42,6 +43,28 @@ import {
   upsertAssignmentInCache,
   upsertFillInRequest,
 } from '@/lib/realtime/cache-updates';
+import {
+  hasChurchAdminAccess,
+} from '@/lib/church/session-baseline';
+import {
+  buildChurchAccessSummaries,
+  type ChurchAccessSummary,
+} from '@/lib/church/access';
+import {
+  selectPreferredChurch,
+  type ChurchSessionStatus,
+  type ChurchTransitionResult,
+} from '@/lib/church/startup-coordinator';
+import { RefreshCoordinator } from '@/lib/query/refresh-coordinator';
+import {
+  clearLastSelectedChurchId,
+  getLastSelectedChurchId,
+  saveLastSelectedChurchId,
+} from '@/lib/church/session-storage';
+import { createOnboardingRequestId } from '@/lib/auth/onboarding-workflow';
+import {
+  deactivateCurrentNotificationDevice,
+} from '@/lib/notifications/device-registration';
 import type { Tables, TablesInsert } from '@/lib/supabase/types';
 
 type Church = Tables<'churches'>;
@@ -57,11 +80,7 @@ type Service = Tables<'services'>;
 type Assignment = Tables<'assignments'>;
 type ServiceComment = Tables<'service_comments'>;
 
-const CHURCH_LOAD_RETRY_MS = 500;
-const CHURCH_LOAD_MAX_RETRIES = 4;
 const REALTIME_REFRESH_DELAY_MS = 100;
-
-const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export interface RecurringServiceWithRoles extends RecurringService {
   roles: string[];
@@ -80,6 +99,7 @@ export interface FillInRequestWithMemberInfo extends FillInRequest {
 
 interface ChurchContextValue {
   churches: Church[];
+  churchAccess: ChurchAccessSummary[];
   currentChurch: Church | null;
   setCurrentChurch: React.Dispatch<React.SetStateAction<Church | null>>;
   members: ChurchMemberWithRoles[];
@@ -87,11 +107,18 @@ interface ChurchContextValue {
   churchRoles: ChurchRole[];
   notificationSettings: NotificationSettings | null;
   fillInRequests: FillInRequestWithMemberInfo[];
+  initializing: boolean;
+  refreshing: boolean;
+  refreshError: string | null;
   loading: boolean;
   error: string | null;
   user: User | null;
   currentMember: ChurchMemberWithRoles | null;
   isAdmin: boolean;
+  sessionStatus: ChurchSessionStatus;
+  sessionError: string | null;
+  switchChurch: (churchId: string) => Promise<ChurchTransitionResult>;
+  retryChurchSession: () => Promise<ChurchTransitionResult>;
   createChurch: (name: string) => Promise<Church | null>;
   addMember: (churchId: string, email: string, name?: string, role?: string) => Promise<ChurchMember | null>;
   inviteMember: (churchId: string, email: string, name?: string, roleIds?: string[]) => Promise<ChurchMember | null>;
@@ -121,7 +148,7 @@ interface ChurchContextValue {
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
   fetchFillInRequests: (churchId: string) => Promise<void>;
-  refreshChurches: () => Promise<void>;
+  refreshChurches: (preferredChurchId?: string) => Promise<ChurchTransitionResult>;
   refreshMembers: () => Promise<void>;
   refreshRecurringServices: () => Promise<void>;
   refreshChurchRoles: () => Promise<void>;
@@ -135,17 +162,33 @@ export interface ChurchSessionContextValue {
   user: User | null;
   currentMember: ChurchMemberWithRoles | null;
   isAdmin: boolean;
+  initializing: boolean;
+  refreshing: boolean;
+  refreshError: string | null;
   loading: boolean;
   error: string | null;
+  sessionStatus: ChurchSessionStatus;
+  sessionError: string | null;
+  switchChurch: (churchId: string) => Promise<ChurchTransitionResult>;
+  retryChurchSession: () => Promise<ChurchTransitionResult>;
 }
 
 const ChurchContext = createContext<ChurchContextValue | null>(null);
 const ChurchSessionContext = createContext<ChurchSessionContextValue | null>(null);
 
 async function clearCurrentDeviceNotificationIdentity(memberId?: string | null) {
-  if (!memberId || Platform.OS === 'web') return;
+  if (Platform.OS === 'web') return;
 
   let subscriptionId: string | null = null;
+  let oneSignal: {
+    logout?: () => void;
+    User: {
+      removeTag?: (key: string) => void;
+      pushSubscription: {
+        getIdAsync: () => Promise<string | null>;
+      };
+    };
+  } | null = null;
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -161,31 +204,46 @@ async function clearCurrentDeviceNotificationIdentity(memberId?: string | null) 
       };
     };
 
+    oneSignal = OneSignal;
     subscriptionId = await OneSignal.User.pushSubscription.getIdAsync();
-    OneSignal.User.removeTag?.('member_id');
-    OneSignal.User.removeTag?.('church_id');
-    OneSignal.logout?.();
   } catch (err) {
-    console.warn('[Notifications] Failed to clear OneSignal identity:', err);
+    console.warn('[Notifications] Failed to read the current device identity:', err);
   }
 
-  if (!subscriptionId) return;
+  if (subscriptionId) {
+    try {
+      const result = await deactivateCurrentNotificationDevice({
+        memberId,
+        subscriptionId,
+      }, supabase);
+      result.errors.forEach(message => {
+        console.warn('[Notifications]', message);
+      });
+    } catch (err) {
+      console.warn('[Notifications] Failed to deactivate the current device:', err);
+    }
+  }
 
-  const { error } = await supabase
-    .from('onesignal_subscriptions')
-    .delete()
-    .eq('member_id', memberId)
-    .eq('subscription_id', subscriptionId);
-
-  if (error) {
-    console.warn('[Notifications] Failed to remove current device subscription:', error.message);
+  try {
+    oneSignal?.User.removeTag?.('member_id');
+    oneSignal?.User.removeTag?.('church_id');
+    oneSignal?.logout?.();
+  } catch (err) {
+    console.warn('[Notifications] Failed to clear the OneSignal identity:', err);
   }
 }
 
 export function ChurchProvider({ children }: { children: React.ReactNode }) {
-  const { session, initialized, deleteAccount: authDeleteAccount } = useAuth();
+  const {
+    session,
+    initialized,
+    initializationError,
+    retryInitialization,
+    deleteAccount: authDeleteAccount,
+  } = useAuth();
   const queryClient = useQueryClient();
   const [churches, setChurches] = useState<Church[]>([]);
+  const [accountMemberships, setAccountMemberships] = useState<ChurchMember[]>([]);
   const [currentChurch, setCurrentChurch] = useState<Church | null>(null);
   const [members, setMembers] = useState<ChurchMemberWithRoles[]>([]);
   const [recurringServices, setRecurringServices] = useState<RecurringServiceWithRoles[]>([]);
@@ -193,13 +251,26 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings | null>(null);
   const [fillInRequests, setFillInRequests] = useState<FillInRequestWithMemberInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<ChurchSessionStatus>('restoring');
+  const [sessionError, setSessionError] = useState<string | null>(null);
   const user = session?.user ?? null;
   const accountId = user?.id ?? null;
   const currentChurchId = currentChurch?.id ?? null;
   const [currentMember, setCurrentMember] = useState<ChurchMemberWithRoles | null>(null);
   const activeUserIdRef = useRef<string | null>(user?.id ?? null);
   const currentChurchIdRef = useRef<string | null>(currentChurch?.id ?? null);
+  const currentChurchRef = useRef<Church | null>(currentChurch);
+  const currentMemberRef = useRef<ChurchMemberWithRoles | null>(currentMember);
+  const churchesRef = useRef<Church[]>(churches);
+  const sessionStatusRef = useRef<ChurchSessionStatus>(sessionStatus);
+  const transitionGenerationRef = useRef(0);
+  const bootstrapGenerationRef = useRef(0);
+  const churchCreationRequestIdsRef = useRef(new Map<string, string>());
+  const refreshCoordinatorRef = useRef(new RefreshCoordinator());
+  const backgroundRefreshTokensRef = useRef(new Set<symbol>());
   const previousChurchCacheRef = useRef<{
     accountId: string;
     churchId: string;
@@ -207,6 +278,44 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
 
   activeUserIdRef.current = user?.id ?? null;
   currentChurchIdRef.current = currentChurch?.id ?? null;
+  currentChurchRef.current = currentChurch;
+  currentMemberRef.current = currentMember;
+  churchesRef.current = churches;
+  sessionStatusRef.current = sessionStatus;
+
+  const runBackgroundRefresh = useCallback(<T,>(
+    key: string,
+    task: () => Promise<T>,
+  ): Promise<T> => (
+    refreshCoordinatorRef.current.run(key, async () => {
+      const refreshAccountId = activeUserIdRef.current;
+      const token = Symbol(key);
+      backgroundRefreshTokensRef.current.add(token);
+      setRefreshing(true);
+      setRefreshError(null);
+
+      try {
+        return await task();
+      } catch (refreshFailure) {
+        if (activeUserIdRef.current === refreshAccountId) {
+          setRefreshError(
+            refreshFailure instanceof Error && refreshFailure.message
+              ? refreshFailure.message
+              : 'Some information could not be refreshed.',
+          );
+        }
+        throw refreshFailure;
+      } finally {
+        backgroundRefreshTokensRef.current.delete(token);
+        if (
+          activeUserIdRef.current === refreshAccountId
+          && backgroundRefreshTokensRef.current.size === 0
+        ) {
+          setRefreshing(false);
+        }
+      }
+    })
+  ), []);
 
   useEffect(() => {
     const accountId = user?.id ?? null;
@@ -283,122 +392,46 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
 
   const fetchChurches = useCallback(async (
     userId: string,
-    attempt = 0,
-    background = false
-  ) => {
-    console.log('Fetching churches for user:', userId, 'attempt:', attempt + 1);
-    if (activeUserIdRef.current !== userId) return;
+    _attempt = 0,
+    force = false
+  ): Promise<Church[]> => {
+    console.log('Fetching churches for user:', userId);
+    if (activeUserIdRef.current !== userId) return [];
 
     try {
-      if (!background) setLoading(true);
       setError(null);
-
-      const { data: adminChurches, error: adminError } = await supabase
-        .from('churches')
-        .select('*')
-        .eq('admin_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (activeUserIdRef.current !== userId) return;
-
-      if (adminError) {
-        console.error('Error fetching admin churches:', adminError);
-        if (adminError.code === '42P17') {
-          console.error('RLS policy infinite recursion detected');
-          setError('Database configuration error. Please contact support.');
-          return;
-        }
-      }
-
-      const { data: memberChurchIds, error: memberError } = await supabase
-        .from('church_members')
-        .select('church_id')
-        .eq('member_id', userId);
-
-      if (activeUserIdRef.current !== userId) return;
-
-      if (memberError) {
-        console.error('Error fetching member churches:', memberError);
-        if (memberError.code === '42P17') {
-          setError('Database configuration error. Please contact support.');
-          return;
-        }
-      }
-
-      let memberChurches: Church[] = [];
-      const safeChurchIds = (memberChurchIds ?? []).map(m => m.church_id);
-      if (safeChurchIds.length > 0) {
-        const { data: memberChurchesData, error: memberChurchesError } = await supabase
-          .from('churches')
-          .select('*')
-          .in('id', safeChurchIds)
-          .order('created_at', { ascending: false });
-
-        if (memberChurchesError) {
-          console.error('Error fetching member church details:', memberChurchesError);
-        } else {
-          memberChurches = memberChurchesData ?? [];
-        }
-      }
-
-      if (activeUserIdRef.current !== userId) return;
-
-      const allChurches = [...(adminChurches ?? []), ...memberChurches];
-      const uniqueChurches = Array.from(
-        new Map(allChurches.map(church => [church.id, church])).values(),
+      const discovery = await loadCachedQuery(
+        queryKeys.churchDiscovery(userId),
+        signal => fetchAccountChurchDiscovery(userId, signal),
+        force,
       );
+      const visibleChurches = discovery.churches;
 
-      if (uniqueChurches.length === 0 && attempt < CHURCH_LOAD_MAX_RETRIES) {
-        console.log('[ChurchContext] No churches visible yet; retrying church load');
-        await wait(CHURCH_LOAD_RETRY_MS);
-        return fetchChurches(userId, attempt + 1, background);
-      }
+      if (activeUserIdRef.current !== userId) return [];
 
-      console.log('Fetched churches:', uniqueChurches.length);
-      setChurches(uniqueChurches);
-      setCurrentChurch(prev => {
-        const existingChurch = uniqueChurches.find(church => church.id === prev?.id);
-        return existingChurch ?? uniqueChurches[0] ?? null;
-      });
+      console.log('Fetched churches:', visibleChurches.length);
+      queryClient.setQueryData(
+        queryKeys.churches(userId),
+        visibleChurches,
+      );
+      churchesRef.current = visibleChurches;
+      setAccountMemberships(discovery.memberships);
+      setChurches(visibleChurches);
+      return visibleChurches;
     } catch (err) {
       console.error('Error in fetchChurches:', err);
       if (activeUserIdRef.current === userId) {
         setError(err instanceof Error ? err.message : 'Unknown error');
       }
-    } finally {
-      if (!background && activeUserIdRef.current === userId) {
-        setLoading(false);
-      }
+      throw err;
     }
-  }, []);
+  }, [loadCachedQuery, queryClient]);
 
-  useEffect(() => {
-    if (!initialized) {
-      return;
-    }
-    const nextUserId = session?.user?.id ?? null;
-    console.log('[ChurchContext] auth user changed — clearing account-scoped church data');
-    setChurches([]);
-    setCurrentChurch(null);
-    setMembers([]);
-    setRecurringServices([]);
-    setChurchRoles([]);
-    setCurrentMember(null);
-    setNotificationSettings(null);
-    setFillInRequests([]);
-    setError(null);
-
-    if (!nextUserId) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    console.log('[ChurchContext] session available, fetching churches for user:', nextUserId);
-    fetchChurches(nextUserId);
-  }, [session?.user?.id, initialized]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const fetchMembers = useCallback(async (churchId: string, force = false) => {
+  const fetchMembers = useCallback(async (
+    churchId: string,
+    force = false,
+    throwOnError = false,
+  ) => {
     console.log('Fetching members for church:', churchId);
     const accountId = activeUserIdRef.current;
     if (!accountId) {
@@ -423,6 +456,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.error('Error in fetchMembers:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
+      if (throwOnError) throw err;
     }
   }, [loadCachedQuery]);
 
@@ -432,12 +466,22 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
       setError(null);
       if (!user) throw new Error('You must be logged in to create a church');
 
-      const newChurch: TablesInsert<'churches'> = { name, admin_id: user.id };
-      const { data, error: insertError } = await supabase
-        .from('churches')
-        .insert(newChurch)
-        .select()
-        .single();
+      const normalizedName = name.trim();
+      const existingRequestId = churchCreationRequestIdsRef.current.get(normalizedName);
+      const requestId = existingRequestId ?? createOnboardingRequestId();
+      churchCreationRequestIdsRef.current.set(normalizedName, requestId);
+
+      const ownerName = typeof user.user_metadata?.name === 'string'
+        ? user.user_metadata.name.trim()
+        : '';
+      const { data: creationRows, error: insertError } = await supabase.rpc(
+        'create_church_with_owner_membership',
+        {
+          target_church_name: normalizedName,
+          target_request_id: requestId,
+          ...(ownerName ? { target_owner_name: ownerName } : {}),
+        },
+      );
 
       if (insertError) {
         console.error('Error creating church:', insertError);
@@ -445,12 +489,17 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
 
+      const data = creationRows?.[0]?.church_record;
+      if (!data) {
+        throw new Error('The church was created without a readable result.');
+      }
+
+      churchCreationRequestIdsRef.current.delete(normalizedName);
       console.log('Church created successfully:', data);
       setChurches(prev => {
         const withoutDuplicate = prev.filter(church => church.id !== data.id);
         return [data, ...withoutDuplicate];
       });
-      setCurrentChurch(data);
       if (user) await fetchChurches(user.id);
       return data;
     } catch (err) {
@@ -571,7 +620,11 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchMembers]);
 
-  const fetchRecurringServices = useCallback(async (churchId: string, force = false) => {
+  const fetchRecurringServices = useCallback(async (
+    churchId: string,
+    force = false,
+    throwOnError = false,
+  ) => {
     console.log('Fetching recurring services for church:', churchId);
     const accountId = activeUserIdRef.current;
     if (!accountId) {
@@ -595,10 +648,15 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.error('Error in fetchRecurringServices:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
+      if (throwOnError) throw err;
     }
   }, [loadCachedQuery]);
 
-  const fetchChurchRoles = useCallback(async (churchId: string, force = false) => {
+  const fetchChurchRoles = useCallback(async (
+    churchId: string,
+    force = false,
+    throwOnError = false,
+  ) => {
     console.log('Fetching roles for church:', churchId);
     const accountId = activeUserIdRef.current;
     if (!accountId) {
@@ -622,10 +680,15 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.error('Error in fetchChurchRoles:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
+      if (throwOnError) throw err;
     }
   }, [loadCachedQuery]);
 
-  const fetchNotificationSettings = useCallback(async (churchId: string, force = false) => {
+  const fetchNotificationSettings = useCallback(async (
+    churchId: string,
+    force = false,
+    throwOnError = false,
+  ) => {
     console.log('Fetching notification settings for church:', churchId);
     const accountId = activeUserIdRef.current;
     if (!accountId) {
@@ -649,7 +712,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.error('Error in fetchNotificationSettings:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
-      setNotificationSettings(null);
+      if (throwOnError) throw err;
     }
   }, [loadCachedQuery]);
 
@@ -921,7 +984,11 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchMembers]);
 
-  const fetchCurrentMember = useCallback(async (churchId: string, force = false) => {
+  const fetchCurrentMember = useCallback(async (
+    churchId: string,
+    force = false,
+    throwOnError = false,
+  ) => {
     console.log('Fetching current member info for church:', churchId);
     const requestedUserId = user?.id ?? null;
     const isCurrentRequest = () => (
@@ -945,9 +1012,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
       setCurrentMember(data);
     } catch (err) {
       console.error('Error in fetchCurrentMember:', err);
-      if (isCurrentRequest()) {
-        setCurrentMember(null);
-      }
+      if (throwOnError) throw err;
     }
   }, [loadCachedQuery, user?.id]);
 
@@ -1180,7 +1245,11 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     }
   }, [invalidateUnavailability]);
 
-  const fetchFillInRequests = useCallback(async (churchId: string, force = false) => {
+  const fetchFillInRequests = useCallback(async (
+    churchId: string,
+    force = false,
+    throwOnError = false,
+  ) => {
     console.log('Fetching fill-in requests for church:', churchId);
     const accountId = activeUserIdRef.current;
     if (!accountId) {
@@ -1204,6 +1273,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.error('Error in fetchFillInRequests:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
+      if (throwOnError) throw err;
     }
   }, [loadCachedQuery]);
 
@@ -1367,6 +1437,304 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     }
   }, [cacheFillInRequest]);
 
+  const updateSessionStatus = useCallback((status: ChurchSessionStatus) => {
+    sessionStatusRef.current = status;
+    setSessionStatus(status);
+  }, []);
+
+  const loadChurchSnapshot = useCallback(async (
+    targetAccountId: string,
+    churchId: string,
+    force = false,
+  ) => {
+    if (force) {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.church(targetAccountId, churchId),
+        refetchType: 'none',
+      });
+    }
+
+    return Promise.all([
+      loadCachedQuery(
+        queryKeys.members(targetAccountId, churchId),
+        signal => fetchChurchMembersQuery(churchId, signal),
+        force,
+      ),
+      loadCachedQuery(
+        queryKeys.recurringServices(targetAccountId, churchId),
+        signal => fetchRecurringServicesQuery(churchId, signal),
+        force,
+      ),
+      loadCachedQuery(
+        queryKeys.churchRoles(targetAccountId, churchId),
+        signal => fetchChurchRolesQuery(churchId, signal),
+        force,
+      ),
+      loadCachedQuery(
+        queryKeys.currentMember(targetAccountId, churchId),
+        signal => fetchCurrentMemberQuery(churchId, targetAccountId, signal),
+        force,
+      ),
+      loadCachedQuery(
+        queryKeys.notificationSettings(targetAccountId, churchId),
+        signal => fetchNotificationSettingsQuery(churchId, signal),
+        force,
+      ),
+      loadCachedQuery(
+        queryKeys.fillInRequests(targetAccountId, churchId),
+        () => fetchFillInRequestsQuery(churchId),
+        force,
+      ),
+    ]);
+  }, [loadCachedQuery, queryClient]);
+
+  const transitionChurchSession = useCallback(async (
+    churchId: string,
+    force = false,
+  ): Promise<ChurchTransitionResult> => {
+    const targetAccountId = activeUserIdRef.current;
+    const targetChurch = churchesRef.current.find(church => church.id === churchId);
+
+    if (!targetAccountId || !targetChurch) {
+      const message = targetAccountId
+        ? 'You no longer have access to that church.'
+        : 'Please sign in to select a church.';
+      setSessionError(message);
+      if (churchesRef.current.length === 0 && targetAccountId) {
+        updateSessionStatus('no-membership');
+        return { status: 'no-membership' };
+      }
+      return { status: 'error', error: message };
+    }
+
+    const transitionGeneration = ++transitionGenerationRef.current;
+    const hadReadySession = (
+      sessionStatusRef.current === 'ready'
+      && currentChurchRef.current !== null
+      && currentMemberRef.current !== null
+    );
+
+    updateSessionStatus('selecting-church');
+    setLoading(true);
+    setSessionError(null);
+    setError(null);
+
+    try {
+      await queryClient.cancelQueries({
+        queryKey: queryKeys.account(targetAccountId),
+      });
+
+      const [
+        nextMembers,
+        nextRecurringServices,
+        nextChurchRoles,
+        nextCurrentMember,
+        nextNotificationSettings,
+        nextFillInRequests,
+      ] = await loadChurchSnapshot(targetAccountId, churchId, force);
+
+      if (
+        transitionGenerationRef.current !== transitionGeneration
+        || activeUserIdRef.current !== targetAccountId
+      ) {
+        return { status: 'cancelled' };
+      }
+
+      if (!nextCurrentMember) {
+        throw new Error('Your membership for this church is no longer available.');
+      }
+
+      currentChurchRef.current = targetChurch;
+      currentChurchIdRef.current = targetChurch.id;
+      currentMemberRef.current = nextCurrentMember;
+      setMembers(nextMembers);
+      setRecurringServices(nextRecurringServices);
+      setChurchRoles(nextChurchRoles);
+      setCurrentMember(nextCurrentMember);
+      setNotificationSettings(nextNotificationSettings);
+      setFillInRequests(nextFillInRequests);
+      setCurrentChurch(targetChurch);
+      updateSessionStatus('ready');
+      setLoading(false);
+      void saveLastSelectedChurchId(targetAccountId, targetChurch.id);
+
+      return { status: 'ready', churchId: targetChurch.id };
+    } catch (transitionError) {
+      if (
+        transitionGenerationRef.current !== transitionGeneration
+        || activeUserIdRef.current !== targetAccountId
+      ) {
+        return { status: 'cancelled' };
+      }
+
+      const message = transitionError instanceof Error
+        ? transitionError.message
+        : 'Unable to load this church.';
+      console.error('[ChurchSession] Church transition failed:', transitionError);
+      setSessionError(message);
+      setError(message);
+      updateSessionStatus(hadReadySession ? 'ready' : 'error');
+      setLoading(false);
+      return { status: 'error', error: message };
+    }
+  }, [loadChurchSnapshot, queryClient, updateSessionStatus]);
+
+  const bootstrapChurchSession = useCallback(async (
+    targetAccountId: string,
+    force = false,
+    preferredChurchId?: string,
+  ): Promise<ChurchTransitionResult> => {
+    const bootstrapGeneration = ++bootstrapGenerationRef.current;
+    transitionGenerationRef.current += 1;
+    updateSessionStatus('loading-memberships');
+    setLoading(true);
+    setSessionError(null);
+    setError(null);
+
+    try {
+      const visibleChurches = await fetchChurches(
+        targetAccountId,
+        0,
+        force,
+      );
+
+      if (
+        bootstrapGenerationRef.current !== bootstrapGeneration
+        || activeUserIdRef.current !== targetAccountId
+      ) {
+        return { status: 'cancelled' };
+      }
+
+      if (visibleChurches.length === 0) {
+        currentChurchRef.current = null;
+        currentChurchIdRef.current = null;
+        currentMemberRef.current = null;
+        setCurrentChurch(null);
+        setMembers([]);
+        setRecurringServices([]);
+        setChurchRoles([]);
+        setCurrentMember(null);
+        setNotificationSettings(null);
+        setFillInRequests([]);
+        updateSessionStatus('no-membership');
+        setLoading(false);
+        await clearLastSelectedChurchId(targetAccountId);
+        return { status: 'no-membership' };
+      }
+
+      const storedChurchId = await getLastSelectedChurchId(targetAccountId);
+      if (
+        bootstrapGenerationRef.current !== bootstrapGeneration
+        || activeUserIdRef.current !== targetAccountId
+      ) {
+        return { status: 'cancelled' };
+      }
+
+      const targetChurch = selectPreferredChurch(
+        visibleChurches,
+        preferredChurchId,
+        storedChurchId,
+        currentChurchRef.current?.id,
+      );
+
+      if (!targetChurch) {
+        updateSessionStatus('no-membership');
+        setLoading(false);
+        return { status: 'no-membership' };
+      }
+
+      return transitionChurchSession(targetChurch.id, force);
+    } catch (bootstrapError) {
+      if (
+        bootstrapGenerationRef.current !== bootstrapGeneration
+        || activeUserIdRef.current !== targetAccountId
+      ) {
+        return { status: 'cancelled' };
+      }
+
+      const message = bootstrapError instanceof Error
+        ? bootstrapError.message
+        : 'Unable to load your churches.';
+      console.error('[ChurchSession] Bootstrap failed:', bootstrapError);
+      setSessionError(message);
+      setError(message);
+      updateSessionStatus('error');
+      setLoading(false);
+      return { status: 'error', error: message };
+    }
+  }, [fetchChurches, transitionChurchSession, updateSessionStatus]);
+
+  useEffect(() => {
+    bootstrapGenerationRef.current += 1;
+    transitionGenerationRef.current += 1;
+
+    if (!initialized) {
+      updateSessionStatus('restoring');
+      setLoading(true);
+      return;
+    }
+
+    console.log('[ChurchSession] Auth account changed; resetting church session');
+    backgroundRefreshTokensRef.current.clear();
+    setRefreshing(false);
+    setRefreshError(null);
+    currentChurchRef.current = null;
+    currentChurchIdRef.current = null;
+    currentMemberRef.current = null;
+    churchesRef.current = [];
+    setChurches([]);
+    setAccountMemberships([]);
+    setCurrentChurch(null);
+    setMembers([]);
+    setRecurringServices([]);
+    setChurchRoles([]);
+    setCurrentMember(null);
+    setNotificationSettings(null);
+    setFillInRequests([]);
+    setError(null);
+    setSessionError(null);
+
+    if (initializationError) {
+      setSessionError(initializationError);
+      updateSessionStatus('error');
+      setLoading(false);
+      return;
+    }
+
+    const nextAccountId = session?.user?.id ?? null;
+    if (!nextAccountId) {
+      updateSessionStatus('signed-out');
+      setLoading(false);
+      return;
+    }
+
+    void bootstrapChurchSession(nextAccountId, true);
+  }, [
+    bootstrapChurchSession,
+    initializationError,
+    initialized,
+    session?.user?.id,
+    updateSessionStatus,
+  ]);
+
+  const retryChurchSession = useCallback(async (): Promise<ChurchTransitionResult> => {
+    if (initializationError) {
+      await retryInitialization();
+      return { status: 'cancelled' };
+    }
+
+    const targetAccountId = activeUserIdRef.current;
+    if (!targetAccountId) {
+      return { status: 'error', error: 'Please sign in to continue.' };
+    }
+
+    return bootstrapChurchSession(
+      targetAccountId,
+      true,
+      currentChurchRef.current?.id,
+    );
+  }, [bootstrapChurchSession, initializationError, retryInitialization]);
+
   const signOut = useCallback(async () => {
     console.log('Signing out user');
     try {
@@ -1378,6 +1746,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
         throw error;
       }
       setChurches([]);
+      setAccountMemberships([]);
       setCurrentChurch(null);
       setMembers([]);
       setRecurringServices([]);
@@ -1397,6 +1766,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
       await clearCurrentDeviceNotificationIdentity(currentMember?.id);
       await authDeleteAccount();
       setChurches([]);
+      setAccountMemberships([]);
       setCurrentChurch(null);
       setMembers([]);
       setRecurringServices([]);
@@ -1453,22 +1823,40 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
       const jobs: Promise<unknown>[] = [];
 
       if (targets.has('churches')) {
-        jobs.push(fetchChurches(accountId, 0, true));
+        jobs.push(runBackgroundRefresh(
+          `churches:${accountId}`,
+          () => fetchChurches(accountId, 0, true),
+        ));
       }
       if (targets.has('members')) {
-        jobs.push(fetchMembers(currentChurchId, true));
+        jobs.push(runBackgroundRefresh(
+          `members:${accountId}:${currentChurchId}`,
+          () => fetchMembers(currentChurchId, true, true),
+        ));
       }
       if (targets.has('current-member')) {
-        jobs.push(fetchCurrentMember(currentChurchId, true));
+        jobs.push(runBackgroundRefresh(
+          `current-member:${accountId}:${currentChurchId}`,
+          () => fetchCurrentMember(currentChurchId, true, true),
+        ));
       }
       if (targets.has('roles')) {
-        jobs.push(fetchChurchRoles(currentChurchId, true));
+        jobs.push(runBackgroundRefresh(
+          `roles:${accountId}:${currentChurchId}`,
+          () => fetchChurchRoles(currentChurchId, true, true),
+        ));
       }
       if (targets.has('recurring-services')) {
-        jobs.push(fetchRecurringServices(currentChurchId, true));
+        jobs.push(runBackgroundRefresh(
+          `recurring-services:${accountId}:${currentChurchId}`,
+          () => fetchRecurringServices(currentChurchId, true, true),
+        ));
       }
       if (targets.has('notification-settings')) {
-        jobs.push(fetchNotificationSettings(currentChurchId, true));
+        jobs.push(runBackgroundRefresh(
+          `notification-settings:${accountId}:${currentChurchId}`,
+          () => fetchNotificationSettings(currentChurchId, true, true),
+        ));
       }
 
       void Promise.allSettled(jobs).then(results => {
@@ -1899,61 +2287,171 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     fetchNotificationSettings,
     fetchRecurringServices,
     queryClient,
+    runBackgroundRefresh,
   ]);
 
-  const currentMemberMatchesSession = !!(
-    currentChurch
-    && user
-    && currentMember
-    && currentMember.church_id === currentChurch.id
-    && currentMember.member_id === user.id
+  const churchAccess = useMemo(
+    () => buildChurchAccessSummaries(
+      churches,
+      accountMemberships,
+      user?.id,
+    ),
+    [accountMemberships, churches, user?.id],
   );
-  const isAdmin = !!(
-    currentChurch
-    && user
-    && (
-      currentChurch.admin_id === user.id
-      || (currentMemberMatchesSession && currentMember?.is_admin === true)
-    )
+
+  const isAdmin = hasChurchAdminAccess(
+    currentChurch,
+    currentMember,
+    user?.id,
   );
 
   const refreshMembers = useCallback(() => {
-    if (!currentChurchId) return Promise.resolve(undefined);
-    return fetchMembers(currentChurchId, true);
-  }, [currentChurchId, fetchMembers]);
+    if (!accountId || !currentChurchId) return Promise.resolve(undefined);
+    return runBackgroundRefresh(
+      `members:${accountId}:${currentChurchId}`,
+      () => fetchMembers(currentChurchId, true, true),
+    );
+  }, [accountId, currentChurchId, fetchMembers, runBackgroundRefresh]);
 
   const refreshRecurringServices = useCallback(() => {
-    if (!currentChurchId) return Promise.resolve(undefined);
-    return fetchRecurringServices(currentChurchId, true);
-  }, [currentChurchId, fetchRecurringServices]);
+    if (!accountId || !currentChurchId) return Promise.resolve(undefined);
+    return runBackgroundRefresh(
+      `recurring-services:${accountId}:${currentChurchId}`,
+      () => fetchRecurringServices(currentChurchId, true, true),
+    );
+  }, [
+    accountId,
+    currentChurchId,
+    fetchRecurringServices,
+    runBackgroundRefresh,
+  ]);
 
   const refreshChurchRoles = useCallback(() => {
-    if (!currentChurchId) return Promise.resolve(undefined);
-    return fetchChurchRoles(currentChurchId, true);
-  }, [currentChurchId, fetchChurchRoles]);
+    if (!accountId || !currentChurchId) return Promise.resolve(undefined);
+    return runBackgroundRefresh(
+      `roles:${accountId}:${currentChurchId}`,
+      () => fetchChurchRoles(currentChurchId, true, true),
+    );
+  }, [accountId, currentChurchId, fetchChurchRoles, runBackgroundRefresh]);
 
   const refreshCurrentMember = useCallback(() => {
-    if (!currentChurchId) return Promise.resolve(undefined);
-    return fetchCurrentMember(currentChurchId, true);
-  }, [currentChurchId, fetchCurrentMember]);
+    if (!accountId || !currentChurchId) return Promise.resolve(undefined);
+    return runBackgroundRefresh(
+      `current-member:${accountId}:${currentChurchId}`,
+      () => fetchCurrentMember(currentChurchId, true, true),
+    );
+  }, [accountId, currentChurchId, fetchCurrentMember, runBackgroundRefresh]);
 
   const refreshNotificationSettings = useCallback(() => {
-    if (!currentChurchId) return Promise.resolve(undefined);
-    return fetchNotificationSettings(currentChurchId, true);
-  }, [currentChurchId, fetchNotificationSettings]);
+    if (!accountId || !currentChurchId) return Promise.resolve(undefined);
+    return runBackgroundRefresh(
+      `notification-settings:${accountId}:${currentChurchId}`,
+      () => fetchNotificationSettings(currentChurchId, true, true),
+    );
+  }, [
+    accountId,
+    currentChurchId,
+    fetchNotificationSettings,
+    runBackgroundRefresh,
+  ]);
 
   const refreshFillInRequests = useCallback(() => {
-    if (!currentChurchId) return Promise.resolve(undefined);
-    return fetchFillInRequests(currentChurchId, true);
-  }, [currentChurchId, fetchFillInRequests]);
+    if (!accountId || !currentChurchId) return Promise.resolve(undefined);
+    return runBackgroundRefresh(
+      `fill-in-requests:${accountId}:${currentChurchId}`,
+      () => fetchFillInRequests(currentChurchId, true, true),
+    );
+  }, [accountId, currentChurchId, fetchFillInRequests, runBackgroundRefresh]);
 
-  const refreshChurches = useCallback(() => {
-    if (!accountId) return Promise.resolve();
-    return fetchChurches(accountId);
-  }, [accountId, fetchChurches]);
+  const refreshChurches = useCallback(async (
+    preferredChurchId?: string,
+  ): Promise<ChurchTransitionResult> => {
+    if (!accountId) {
+      return { status: 'error', error: 'Please sign in to continue.' } as const;
+    }
+
+    try {
+      const visibleChurches = await runBackgroundRefresh(
+        `churches:${accountId}`,
+        () => fetchChurches(accountId, 0, true),
+      );
+      if (activeUserIdRef.current !== accountId) {
+        return { status: 'cancelled' };
+      }
+
+      if (visibleChurches.length === 0) {
+        currentChurchRef.current = null;
+        currentChurchIdRef.current = null;
+        currentMemberRef.current = null;
+        setCurrentChurch(null);
+        setMembers([]);
+        setRecurringServices([]);
+        setChurchRoles([]);
+        setCurrentMember(null);
+        setNotificationSettings(null);
+        setFillInRequests([]);
+        updateSessionStatus('no-membership');
+        setLoading(false);
+        await clearLastSelectedChurchId(accountId);
+        return { status: 'no-membership' };
+      }
+
+      const currentChurchId = currentChurchRef.current?.id;
+      const refreshedCurrentChurch = visibleChurches.find(
+        church => church.id === currentChurchId,
+      );
+      const preferredChurch = preferredChurchId
+        ? visibleChurches.find(church => church.id === preferredChurchId)
+        : null;
+
+      if (
+        refreshedCurrentChurch
+        && (!preferredChurch || preferredChurch.id === refreshedCurrentChurch.id)
+        && currentMemberRef.current
+        && sessionStatusRef.current === 'ready'
+      ) {
+        currentChurchRef.current = refreshedCurrentChurch;
+        setCurrentChurch(refreshedCurrentChurch);
+        return {
+          status: 'ready',
+          churchId: refreshedCurrentChurch.id,
+        };
+      }
+
+      const storedChurchId = await getLastSelectedChurchId(accountId);
+      const targetChurch = selectPreferredChurch(
+        visibleChurches,
+        preferredChurch?.id,
+        storedChurchId,
+        currentChurchId,
+      );
+
+      if (!targetChurch) {
+        updateSessionStatus('no-membership');
+        setLoading(false);
+        return { status: 'no-membership' };
+      }
+
+      return transitionChurchSession(targetChurch.id, true);
+    } catch (refreshFailure) {
+      return {
+        status: 'error',
+        error: refreshFailure instanceof Error
+          ? refreshFailure.message
+          : 'Unable to refresh your churches.',
+      };
+    }
+  }, [
+    accountId,
+    fetchChurches,
+    runBackgroundRefresh,
+    transitionChurchSession,
+    updateSessionStatus,
+  ]);
 
   const value = useMemo<ChurchContextValue>(() => ({
     churches,
+    churchAccess,
     currentChurch,
     setCurrentChurch,
     members,
@@ -1961,11 +2459,18 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     churchRoles,
     notificationSettings,
     fillInRequests,
+    initializing: loading,
+    refreshing,
+    refreshError,
     loading,
     error,
     user,
     currentMember,
     isAdmin,
+    sessionStatus,
+    sessionError,
+    switchChurch: transitionChurchSession,
+    retryChurchSession,
     createChurch,
     addMember,
     inviteMember,
@@ -2012,6 +2517,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     addRecurringService,
     cancelFillInRequest,
     churchRoles,
+    churchAccess,
     churches,
     createChurch,
     createFillInRequest,
@@ -2031,7 +2537,10 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     loading,
     members,
     notificationSettings,
+    refreshError,
+    refreshing,
     recurringServices,
+    retryChurchSession,
     refreshChurchRoles,
     refreshChurches,
     refreshCurrentMember,
@@ -2043,6 +2552,9 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     removeMemberUnavailability,
     saveUnavailableDates,
     signOut,
+    sessionError,
+    sessionStatus,
+    transitionChurchSession,
     updateChurchAutoAssignSettings,
     updateChurchName,
     updateChurchSongTypes,
@@ -2058,14 +2570,27 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     user,
     currentMember,
     isAdmin,
+    initializing: loading,
+    refreshing,
+    refreshError,
     loading,
     error,
+    sessionStatus,
+    sessionError,
+    switchChurch: transitionChurchSession,
+    retryChurchSession,
   }), [
     currentChurch,
     currentMember,
     error,
     isAdmin,
     loading,
+    refreshError,
+    refreshing,
+    retryChurchSession,
+    sessionError,
+    sessionStatus,
+    transitionChurchSession,
     user,
   ]);
 

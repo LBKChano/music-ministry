@@ -34,27 +34,76 @@ export type OneSignalSendResult = {
   successfulTargetLabels: string[]
 }
 
+type RecipientSubscriptionRpcResult = {
+  data: unknown
+  error: { message?: string } | null
+}
+
+type RecipientSubscriptionRpcClient = {
+  rpc: (
+    functionName: string,
+    args: { target_member_ids: string[] },
+  ) => PromiseLike<RecipientSubscriptionRpcResult>
+}
+
+export async function resolveNotificationSubscriptions(
+  client: unknown,
+  recipientMemberIds: string[],
+): Promise<SubscriptionRow[]> {
+  const memberIds = Array.from(
+    new Set(recipientMemberIds.map((id) => id.trim()).filter(Boolean)),
+  )
+  if (memberIds.length === 0) return []
+
+  const { data, error } = await (
+    client as RecipientSubscriptionRpcClient
+  ).rpc('resolve_notification_recipient_subscriptions', {
+    target_member_ids: memberIds,
+  })
+
+  if (error) {
+    throw new Error(
+      `Failed to resolve notification subscriptions: ${error.message ?? 'Unknown database error'}`,
+    )
+  }
+
+  if (!Array.isArray(data)) return []
+
+  return data
+    .filter((row): row is Record<string, unknown> => (
+      Boolean(row)
+      && typeof row === 'object'
+      && typeof row.member_id === 'string'
+      && typeof row.subscription_id === 'string'
+    ))
+    .map((row) => ({
+      member_id: row.member_id as string,
+      subscription_id: row.subscription_id as string,
+    }))
+}
+
 export function buildNotificationTargets(
   recipientMemberIds: string[],
   rows: SubscriptionRow[],
 ): NotificationTargets {
   const recipientIds = new Set(recipientMemberIds.filter(Boolean))
-  const latestBySubscription = new Map<string, SubscriptionRow>()
+  const latestByMemberSubscription = new Map<string, SubscriptionRow>()
 
   for (const row of rows) {
     const subscriptionId = row.subscription_id?.trim()
     if (!row.member_id || !subscriptionId || !recipientIds.has(row.member_id)) continue
 
-    const previous = latestBySubscription.get(subscriptionId)
+    const key = `${row.member_id}\u0000${subscriptionId}`
+    const previous = latestByMemberSubscription.get(key)
     if (!previous || getUpdatedAt(row) > getUpdatedAt(previous)) {
-      latestBySubscription.set(subscriptionId, {
+      latestByMemberSubscription.set(key, {
         ...row,
         subscription_id: subscriptionId,
       })
     }
   }
 
-  const subscriptionRows = Array.from(latestBySubscription.values())
+  const subscriptionRows = Array.from(latestByMemberSubscription.values())
     .map((row) => ({
       member_id: row.member_id,
       subscription_id: row.subscription_id!,
@@ -69,7 +118,9 @@ export function buildNotificationTargets(
 
   return {
     subscriptionRows,
-    subscriptionIds: subscriptionRows.map((row) => row.subscription_id),
+    subscriptionIds: Array.from(new Set(
+      subscriptionRows.map((row) => row.subscription_id),
+    )).sort(),
     externalIds: Array.from(recipientIds)
       .filter((memberId) => !memberIdsWithSubscriptions.has(memberId))
       .sort(),

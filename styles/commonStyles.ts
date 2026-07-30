@@ -16,6 +16,8 @@ export const colors = {
   highlight: '#3B82F6',  // Medium blue for highlights
   inputBackground: '#F0F9FF', // Input background
   error: '#DC2626',      // Error red
+  errorBackground: '#FEF2F2',
+  errorBorder: '#FECACA',
   navyDark: '#0F172A',   // Dark navy for accents
   navyLight: '#BFDBFE',  // Light navy for subtle backgrounds
   headerBackground: '#1E3A8A', // Navy blue header
@@ -38,6 +40,8 @@ export const darkColors = {
   highlight: colors.highlight,
   inputBackground: '#3A3A3C',
   error: colors.error,
+  errorBackground: '#3B1D1D',
+  errorBorder: '#7F1D1D',
   navyDark: colors.navyDark,
   navyLight: '#1C3A6E',
   headerBackground: colors.headerBackground,
