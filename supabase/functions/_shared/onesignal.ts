@@ -34,6 +34,16 @@ export type OneSignalSendResult = {
   successfulTargetLabels: string[]
 }
 
+export function emptyOneSignalSendResult(): OneSignalSendResult {
+  return {
+    sent: 0,
+    errors: [],
+    warnings: [],
+    invalidSubscriptionIds: [],
+    successfulTargetLabels: [],
+  }
+}
+
 type RecipientSubscriptionRpcResult = {
   data: unknown
   error: { message?: string } | null

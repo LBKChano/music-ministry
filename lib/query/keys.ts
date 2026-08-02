@@ -6,6 +6,8 @@ export const queryKeys = {
     [...appQueryRoot, 'account', accountId] as const,
   churches: (accountId: string) =>
     [...queryKeys.account(accountId), 'churches'] as const,
+  accountDeletionPreview: (accountId: string) =>
+    [...queryKeys.account(accountId), 'deletion-preview'] as const,
   churchDiscovery: (accountId: string) =>
     [...queryKeys.account(accountId), 'church-discovery'] as const,
   church: (accountId: string, churchId: string) =>
@@ -44,6 +46,16 @@ export const queryKeys = {
     [
       ...queryKeys.church(accountId, churchId),
       'member-scheduling-preferences',
+      memberId,
+    ] as const,
+  memberNotificationPreferences: (
+    accountId: string,
+    churchId: string,
+    memberId: string
+  ) =>
+    [
+      ...queryKeys.church(accountId, churchId),
+      'member-notification-preferences',
       memberId,
     ] as const,
   memberNotifications: (accountId: string, memberId: string) =>

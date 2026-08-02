@@ -1,10 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   buildNotificationTargets,
+  emptyOneSignalSendResult,
   resolveNotificationSubscriptions,
   sendOneSignalNotification,
-  successfulSubscriptionMembers,
 } from '../_shared/onesignal.ts'
+import { resolveNotificationPreferenceRecipients } from '../_shared/notification-preferences.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -131,13 +132,18 @@ Deno.serve(async (req) => {
       )
     }
 
-    const subscriptionRows = await resolveNotificationSubscriptions(
+    const preferenceResolution = await resolveNotificationPreferenceRecipients(
       supabase,
       eligibleMemberIds,
+      'service_comments',
+    )
+    const subscriptionRows = await resolveNotificationSubscriptions(
+      supabase,
+      preferenceResolution.enabledMemberIds,
     )
 
     const targets = buildNotificationTargets(
-      eligibleMemberIds,
+      preferenceResolution.enabledMemberIds,
       subscriptionRows,
     )
 
@@ -160,8 +166,27 @@ Deno.serve(async (req) => {
       .map((item) => item.id)
       .sort()
       .join(':')}`
-    if (!ONESIGNAL_REST_API_KEY) {
-      throw new Error(`OneSignal REST API key is not configured. Set one of: ${ONESIGNAL_REST_API_KEY_NAMES.join(', ')}`)
+    const notificationData = {
+      type: 'service_comment',
+      serviceId: comment.service_id,
+      serviceCommentId: comment.id,
+      serviceCommentCount: String(comments.length),
+    }
+    let sendResult = emptyOneSignalSendResult()
+    if (preferenceResolution.enabledMemberIds.length > 0) {
+      if (!ONESIGNAL_REST_API_KEY) {
+        throw new Error(`OneSignal REST API key is not configured. Set one of: ${ONESIGNAL_REST_API_KEY_NAMES.join(', ')}`)
+      }
+      sendResult = await sendOneSignalNotification({
+        appId: ONESIGNAL_APP_ID,
+        apiKey: ONESIGNAL_REST_API_KEY,
+        eventKey,
+        externalIds: targets.externalIds,
+        subscriptionIds: targets.subscriptionIds,
+        title: notificationTitle,
+        body: notificationBody,
+        data: notificationData,
+      })
     }
     const {
       sent,
@@ -169,21 +194,7 @@ Deno.serve(async (req) => {
       warnings,
       invalidSubscriptionIds,
       successfulTargetLabels,
-    } = await sendOneSignalNotification({
-      appId: ONESIGNAL_APP_ID,
-      apiKey: ONESIGNAL_REST_API_KEY,
-      eventKey,
-      externalIds: targets.externalIds,
-      subscriptionIds: targets.subscriptionIds,
-      title: notificationTitle,
-      body: notificationBody,
-      data: {
-        type: 'service_comment',
-        serviceId: comment.service_id,
-        serviceCommentId: comment.id,
-        serviceCommentCount: String(comments.length),
-      },
-    })
+    } = sendResult
 
     if (invalidSubscriptionIds.length > 0) {
       await supabase
@@ -192,43 +203,23 @@ Deno.serve(async (req) => {
         .in('subscription_id', invalidSubscriptionIds)
     }
 
-    if (sent > 0) {
-      const notifiedMemberIds = new Set<string>()
-      if (successfulTargetLabels.includes('subscription_ids')) {
-        successfulSubscriptionMembers(
-          targets.subscriptionRows,
-          invalidSubscriptionIds,
-        ).forEach((memberId) => notifiedMemberIds.add(memberId))
-      }
-      if (successfulTargetLabels.includes('external_ids')) {
-        targets.externalIds.forEach((memberId) => notifiedMemberIds.add(memberId))
-      }
+    const { error: notificationHistoryError } = await supabase
+      .from('member_notifications')
+      .upsert(eligibleMemberIds.map(memberId => ({
+        church_id: comment.church_id,
+        member_id: memberId,
+        event_key: eventKey,
+        notification_type: 'service_comment',
+        title: notificationTitle,
+        body: notificationBody,
+        data: notificationData,
+      })), {
+        onConflict: 'member_id,event_key',
+        ignoreDuplicates: true,
+      })
 
-      if (notifiedMemberIds.size > 0) {
-        const { error: notificationHistoryError } = await supabase
-          .from('member_notifications')
-          .upsert(Array.from(notifiedMemberIds).map(memberId => ({
-            church_id: comment.church_id,
-            member_id: memberId,
-            event_key: eventKey,
-            notification_type: 'service_comment',
-            title: notificationTitle,
-            body: notificationBody,
-            data: {
-              type: 'service_comment',
-              serviceId: comment.service_id,
-              serviceCommentId: comment.id,
-              serviceCommentCount: String(comments.length),
-            },
-          })), {
-            onConflict: 'member_id,event_key',
-            ignoreDuplicates: true,
-          })
-
-        if (notificationHistoryError) {
-          console.error('Error recording member notifications:', notificationHistoryError)
-        }
-      }
+    if (notificationHistoryError) {
+      console.error('Error recording member notifications:', notificationHistoryError)
     }
 
     await supabase.from('notification_log').insert({
@@ -244,11 +235,11 @@ Deno.serve(async (req) => {
         invalidSubscriptionIds,
         successfulTargetLabels,
       }),
-      notes: `service comments ${uniqueCommentIds.join(',')}; selected=${selectedMemberIds.length}; fallbackExternalIds=${targets.externalIds.length}`,
+      notes: `service comments ${uniqueCommentIds.join(',')}; selected=${selectedMemberIds.length}; optedOut=${preferenceResolution.optedOutMemberIds.length}; fallbackExternalIds=${targets.externalIds.length}`,
     })
 
     return new Response(
-      JSON.stringify({ sent, errors, stats: { selectedMembers: selectedMemberIds.length, eligibleMembers: eligibleMemberIds.length, subscriptions: targets.subscriptionRows.length } }),
+      JSON.stringify({ sent, errors, stats: { selectedMembers: selectedMemberIds.length, eligibleMembers: eligibleMemberIds.length, subscriptions: targets.subscriptionRows.length, optedOut: preferenceResolution.optedOutMemberIds.length } }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   } catch (err) {

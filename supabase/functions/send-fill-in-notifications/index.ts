@@ -1,10 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   buildNotificationTargets,
+  emptyOneSignalSendResult,
   resolveNotificationSubscriptions,
   sendOneSignalNotification,
-  successfulSubscriptionMembers,
 } from '../_shared/onesignal.ts'
+import { resolveNotificationPreferenceRecipients } from '../_shared/notification-preferences.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -105,6 +106,7 @@ Deno.serve(async (req) => {
       adminMembers: 0,
       totalRecipients: 0,
       subscriptions: 0,
+      optedOut: 0,
     }
 
     // 5. Find role ids for the requested role name. Fetch and normalize locally so
@@ -173,15 +175,22 @@ Deno.serve(async (req) => {
       )
     }
 
+    const preferenceResolution = await resolveNotificationPreferenceRecipients(
+      supabase,
+      recipientMemberIds,
+      'fill_in_requests',
+    )
+    stats.optedOut = preferenceResolution.optedOutMemberIds.length
+
     // 6. Prefer saved OneSignal subscription IDs because they target the exact
     // device. Fall back to external_id aliases for members without a saved row.
     const subscriptionRows = await resolveNotificationSubscriptions(
       supabase,
-      recipientMemberIds,
+      preferenceResolution.enabledMemberIds,
     )
 
     const targets = buildNotificationTargets(
-      recipientMemberIds,
+      preferenceResolution.enabledMemberIds,
       subscriptionRows,
     )
     stats.subscriptions = targets.subscriptionRows.length
@@ -192,10 +201,29 @@ Deno.serve(async (req) => {
     if (fillInRequest.reason) {
       notificationBody += ` — Reason: ${fillInRequest.reason}`
     }
+    const notificationData = {
+      type: 'fill_in_request',
+      fillInRequestId: fillInRequest.id,
+      serviceId: fillInRequest.service_id,
+      roleName: fillInRequest.role_name,
+    }
 
     // 8. Send via OneSignal Push API
-    if (!ONESIGNAL_REST_API_KEY) {
-      throw new Error(`OneSignal REST API key is not configured. Set one of: ${ONESIGNAL_REST_API_KEY_NAMES.join(', ')}`)
+    let sendResult = emptyOneSignalSendResult()
+    if (preferenceResolution.enabledMemberIds.length > 0) {
+      if (!ONESIGNAL_REST_API_KEY) {
+        throw new Error(`OneSignal REST API key is not configured. Set one of: ${ONESIGNAL_REST_API_KEY_NAMES.join(', ')}`)
+      }
+      sendResult = await sendOneSignalNotification({
+        appId: ONESIGNAL_APP_ID,
+        apiKey: ONESIGNAL_REST_API_KEY,
+        eventKey: `fill_in_request:${fillInRequest.id}`,
+        externalIds: targets.externalIds,
+        subscriptionIds: targets.subscriptionIds,
+        title: notificationTitle,
+        body: notificationBody,
+        data: notificationData,
+      })
     }
     const {
       sent,
@@ -203,21 +231,7 @@ Deno.serve(async (req) => {
       warnings,
       invalidSubscriptionIds,
       successfulTargetLabels,
-    } = await sendOneSignalNotification({
-      appId: ONESIGNAL_APP_ID,
-      apiKey: ONESIGNAL_REST_API_KEY,
-      eventKey: `fill_in_request:${fillInRequest.id}`,
-      externalIds: targets.externalIds,
-      subscriptionIds: targets.subscriptionIds,
-      title: notificationTitle,
-      body: notificationBody,
-      data: {
-        type: 'fill_in_request',
-        fillInRequestId: fillInRequest.id,
-        serviceId: fillInRequest.service_id,
-        roleName: fillInRequest.role_name,
-      },
-    })
+    } = sendResult
 
     if (invalidSubscriptionIds.length > 0) {
       await supabase
@@ -226,43 +240,23 @@ Deno.serve(async (req) => {
         .in('subscription_id', invalidSubscriptionIds)
     }
 
-    if (sent > 0) {
-      const notifiedMemberIds = new Set<string>()
-      if (successfulTargetLabels.includes('subscription_ids')) {
-        successfulSubscriptionMembers(
-          targets.subscriptionRows,
-          invalidSubscriptionIds,
-        ).forEach((memberId) => notifiedMemberIds.add(memberId))
-      }
-      if (successfulTargetLabels.includes('external_ids')) {
-        targets.externalIds.forEach((memberId) => notifiedMemberIds.add(memberId))
-      }
+    const { error: notificationHistoryError } = await supabase
+      .from('member_notifications')
+      .upsert(recipientMemberIds.map(memberId => ({
+        church_id: fillInRequest.church_id,
+        member_id: memberId,
+        event_key: `fill_in_request:${fillInRequest.id}`,
+        notification_type: 'fill_in_request',
+        title: notificationTitle,
+        body: notificationBody,
+        data: notificationData,
+      })), {
+        onConflict: 'member_id,event_key',
+        ignoreDuplicates: true,
+      })
 
-      if (notifiedMemberIds.size > 0) {
-        const { error: notificationHistoryError } = await supabase
-          .from('member_notifications')
-          .upsert(Array.from(notifiedMemberIds).map(memberId => ({
-            church_id: fillInRequest.church_id,
-            member_id: memberId,
-            event_key: `fill_in_request:${fillInRequest.id}`,
-            notification_type: 'fill_in_request',
-            title: notificationTitle,
-            body: notificationBody,
-            data: {
-              type: 'fill_in_request',
-              fillInRequestId: fillInRequest.id,
-              serviceId: fillInRequest.service_id,
-              roleName: fillInRequest.role_name,
-            },
-          })), {
-            onConflict: 'member_id,event_key',
-            ignoreDuplicates: true,
-          })
-
-        if (notificationHistoryError) {
-          console.error('Error recording member notifications:', notificationHistoryError)
-        }
-      }
+    if (notificationHistoryError) {
+      console.error('Error recording member notifications:', notificationHistoryError)
     }
 
     await supabase.from('notification_log').insert({
@@ -278,7 +272,7 @@ Deno.serve(async (req) => {
         invalidSubscriptionIds,
         successfulTargetLabels,
       }),
-      notes: `fill-in request ${fillInRequest.id}; role=${fillInRequest.role_name}; fallbackExternalIds=${targets.externalIds.length}; stats=${JSON.stringify(stats)}`,
+      notes: `fill-in request ${fillInRequest.id}; role=${fillInRequest.role_name}; optedOut=${preferenceResolution.optedOutMemberIds.length}; fallbackExternalIds=${targets.externalIds.length}; stats=${JSON.stringify(stats)}`,
     })
 
     return new Response(

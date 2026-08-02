@@ -27,7 +27,11 @@ const storage = readSource(
   'permission-onboarding-storage.ts',
 );
 const bell = readSource('components', 'NotificationBell.tsx');
-const preferences = readSource('app', 'notification-preferences.tsx');
+const preferences = readSource(
+  'components',
+  'profile',
+  'profile-notification-preferences-screen.tsx',
+);
 
 test('both native Schedules use one contextual explainer and no automatic OS prompt', () => {
   for (const source of [androidSchedule, iosSchedule]) {

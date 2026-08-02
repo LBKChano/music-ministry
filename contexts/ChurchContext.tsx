@@ -16,6 +16,7 @@ import type {
 import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNotifications } from '@/contexts/NotificationContext';
 import {
   fetchChurchMembers as fetchChurchMembersQuery,
   fetchCurrentMember as fetchCurrentMemberQuery,
@@ -31,6 +32,7 @@ import {
   createRealtimeChannel,
   logRealtimeStatus,
   realtimeChannelNames,
+  removeAllTrackedRealtimeChannels,
   removeRealtimeChannel,
 } from '@/lib/realtime/channels';
 import {
@@ -64,8 +66,14 @@ import {
 import { createOnboardingRequestId } from '@/lib/auth/onboarding-workflow';
 import {
   deactivateCurrentNotificationDevice,
+  registerCurrentNotificationDevice,
 } from '@/lib/notifications/device-registration';
-import type { Tables, TablesInsert } from '@/lib/supabase/types';
+import {
+  updateMatchingMembershipName,
+  updateMatchingMembershipNameInList,
+  validateChurchDisplayName,
+} from '@/lib/profile/identity';
+import type { Json, Tables, TablesInsert } from '@/lib/supabase/types';
 
 type Church = Tables<'churches'>;
 type ChurchMember = Tables<'church_members'>;
@@ -124,20 +132,24 @@ interface ChurchContextValue {
   inviteMember: (churchId: string, email: string, name?: string, roleIds?: string[]) => Promise<ChurchMember | null>;
   deleteMember: (memberId: string, churchId: string) => Promise<boolean>;
   updateMember: (memberId: string, churchId: string, updates: { name?: string; role?: string; email?: string; is_admin?: boolean }) => Promise<boolean>;
+  saveMemberAdmin: (memberId: string, churchId: string, updates: { name: string; email: string; is_admin: boolean; roleIds: string[] }) => Promise<boolean>;
+  updateOwnChurchProfile: (churchId: string, displayName: string) => Promise<ChurchMemberWithRoles>;
   addRecurringService: (churchId: string, name: string, dayOfWeek: number, time: string, notes?: string, roles?: string[]) => Promise<RecurringService | null>;
   updateRecurringService: (serviceId: string, churchId: string, updates: { name: string; day_of_week: number; time: string; notes?: string | null }, roles?: string[]) => Promise<RecurringService | null>;
   deleteRecurringService: (serviceId: string, churchId: string) => Promise<boolean>;
   addChurchRole: (churchId: string, name: string, description?: string) => Promise<ChurchRole | null>;
+  updateChurchRole: (roleId: string, churchId: string, name: string, description?: string) => Promise<ChurchRole | null>;
   deleteChurchRole: (roleId: string, churchId: string) => Promise<boolean>;
   updateRoleOrder: (churchId: string, roleIds: string[]) => Promise<boolean>;
   addMemberRole: (memberId: string, roleId: string, churchId: string) => Promise<boolean>;
   removeMemberRole: (memberId: string, roleId: string, churchId: string) => Promise<boolean>;
-  fetchMemberUnavailability: (memberId: string) => Promise<MemberUnavailability[]>;
+  fetchMemberUnavailability: (memberId: string, force?: boolean, throwOnError?: boolean) => Promise<MemberUnavailability[]>;
   addMemberUnavailability: (memberId: string, dates: string[], reason?: string) => Promise<boolean>;
   removeMemberUnavailability: (unavailabilityId: string) => Promise<boolean>;
   saveUnavailableDates: (memberId: string, dates: string[]) => Promise<boolean>;
   fetchNotificationSettings: (churchId: string) => Promise<void>;
   updateNotificationSettings: (churchId: string, notificationHours: number[], enabled: boolean) => Promise<boolean>;
+  previewAdminDeleteImpact: (churchId: string, targetType: 'member' | 'role', targetId: string) => Promise<Json | null>;
   updateChurchName: (churchId: string, name: string) => Promise<Church | null>;
   updateChurchSongTypes: (churchId: string, songTypeOptions: string[], syncLocal?: boolean) => Promise<Church | null>;
   applyChurchSongTypesLocally: (churchId: string, songTypeOptions: string[]) => void;
@@ -176,63 +188,6 @@ export interface ChurchSessionContextValue {
 const ChurchContext = createContext<ChurchContextValue | null>(null);
 const ChurchSessionContext = createContext<ChurchSessionContextValue | null>(null);
 
-async function clearCurrentDeviceNotificationIdentity(memberId?: string | null) {
-  if (Platform.OS === 'web') return;
-
-  let subscriptionId: string | null = null;
-  let oneSignal: {
-    logout?: () => void;
-    User: {
-      removeTag?: (key: string) => void;
-      pushSubscription: {
-        getIdAsync: () => Promise<string | null>;
-      };
-    };
-  } | null = null;
-
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { OneSignal } = require('react-native-onesignal') as {
-      OneSignal: {
-        logout?: () => void;
-        User: {
-          removeTag?: (key: string) => void;
-          pushSubscription: {
-            getIdAsync: () => Promise<string | null>;
-          };
-        };
-      };
-    };
-
-    oneSignal = OneSignal;
-    subscriptionId = await OneSignal.User.pushSubscription.getIdAsync();
-  } catch (err) {
-    console.warn('[Notifications] Failed to read the current device identity:', err);
-  }
-
-  if (subscriptionId) {
-    try {
-      const result = await deactivateCurrentNotificationDevice({
-        memberId,
-        subscriptionId,
-      }, supabase);
-      result.errors.forEach(message => {
-        console.warn('[Notifications]', message);
-      });
-    } catch (err) {
-      console.warn('[Notifications] Failed to deactivate the current device:', err);
-    }
-  }
-
-  try {
-    oneSignal?.User.removeTag?.('member_id');
-    oneSignal?.User.removeTag?.('church_id');
-    oneSignal?.logout?.();
-  } catch (err) {
-    console.warn('[Notifications] Failed to clear the OneSignal identity:', err);
-  }
-}
-
 export function ChurchProvider({ children }: { children: React.ReactNode }) {
   const {
     session,
@@ -241,6 +196,10 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     retryInitialization,
     deleteAccount: authDeleteAccount,
   } = useAuth();
+  const {
+    clearIdentity: clearNotificationIdentity,
+    onesignalSubscriptionId,
+  } = useNotifications();
   const queryClient = useQueryClient();
   const [churches, setChurches] = useState<Church[]>([]);
   const [accountMemberships, setAccountMemberships] = useState<ChurchMember[]>([]);
@@ -269,6 +228,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
   const transitionGenerationRef = useRef(0);
   const bootstrapGenerationRef = useRef(0);
   const churchCreationRequestIdsRef = useRef(new Map<string, string>());
+  const ownProfileMutationGenerationRef = useRef(0);
   const refreshCoordinatorRef = useRef(new RefreshCoordinator());
   const backgroundRefreshTokensRef = useRef(new Set<symbol>());
   const previousChurchCacheRef = useRef<{
@@ -620,6 +580,277 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchMembers]);
 
+  const saveMemberAdmin = useCallback(async (
+    memberId: string,
+    churchId: string,
+    updates: {
+      name: string;
+      email: string;
+      is_admin: boolean;
+      roleIds: string[];
+    },
+  ) => {
+    console.log('Atomically saving member administration:', { memberId, churchId });
+    try {
+      setError(null);
+      const { error: saveError } = await supabase.rpc(
+        'save_church_member_admin',
+        {
+          target_church_id: churchId,
+          target_member_id: memberId,
+          member_name: updates.name,
+          member_email: updates.email,
+          member_is_admin: updates.is_admin,
+          member_role_ids: updates.roleIds,
+        },
+      );
+      if (saveError) {
+        console.error('Error saving member administration:', saveError);
+        setError(saveError.message);
+        return false;
+      }
+
+      setCurrentMember(previous => {
+        if (previous?.id !== memberId || previous.church_id !== churchId) {
+          return previous;
+        }
+
+        const memberRoles = updates.roleIds
+          .map(roleId => {
+            const role = churchRoles.find(candidate => candidate.id === roleId);
+            return role
+              ? { role_id: role.id, role_name: role.name }
+              : null;
+          })
+          .filter((role): role is { role_id: string; role_name: string } => Boolean(role));
+
+        return {
+          ...previous,
+          name: updates.name,
+          email: updates.email,
+          is_admin: updates.is_admin,
+          memberRoles,
+        };
+      });
+      await fetchMembers(churchId, true);
+      return true;
+    } catch (err) {
+      console.error('Error in saveMemberAdmin:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return false;
+    }
+  }, [churchRoles, fetchMembers]);
+
+  const updateOwnChurchProfile = useCallback(async (
+    churchId: string,
+    displayName: string,
+  ): Promise<ChurchMemberWithRoles> => {
+    const accountId = activeUserIdRef.current;
+    const selectedMember = currentMemberRef.current;
+    const validation = validateChurchDisplayName(displayName);
+
+    if (validation.error) {
+      throw new Error(validation.error);
+    }
+
+    if (
+      !accountId
+      || !selectedMember
+      || selectedMember.church_id !== churchId
+      || selectedMember.member_id !== accountId
+    ) {
+      throw new Error('Your membership for this church is not available.');
+    }
+
+    const mutationGeneration = ++ownProfileMutationGenerationRef.current;
+    const optimisticName = validation.normalizedName;
+    const membershipId = selectedMember.id;
+    const currentMemberKey = queryKeys.currentMember(accountId, churchId);
+    const membersKey = queryKeys.members(accountId, churchId);
+    const discoveryKey = queryKeys.churchDiscovery(accountId);
+    const previousDiscovery = queryClient.getQueryData<{
+      churches: Church[];
+      memberships: ChurchMember[];
+    }>(discoveryKey);
+    const updateOptions = {
+      accountId,
+      churchId,
+      membershipId,
+      name: optimisticName,
+    };
+
+    await Promise.all([
+      queryClient.cancelQueries({ queryKey: currentMemberKey, exact: true }),
+      queryClient.cancelQueries({ queryKey: membersKey, exact: true }),
+      queryClient.cancelQueries({ queryKey: discoveryKey, exact: true }),
+    ]);
+
+    if (activeUserIdRef.current !== accountId) {
+      throw new Error('Profile update cancelled because the signed-in account changed.');
+    }
+
+    queryClient.setQueryData<ChurchMemberWithRoles | null>(
+      currentMemberKey,
+      previous => updateMatchingMembershipName(previous ?? null, updateOptions),
+    );
+    queryClient.setQueryData<ChurchMemberWithRoles[] | undefined>(
+      membersKey,
+      previous => updateMatchingMembershipNameInList(previous, updateOptions),
+    );
+    queryClient.setQueryData<typeof previousDiscovery>(
+      discoveryKey,
+      previous => previous
+        ? {
+            ...previous,
+            memberships: updateMatchingMembershipNameInList(
+              previous.memberships,
+              updateOptions,
+            ) ?? previous.memberships,
+          }
+        : previous,
+    );
+    setAccountMemberships(previous => (
+      updateMatchingMembershipNameInList(previous, updateOptions) ?? previous
+    ));
+
+    const optimisticCurrentMember = (
+      currentChurchIdRef.current === churchId
+      && currentMemberRef.current?.id === membershipId
+    )
+      ? updateMatchingMembershipName(selectedMember, updateOptions)
+      : null;
+    if (optimisticCurrentMember) {
+      currentMemberRef.current = optimisticCurrentMember;
+      setCurrentMember(optimisticCurrentMember);
+      setMembers(previous => (
+        updateMatchingMembershipNameInList(previous, updateOptions) ?? previous
+      ));
+    }
+
+    const rollback = () => {
+      if (ownProfileMutationGenerationRef.current !== mutationGeneration) return;
+      const rollbackOptions = {
+        ...updateOptions,
+        name: selectedMember.name,
+        expectedName: optimisticName,
+      };
+
+      queryClient.setQueryData<ChurchMemberWithRoles | null>(
+        currentMemberKey,
+        previous => updateMatchingMembershipName(previous ?? null, rollbackOptions),
+      );
+      queryClient.setQueryData<ChurchMemberWithRoles[] | undefined>(
+        membersKey,
+        previous => updateMatchingMembershipNameInList(previous, rollbackOptions),
+      );
+      queryClient.setQueryData<typeof previousDiscovery>(
+        discoveryKey,
+        previous => previous
+          ? {
+              ...previous,
+              memberships: updateMatchingMembershipNameInList(
+                previous.memberships,
+                rollbackOptions,
+              ) ?? previous.memberships,
+            }
+          : previous,
+      );
+      setAccountMemberships(previous => (
+        updateMatchingMembershipNameInList(previous, rollbackOptions) ?? previous
+      ));
+
+      if (
+        currentChurchIdRef.current === churchId
+        && currentMemberRef.current?.id === membershipId
+        && currentMemberRef.current.name === optimisticName
+      ) {
+        const restoredMember = selectedMember;
+        currentMemberRef.current = restoredMember;
+        setCurrentMember(restoredMember);
+        setMembers(previous => (
+          updateMatchingMembershipNameInList(previous, rollbackOptions) ?? previous
+        ));
+      }
+    };
+
+    try {
+      setError(null);
+      const { data, error: updateError } = await supabase.rpc(
+        'update_own_church_profile',
+        {
+          target_church_id: churchId,
+          display_name: optimisticName,
+        },
+      );
+
+      if (updateError) throw updateError;
+      if (!data) throw new Error('The updated church profile was not returned.');
+
+      if (
+        ownProfileMutationGenerationRef.current === mutationGeneration
+        && activeUserIdRef.current === accountId
+      ) {
+        const confirmedOptions = {
+          ...updateOptions,
+          name: data.name ?? optimisticName,
+          expectedName: optimisticName,
+        };
+        queryClient.setQueryData<ChurchMemberWithRoles | null>(
+          currentMemberKey,
+          previous => updateMatchingMembershipName(previous ?? null, confirmedOptions),
+        );
+        queryClient.setQueryData<ChurchMemberWithRoles[] | undefined>(
+          membersKey,
+          previous => updateMatchingMembershipNameInList(previous, confirmedOptions),
+        );
+        queryClient.setQueryData<typeof previousDiscovery>(
+          discoveryKey,
+          previous => previous
+            ? {
+                ...previous,
+                memberships: updateMatchingMembershipNameInList(
+                  previous.memberships,
+                  confirmedOptions,
+                ) ?? previous.memberships,
+              }
+            : previous,
+        );
+        setAccountMemberships(previous => (
+          updateMatchingMembershipNameInList(previous, confirmedOptions) ?? previous
+        ));
+
+        if (
+          currentChurchIdRef.current === churchId
+          && currentMemberRef.current?.id === membershipId
+          && currentMemberRef.current.name === optimisticName
+        ) {
+          const confirmedMember = {
+            ...currentMemberRef.current,
+            name: data.name ?? optimisticName,
+          };
+          currentMemberRef.current = confirmedMember;
+          setCurrentMember(confirmedMember);
+          setMembers(previous => (
+            updateMatchingMembershipNameInList(previous, confirmedOptions) ?? previous
+          ));
+        }
+      }
+
+      return {
+        ...selectedMember,
+        ...data,
+        memberRoles: selectedMember.memberRoles,
+      };
+    } catch (updateError) {
+      rollback();
+      const message = updateError instanceof Error
+        ? updateError.message
+        : 'Unable to update your church profile.';
+      setError(message);
+      throw new Error(message);
+    }
+  }, [queryClient]);
+
   const fetchRecurringServices = useCallback(async (
     churchId: string,
     force = false,
@@ -720,34 +951,18 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     console.log('Updating notification settings:', { churchId, notificationHours, enabled });
     try {
       setError(null);
-      const { data: existing } = await supabase
-        .from('notification_settings')
-        .select('id')
-        .eq('church_id', churchId)
-        .maybeSingle();
-
-      if (existing) {
-        const { error: updateError } = await supabase
-          .from('notification_settings')
-          .update({ notification_hours: notificationHours, enabled, updated_at: new Date().toISOString() })
-          .eq('church_id', churchId);
-        if (updateError) {
-          console.error('Error updating notification settings:', updateError);
-          setError(updateError.message);
-          return false;
-        }
-      } else {
-        const newSettings: TablesInsert<'notification_settings'> = {
-          church_id: churchId,
-          notification_hours: notificationHours,
-          enabled,
-        };
-        const { error: insertError } = await supabase.from('notification_settings').insert(newSettings);
-        if (insertError) {
-          console.error('Error creating notification settings:', insertError);
-          setError(insertError.message);
-          return false;
-        }
+      const { error: updateError } = await supabase.rpc(
+        'upsert_church_notification_settings_admin',
+        {
+          target_church_id: churchId,
+          reminder_hours: notificationHours,
+          reminders_enabled: enabled,
+        },
+      );
+      if (updateError) {
+        console.error('Error updating notification settings:', updateError);
+        setError(updateError.message);
+        return false;
       }
 
       await fetchNotificationSettings(churchId, true);
@@ -759,25 +974,54 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchNotificationSettings]);
 
+  const previewAdminDeleteImpact = useCallback(async (
+    churchId: string,
+    targetType: 'member' | 'role',
+    targetId: string,
+  ): Promise<Json | null> => {
+    try {
+      setError(null);
+      const { data, error: previewError } = await supabase.rpc(
+        'preview_church_admin_delete_impact',
+        {
+          target_church_id: churchId,
+          target_type: targetType,
+          target_id: targetId,
+        },
+      );
+      if (previewError) {
+        console.error('Error previewing admin deletion impact:', previewError);
+        setError(previewError.message);
+        return null;
+      }
+      return data;
+    } catch (err) {
+      console.error('Error in previewAdminDeleteImpact:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return null;
+    }
+  }, []);
+
   const addRecurringService = useCallback(async (churchId: string, name: string, dayOfWeek: number, time: string, notes?: string, roles?: string[]) => {
     console.log('Adding recurring service:', { churchId, name, dayOfWeek, time });
     try {
       setError(null);
-      const newService: TablesInsert<'recurring_services'> = {
-        church_id: churchId, name, day_of_week: dayOfWeek, time, notes: notes ?? null,
-      };
-      const { data, error: insertError } = await supabase.from('recurring_services').insert(newService).select().single();
+      const { data, error: insertError } = await supabase.rpc(
+        'save_recurring_service_admin',
+        {
+          target_church_id: churchId,
+          target_service_id: null,
+          service_name: name,
+          service_day_of_week: dayOfWeek,
+          service_time: time,
+          service_notes: notes ?? '',
+          service_role_names: roles ?? [],
+        },
+      );
       if (insertError) {
         console.error('Error adding recurring service:', insertError);
         setError(insertError.message);
         return null;
-      }
-      if (roles && roles.length > 0 && data) {
-        const roleInserts: TablesInsert<'recurring_service_roles'>[] = roles.map(roleName => ({
-          recurring_service_id: data.id, role_name: roleName,
-        }));
-        const { error: rolesError } = await supabase.from('recurring_service_roles').insert(roleInserts);
-        if (rolesError) console.error('Error adding service roles:', rolesError);
       }
       await fetchRecurringServices(churchId, true);
       return data;
@@ -797,48 +1041,23 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     console.log('Updating recurring service:', { serviceId, churchId, updates, roles });
     try {
       setError(null);
-      const { data, error: updateError } = await supabase
-        .from('recurring_services')
-        .update({
-          name: updates.name,
-          day_of_week: updates.day_of_week,
-          time: updates.time,
-          notes: updates.notes ?? null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', serviceId)
-        .eq('church_id', churchId)
-        .select()
-        .single();
+      const { data, error: updateError } = await supabase.rpc(
+        'save_recurring_service_admin',
+        {
+          target_church_id: churchId,
+          target_service_id: serviceId,
+          service_name: updates.name,
+          service_day_of_week: updates.day_of_week,
+          service_time: updates.time,
+          service_notes: updates.notes ?? '',
+          service_role_names: roles ?? [],
+        },
+      );
 
       if (updateError) {
         console.error('Error updating recurring service:', updateError);
         setError(updateError.message);
         return null;
-      }
-
-      const { error: deleteRolesError } = await supabase
-        .from('recurring_service_roles')
-        .delete()
-        .eq('recurring_service_id', serviceId);
-
-      if (deleteRolesError) {
-        console.error('Error clearing recurring service roles:', deleteRolesError);
-        setError(deleteRolesError.message);
-        return null;
-      }
-
-      if (roles && roles.length > 0) {
-        const roleInserts: TablesInsert<'recurring_service_roles'>[] = roles.map(roleName => ({
-          recurring_service_id: serviceId,
-          role_name: roleName,
-        }));
-        const { error: rolesError } = await supabase.from('recurring_service_roles').insert(roleInserts);
-        if (rolesError) {
-          console.error('Error updating recurring service roles:', rolesError);
-          setError(rolesError.message);
-          return null;
-        }
       }
 
       await fetchRecurringServices(churchId, true);
@@ -898,6 +1117,47 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchChurchRoles]);
 
+  const updateChurchRole = useCallback(async (
+    roleId: string,
+    churchId: string,
+    name: string,
+    description?: string,
+  ) => {
+    console.log('Updating church role:', { roleId, churchId });
+    try {
+      setError(null);
+      const normalizedName = name.trim();
+      if (!normalizedName) {
+        setError('Role name is required');
+        return null;
+      }
+
+      const { data, error: updateError } = await supabase.rpc(
+        'save_church_role_admin',
+        {
+          target_church_id: churchId,
+          target_role_id: roleId,
+          role_name: normalizedName,
+          role_description: description?.trim() ?? '',
+        },
+      );
+
+      if (updateError) {
+        console.error('Error updating church role:', updateError);
+        setError(updateError.message);
+        return null;
+      }
+
+      await fetchChurchRoles(churchId, true);
+      await fetchRecurringServices(churchId, true);
+      return data;
+    } catch (err) {
+      console.error('Error in updateChurchRole:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      return null;
+    }
+  }, [fetchChurchRoles, fetchRecurringServices]);
+
   const deleteChurchRole = useCallback(async (roleId: string, churchId: string) => {
     console.log('Deleting church role:', roleId);
     try {
@@ -921,14 +1181,16 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     console.log('Updating role order:', roleIds.length, 'roles');
     try {
       setError(null);
-      const updates = roleIds.map((roleId, index) =>
-        supabase.from('church_roles').update({ display_order: index }).eq('id', roleId).eq('church_id', churchId),
+      const { error: reorderError } = await supabase.rpc(
+        'reorder_church_roles_admin',
+        {
+          target_church_id: churchId,
+          ordered_role_ids: roleIds,
+        },
       );
-      const results = await Promise.all(updates);
-      const hasError = results.some(result => result.error);
-      if (hasError) {
+      if (reorderError) {
         console.error('Error updating role order');
-        setError('Failed to update role order');
+        setError(reorderError.message);
         return false;
       }
       await fetchChurchRoles(churchId, true);
@@ -1018,7 +1280,8 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
 
   const fetchMemberUnavailability = useCallback(async (
     memberId: string,
-    force = false
+    force = false,
+    throwOnError = false,
   ): Promise<MemberUnavailability[]> => {
     console.log('Fetching unavailability for member:', memberId);
     const accountId = activeUserIdRef.current;
@@ -1033,6 +1296,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
       );
     } catch (err) {
       console.error('Error in fetchMemberUnavailability:', err);
+      if (throwOnError) throw err;
       return [];
     }
   }, [loadCachedQuery]);
@@ -1735,50 +1999,96 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     );
   }, [bootstrapChurchSession, initializationError, retryInitialization]);
 
+  const finishLocalAccountExit = useCallback(async (
+    accountId: string | null,
+    label: string,
+  ) => {
+    clearNotificationIdentity();
+
+    const cleanupResults = await Promise.allSettled([
+      removeAllTrackedRealtimeChannels(label + ' Realtime cleanup'),
+      accountId
+        ? clearLastSelectedChurchId(accountId)
+        : Promise.resolve(),
+      accountId
+        ? queryClient.cancelQueries({ queryKey: queryKeys.account(accountId) })
+        : Promise.resolve(),
+    ]);
+    cleanupResults.forEach(result => {
+      if (result.status === 'rejected') {
+        console.warn('[Account] ' + label + ' local cleanup failed:', result.reason);
+      }
+    });
+    if (accountId) {
+      queryClient.removeQueries({ queryKey: queryKeys.account(accountId) });
+    }
+
+    setChurches([]);
+    setAccountMemberships([]);
+    setCurrentChurch(null);
+    setMembers([]);
+    setRecurringServices([]);
+    setChurchRoles([]);
+    setCurrentMember(null);
+    setNotificationSettings(null);
+    setFillInRequests([]);
+  }, [clearNotificationIdentity, queryClient]);
+
   const signOut = useCallback(async () => {
     console.log('Signing out user');
+    const accountId = user?.id ?? null;
+    const memberId = currentMember?.id ?? null;
+    const subscriptionId = onesignalSubscriptionId?.trim() || null;
+
     try {
-      await clearCurrentDeviceNotificationIdentity(currentMember?.id);
+      if (subscriptionId) {
+        const result = await deactivateCurrentNotificationDevice({
+          memberId,
+          subscriptionId,
+        }, supabase);
+        if (result.errors.length > 0) {
+          throw new Error(result.errors.join(' '));
+        }
+      }
 
       const { error } = await supabase.auth.signOut();
       if (error) {
-        console.error('Error signing out:', error);
+        if (accountId && memberId && subscriptionId) {
+          await registerCurrentNotificationDevice({
+            accountId,
+            memberId,
+            subscriptionId,
+            platform: Platform.OS,
+          }, supabase).catch(restoreError => {
+            console.warn('[Notifications] Could not restore the device after sign-out failed:', restoreError);
+          });
+        }
         throw error;
       }
-      setChurches([]);
-      setAccountMemberships([]);
-      setCurrentChurch(null);
-      setMembers([]);
-      setRecurringServices([]);
-      setChurchRoles([]);
-      setCurrentMember(null);
-      setNotificationSettings(null);
-      setFillInRequests([]);
+
+      await finishLocalAccountExit(accountId, 'Sign-out');
     } catch (err) {
       console.error('Error in signOut:', err);
       throw err;
     }
-  }, [currentMember?.id]);
+  }, [
+    currentMember?.id,
+    finishLocalAccountExit,
+    onesignalSubscriptionId,
+    user?.id,
+  ]);
 
   const deleteAccount = useCallback(async () => {
     console.log('Deleting user account');
+    const accountId = user?.id ?? null;
     try {
-      await clearCurrentDeviceNotificationIdentity(currentMember?.id);
       await authDeleteAccount();
-      setChurches([]);
-      setAccountMemberships([]);
-      setCurrentChurch(null);
-      setMembers([]);
-      setRecurringServices([]);
-      setChurchRoles([]);
-      setCurrentMember(null);
-      setNotificationSettings(null);
-      setFillInRequests([]);
+      await finishLocalAccountExit(accountId, 'Account deletion');
     } catch (err) {
       console.error('Error in deleteAccount:', err);
       throw err;
     }
-  }, [authDeleteAccount, currentMember?.id]);
+  }, [authDeleteAccount, finishLocalAccountExit, user?.id]);
 
   useEffect(() => {
     if (currentChurchId) {
@@ -2476,10 +2786,13 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     inviteMember,
     deleteMember,
     updateMember,
+    saveMemberAdmin,
+    updateOwnChurchProfile,
     addRecurringService,
     updateRecurringService,
     deleteRecurringService,
     addChurchRole,
+    updateChurchRole,
     deleteChurchRole,
     updateRoleOrder,
     addMemberRole,
@@ -2490,6 +2803,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     saveUnavailableDates,
     fetchNotificationSettings,
     updateNotificationSettings,
+    previewAdminDeleteImpact,
     updateChurchName,
     updateChurchSongTypes,
     applyChurchSongTypesLocally,
@@ -2556,10 +2870,14 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     sessionStatus,
     transitionChurchSession,
     updateChurchAutoAssignSettings,
+    updateChurchRole,
     updateChurchName,
     updateChurchSongTypes,
     updateMember,
+    saveMemberAdmin,
+    updateOwnChurchProfile,
     updateNotificationSettings,
+    previewAdminDeleteImpact,
     updateRecurringService,
     updateRoleOrder,
     user,

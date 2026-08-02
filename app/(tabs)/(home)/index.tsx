@@ -3,7 +3,7 @@ import { useChurch } from '@/hooks/useChurch';
 import type { FillInRequestWithMemberInfo } from '@/contexts/ChurchContext';
 import { colors } from '@/styles/commonStyles';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useServices, type ServiceWithAssignments } from '@/hooks/useServices';
 import { usePerformanceBaselineScreen } from '@/hooks/usePerformanceBaselineScreen';
 import { moveItemById } from '@/lib/services/song-order';
@@ -612,6 +612,27 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 32,
   },
+  scheduleEmptyState: {
+    alignItems: 'center',
+    gap: 16,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  finishSetupButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 8,
+    minHeight: 48,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  finishSetupButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
   assignButton: {
     padding: 4,
     marginLeft: 8,
@@ -685,6 +706,7 @@ const styles = StyleSheet.create({
 });
 
 export default function HomeScreen() {
+  const router = useRouter();
   // ── ALL hooks must be called unconditionally at the top ──────────────────
   const {
     currentChurch,
@@ -1465,11 +1487,26 @@ export default function HomeScreen() {
           />
         }
         ListEmptyComponent={(
-          <Text style={styles.emptyText}>
-            {serviceRangeError
-              ? 'Could not load services. Please try again.'
-              : 'No upcoming services scheduled'}
-          </Text>
+          <View style={styles.scheduleEmptyState}>
+            <Text style={styles.emptyText}>
+              {serviceRangeError
+                ? 'Could not load services. Please try again.'
+                : 'No upcoming services scheduled'}
+            </Text>
+            {!serviceRangeError
+              && isAdmin
+              && (churchRoles.length === 0 || recurringServices.length === 0) ? (
+                <TouchableOpacity
+                  accessibilityHint="Opens the Church Setup admin hub"
+                  accessibilityRole="button"
+                  onPress={() => router.push('/(tabs)/church')}
+                  style={styles.finishSetupButton}
+                >
+                  <IconSymbol ios_icon_name="wand.and.stars" android_material_icon_name="auto-awesome" size={20} color="#FFFFFF" />
+                  <Text style={styles.finishSetupButtonText}>Finish Church Setup</Text>
+                </TouchableOpacity>
+              ) : null}
+          </View>
         )}
         renderItem={renderScheduleService}
         ListFooterComponent={(

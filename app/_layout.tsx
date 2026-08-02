@@ -277,9 +277,15 @@ function RootLayoutNav() {
             <Stack.Screen name="verify-email" options={{ headerShown: false }} />
             <Stack.Screen name="no-membership" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="profile-identity" options={{ headerShown: false }} />
+            <Stack.Screen name="profile-availability" options={{ headerShown: false }} />
+            <Stack.Screen name="profile-scheduling-preferences" options={{ headerShown: false }} />
+            <Stack.Screen name="profile-account" options={{ headerShown: false }} />
+            <Stack.Screen name="change-password" options={{ headerShown: false }} />
+            <Stack.Screen name="delete-account" options={{ headerShown: false }} />
             <Stack.Screen
               name="notification-preferences"
-              options={{ headerShown: true, title: 'Notification Preferences' }}
+              options={{ headerShown: false }}
             />
             <Stack.Screen name="+not-found" />
           </Stack>

@@ -30,6 +30,28 @@ export interface SchedulingPreferenceGroup {
   services: SchedulingPreferenceService[];
 }
 
+export interface SchedulingPreferenceSummary {
+  count: number;
+  description: string;
+  totalOptions: number;
+  value: string;
+}
+
+export interface SchedulingPreferenceOption {
+  role: SchedulingPreferenceRole;
+  service: SchedulingPreferenceService;
+}
+
+export const SCHEDULING_WEEKDAY_NAMES = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+] as const;
+
 export function normalizeSchedulingRole(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toLowerCase();
 }
@@ -70,6 +92,41 @@ export function schedulingPreferenceKey(
   return `${recurringServiceId}:${roleId}`;
 }
 
+export function formatSchedulingPreferenceTime(time: string): string {
+  const [hoursValue, minutesValue] = time.split(':');
+  const hours = Number(hoursValue);
+  const minutes = Number(minutesValue);
+  if (
+    !Number.isInteger(hours)
+    || !Number.isInteger(minutes)
+    || hours < 0
+    || hours > 23
+    || minutes < 0
+    || minutes > 59
+  ) {
+    return time;
+  }
+
+  const displayHours = hours % 12 || 12;
+  const displayMinutes = String(minutes).padStart(2, '0');
+  return `${displayHours}:${displayMinutes} ${hours >= 12 ? 'PM' : 'AM'}`;
+}
+
+export function findSchedulingPreferenceOption(
+  groups: SchedulingPreferenceGroup[],
+  recurringServiceId: string,
+  roleId: string
+): SchedulingPreferenceOption | null {
+  const group = groups.find(candidate => candidate.role.role_id === roleId);
+  const service = group?.services.find(
+    candidate => candidate.id === recurringServiceId
+  );
+
+  return group && service
+    ? { role: group.role, service }
+    : null;
+}
+
 export function hasSchedulingPreference(
   preferences: SchedulingPreferenceRecord[],
   recurringServiceId: string,
@@ -79,6 +136,63 @@ export function hasSchedulingPreference(
     preference.recurring_service_id === recurringServiceId
     && preference.role_id === roleId
   ));
+}
+
+export function createSchedulingPreferenceSummary(
+  preferences: SchedulingPreferenceRecord[],
+  groups: SchedulingPreferenceGroup[]
+): SchedulingPreferenceSummary {
+  const options = groups.flatMap(group => (
+    group.services.map(service => ({
+      role: group.role,
+      service,
+    }))
+  ));
+  const selected = options.filter(option => hasSchedulingPreference(
+    preferences,
+    option.service.id,
+    option.role.role_id
+  ));
+
+  if (options.length === 0) {
+    return {
+      count: 0,
+      description: 'No weekly services currently use your assigned roles.',
+      totalOptions: 0,
+      value: 'Not available',
+    };
+  }
+
+  if (selected.length === 0) {
+    return {
+      count: 0,
+      description: 'No weekly-service preferences selected.',
+      totalOptions: options.length,
+      value: 'None',
+    };
+  }
+
+  if (selected.length === 1) {
+    const [selection] = selected;
+    return {
+      count: 1,
+      description: `Avoid ${selection.service.name} for ${selection.role.role_name} when possible.`,
+      totalOptions: options.length,
+      value: '1 selected',
+    };
+  }
+
+  const selectedRoleCount = new Set(
+    selected.map(selection => selection.role.role_id)
+  ).size;
+  return {
+    count: selected.length,
+    description: `${selected.length} preferences across ${selectedRoleCount} ${
+      selectedRoleCount === 1 ? 'role' : 'roles'
+    }.`,
+    totalOptions: options.length,
+    value: `${selected.length} selected`,
+  };
 }
 
 export function applySchedulingPreferenceToggle(

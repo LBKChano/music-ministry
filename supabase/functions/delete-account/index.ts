@@ -13,6 +13,7 @@ type CleanupStats = {
   deletedAssignments: number
   deletedFillInRequests: number
   deletedMemberNotifications: number
+  deletedMemberNotificationPreferences: number
   deletedMemberUnavailability: number
   deletedMemberRoles: number
   deactivatedNotificationDevices: number
@@ -43,6 +44,18 @@ function uniqueStrings(values: (string | null | undefined)[]): string[] {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value))))
 }
 
+function isMissingPreferenceTableError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+
+  const databaseError = error as { code?: string; message?: string }
+  return databaseError.code === '42P01'
+    || databaseError.code === 'PGRST205'
+    || Boolean(
+      databaseError.message?.includes('member_notification_preferences')
+      && databaseError.message.includes('schema cache'),
+    )
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -53,6 +66,10 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const requestBody = await req.clone().json().catch(() => ({})) as {
+      preview?: unknown
+    }
+    const previewRequested = requestBody.preview === true
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -90,7 +107,7 @@ Deno.serve(async (req) => {
 
     const { data: ownedChurchRows, error: ownedChurchesError } = await adminClient
       .from('churches')
-      .select('id')
+      .select('id, name')
       .eq('admin_id', userId)
 
     if (ownedChurchesError) throw ownedChurchesError
@@ -128,6 +145,39 @@ Deno.serve(async (req) => {
     const allMemberIdsToDelete = uniqueStrings([...memberIds, ...ownedChurchMemberIds])
     const ownedServiceIds = uniqueStrings((ownedServiceRows ?? []).map((service) => service.id))
     const ownedRecurringServiceIds = uniqueStrings((ownedRecurringServiceRows ?? []).map((service) => service.id))
+
+    if (previewRequested) {
+      const { count: assignmentsToClear, error: assignmentsToClearError } = memberIds.length > 0
+        ? await adminClient
+          .from('assignments')
+          .select('id', { count: 'exact', head: true })
+          .in('member_id', memberIds)
+        : { count: 0, error: null }
+
+      if (assignmentsToClearError) throw assignmentsToClearError
+
+      const ownMembershipIds = new Set(memberIds)
+      const otherChurchMembersRemoved = ownedChurchMemberIds.filter(
+        (memberId) => !ownMembershipIds.has(memberId),
+      ).length
+
+      return jsonResponse({
+        preview: true,
+        impact: {
+          memberships_removed: memberIds.length,
+          owned_churches_deleted: ownedChurchIds.length,
+          owned_church_names: (ownedChurchRows ?? [])
+            .map((church) => church.name?.trim())
+            .filter((name): name is string => Boolean(name))
+            .sort((left, right) => left.localeCompare(right)),
+          other_church_members_removed: otherChurchMembersRemoved,
+          owned_services_deleted: ownedServiceIds.length,
+          owned_weekly_services_deleted: ownedRecurringServiceIds.length,
+          assignments_cleared: rowCount(assignmentsToClear),
+        },
+      })
+    }
+
     const stats: CleanupStats = {
       memberRows: memberIds.length,
       ownedChurches: ownedChurchIds.length,
@@ -136,6 +186,7 @@ Deno.serve(async (req) => {
       deletedAssignments: 0,
       deletedFillInRequests: 0,
       deletedMemberNotifications: 0,
+      deletedMemberNotificationPreferences: 0,
       deletedMemberUnavailability: 0,
       deletedMemberRoles: 0,
       deactivatedNotificationDevices: 0,
@@ -174,6 +225,23 @@ Deno.serve(async (req) => {
     )
 
     if (ownedChurchIds.length > 0) {
+      const {
+        count: preferencesByChurch,
+        error: preferencesByChurchError,
+      } = await adminClient
+        .from('member_notification_preferences')
+        .delete({ count: 'exact' })
+        .in('church_id', ownedChurchIds)
+      if (
+        preferencesByChurchError
+        && !isMissingPreferenceTableError(preferencesByChurchError)
+      ) {
+        throw preferencesByChurchError
+      }
+      stats.deletedMemberNotificationPreferences += rowCount(
+        preferencesByChurch,
+      )
+
       const { count: fillInRequestsByChurch, error: fillInByChurchError } = await adminClient
         .from('fill_in_requests')
         .delete({ count: 'exact' })
@@ -258,6 +326,23 @@ Deno.serve(async (req) => {
     }
 
     if (allMemberIdsToDelete.length > 0) {
+      const {
+        count: memberNotificationPreferences,
+        error: memberNotificationPreferencesError,
+      } = await adminClient
+        .from('member_notification_preferences')
+        .delete({ count: 'exact' })
+        .in('member_id', allMemberIdsToDelete)
+      if (
+        memberNotificationPreferencesError
+        && !isMissingPreferenceTableError(memberNotificationPreferencesError)
+      ) {
+        throw memberNotificationPreferencesError
+      }
+      stats.deletedMemberNotificationPreferences += rowCount(
+        memberNotificationPreferences,
+      )
+
       const { count: serviceComments, error: serviceCommentsError } = await adminClient
         .from('service_comments')
         .delete({ count: 'exact' })

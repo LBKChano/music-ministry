@@ -70,6 +70,31 @@ export async function removeRealtimeChannel(
   return response;
 }
 
+export async function removeAllTrackedRealtimeChannels(
+  label = 'account session cleanup',
+): Promise<void> {
+  const channels = Array.from(new Set(activeChannels.values()));
+  activeChannels.clear();
+  channels.forEach(channel => trackedChannelNames.delete(channel));
+
+  const results = await Promise.allSettled(
+    channels.map(channel => supabase.removeChannel(channel)),
+  );
+  results.forEach((result, index) => {
+    if (result.status === 'rejected') {
+      console.warn(`[Realtime] ${label} failed for channel ${index + 1}`, result.reason);
+      return;
+    }
+    if (result.value !== 'ok') {
+      console.warn(`[Realtime] ${label} returned ${result.value} for channel ${index + 1}`);
+    }
+  });
+
+  if (channels.length > 0) {
+    console.log(`[Realtime] ${label} released ${channels.length} channel(s)`);
+  }
+}
+
 export function getTrackedRealtimeChannelCount(): number {
   return activeChannels.size;
 }

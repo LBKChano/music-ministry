@@ -26,6 +26,7 @@ const iosSchedule = readSource('app', '(tabs)', '(home)', 'index.ios.tsx');
 const church = readSource('app', '(tabs)', 'church.tsx');
 const androidProfile = readSource('app', '(tabs)', 'profile.tsx');
 const iosProfile = readSource('app', '(tabs)', 'profile.ios.tsx');
+const sharedProfile = readSource('components', 'profile', 'profile-screen.tsx');
 
 test('ResponsiveTabHeader keeps its existing API and adds explicit variants', () => {
   for (const prop of [
@@ -83,15 +84,16 @@ test('Schedule and Church reserve stable action lanes explicitly', () => {
 
 test('both Profile implementations keep member and church typography separate', () => {
   for (const profile of [androidProfile, iosProfile]) {
-    assert.match(profile, /title=\{displayName\}/);
-    assert.match(profile, /titleVariant="profileName"/);
-    assert.match(profile, /subtitle=\{currentChurch\?\.name\}/);
-    assert.match(profile, /subtitleVariant="secondaryChurchName"/);
-    assert.match(
-      profile,
-      /trailingWidth=\{HEADER_ACTION_LANE_WIDTHS\.profile\}/,
-    );
+    assert.match(profile, /ProfileScreen/);
   }
+  assert.match(sharedProfile, /title=\{displayName\}/);
+  assert.match(sharedProfile, /titleVariant="profileName"/);
+  assert.match(sharedProfile, /subtitle=\{currentChurch\?\.name\}/);
+  assert.match(sharedProfile, /subtitleVariant="secondaryChurchName"/);
+  assert.match(
+    sharedProfile,
+    /trailingWidth=\{HEADER_ACTION_LANE_WIDTHS\.profile\}/,
+  );
 });
 
 test('Package 7 is client-only and adds no database migration', () => {

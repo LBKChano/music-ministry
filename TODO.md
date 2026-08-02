@@ -4,9 +4,13 @@
 
 Implementation status: Package 0's automated compatibility baseline is
 implemented locally, Package 1 is deployed live, and Packages 2 through 8 are
-implemented and verified locally. Packages 2 through 8 are client-only and
-require a new app build; their required additive backend foundation was already
-deployed by Package 1. Package 9 and later have not been implemented.
+implemented and verified locally. Package 9 is also implemented and verified
+locally, and its additive migration is deployed live. Packages 10 through 15
+are implemented and verified, with the Package 14 database changes and Package
+15 delete-account v4 deployed live. Packages 16 through 21 are planned but not
+implemented.
+Packages 2 through 15 require a new app build; the remaining release gates are
+the documented physical-device checks.
 
 ### Delivery Rules
 
@@ -79,6 +83,38 @@ Items 12 and 23 are intentionally split across multiple packages. Multi-church
 data, authenticated startup, onboarding, and push registration depend on each
 other; completing them as two large isolated changes would create circular
 dependencies and make rollback unsafe.
+
+After the completed Packages 0 through 15, implement Packages 16 through 21 in
+numeric order. Package 17 establishes the authoritative manual-assignment
+eligibility contract that Package 18 reuses for role-scoped auto-assignment.
+Package 19 is isolated because it changes live notification timing. Package 20
+comes after the new scheduling screens exist so every popup is migrated once,
+and Package 21 remains a separate native-build checkpoint with its own Apple
+credentials and rollback path.
+
+Compatibility audit for Packages 16 through 21 (2026-08-01):
+
+- No package may remove, rename, narrow, or change the return shape of a table,
+  column, RLS path, RPC, Edge Function endpoint, notification event, route, or
+  persisted key used by a released build.
+- Packages 16 and 20 are client-only and keep existing routes and mutation
+  payloads. Released builds are unaffected because they do not download these
+  UI components.
+- Package 17 adds uniquely named candidate/apply RPCs while retaining released
+  direct assignment writes. Package 18 adds a new role-scoped RPC name while
+  retaining the current six-argument auto-assignment RPC and all-role behavior.
+- Package 19 uses additive nullable/defaulted delivery state, keeps old fill-in
+  inserts and accept/cancel contracts, and retains the existing
+  `fill_in_request` navigation payload. Older builds can create and open the
+  one-time reminder without understanding new database fields.
+- Package 21 adds a separately identified WidgetKit extension and a second app
+  group entitlement alongside the OneSignal app group. It changes no Supabase
+  contract or Android artifact, and installed older iOS builds retain their
+  existing signed entitlements and notification extension.
+- Every backend-first package must pass the released Android/iOS smoke test
+  after deployment and before its new client is published. If that test fails,
+  stop the rollout; leave additive objects unused and keep the released client
+  contract active.
 
 #### Package 0: Compatibility Baseline for Items 12-23
 
@@ -424,6 +460,29 @@ Exit gate:
 
 #### Package 9: Item 13 - Guided Church Admin Hub
 
+Status:
+
+- Implemented locally on 2026-07-29 with a derived setup-readiness model,
+  guided Church Setup and Schedule Management overview, focused editor
+  destinations, simplified Church header, Schedule setup bridge, concise
+  Reminder Settings, member search/invitation, owner protection, role rename,
+  and deletion-impact previews.
+- Added migration `20260730035223_guided_church_admin_atomic_operations.sql`
+  for atomic member/roles, weekly-service/roles, role rename references, role
+  order, reminder upsert, and destructive impact preview operations. The
+  migration is additive and keeps every released-client path.
+- The exact migration compiles in isolated PostgreSQL and all six atomic
+  operations, three authorization/rollback checks, and authenticated-only
+  grants pass. TypeScript, full ESLint, all 172 automated tests, and Android/iOS
+  production Metro exports also pass.
+- Deployed live on 2026-07-29 as Supabase migration version
+  `20260730035223`. Post-deployment catalog checks confirm 12 secured functions,
+  unchanged table/column/policy counts, preserved legacy RPCs, and successful
+  owner/member/role impact previews against live data.
+- Do not publish a Package 9 app build until the currently released Android and
+  iOS builds pass the documented physical smoke test. See
+  `docs/PACKAGE_9_GUIDED_CHURCH_ADMIN_HUB.md`.
+
 Includes:
 
 - Add contract tests and additive atomic admin RPCs first; deploy and smoke-test
@@ -443,6 +502,24 @@ Exit gate:
 
 #### Package 10: Item 17 - Shared Profile Foundation
 
+Status:
+
+- Implemented locally on 2026-07-29 as one shared Android/iOS
+  `ProfileScreen`, with thin platform route wrappers and a virtualized grouped
+  settings overview.
+- Added reusable `ProfileSection`, `ProfileRow`, `ProfileStatus`, and
+  `ProfileDangerRow` primitives with semantic colors, stable touch targets,
+  accessibility labels/hints/values/states, Larger Text bounds, and inline live
+  status that does not cover the floating tab bar.
+- Church switching, unavailable-date editing, scheduling preferences,
+  notification permission, sign-out, deletion, loading, refresh, and recovery
+  behavior remain connected. Stale availability results are ignored after a
+  membership switch.
+- Package 10 is client-only and requires no Supabase deployment. TypeScript,
+  full ESLint, all 186 automated tests, and Android/iOS production Metro
+  exports pass. Physical device and accessibility checks remain the release
+  gate. See `docs/PACKAGE_10_SHARED_PROFILE_FOUNDATION.md`.
+
 Includes:
 
 - Create one Android/iOS Profile shell using Package 6 loading behavior and
@@ -458,6 +535,24 @@ Exit gate:
   existing Profile capability has been lost.
 
 #### Package 11: Item 18 - Church-Scoped Identity and Roles
+
+Status:
+
+- Implemented locally and deployed live on 2026-07-29 as Supabase migration
+  version `20260730041938`.
+- Added one authenticated, church-scoped display-name RPC that derives the
+  account from `auth.uid()` and can update only `church_members.name`.
+- Added a focused Profile editor showing selected church, exact
+  Owner/Admin/Member access, assigned ministry roles, and global read-only Auth
+  email. Package 4's church switcher and both existing admin member-update
+  paths remain unchanged.
+- Optimistic cache updates are isolated by account, church, and membership;
+  conditional rollback cannot overwrite a newer Realtime value, and Realtime
+  refresh cannot replace an active editor draft.
+- Isolated PostgreSQL checks and a rolled-back live smoke transaction passed.
+  TypeScript, full ESLint, all 198 automated tests, and Android/iOS production
+  Metro exports also pass. See
+  `docs/PACKAGE_11_CHURCH_SCOPED_IDENTITY.md`.
 
 Includes:
 
@@ -475,6 +570,25 @@ Compatibility gate:
 
 #### Package 12: Item 19 - Availability Summary and Editor
 
+Status:
+
+- Implemented locally on 2026-07-29 as a concise Profile summary and one
+  shared Android/iOS full-screen calendar editor.
+- Replaced UTC-derived boundaries with the shared local `YYYY-MM-DD` formatter
+  and aligned the visible range with the existing 90-day scheduling horizon.
+- The complete saved set initializes one account/church/member-keyed React
+  Query source. Dates outside the visible range remain in the draft and are
+  preserved during Save.
+- Dirty drafts, zero-date clears, active saves, stale membership responses,
+  failed refreshes with cached data, and simultaneous-device changes have
+  explicit guarded states.
+- Package 12 is client-only. Live Supabase checks confirm the unchanged
+  date-only table, RLS policies, and exact auto-assignment date comparison.
+  Two identical live dry-run previews also matched inside a rolled-back
+  transaction.
+- TypeScript, full ESLint, all 213 automated tests, and Android/iOS production
+  Metro exports pass. See `docs/PACKAGE_12_AVAILABILITY_EDITOR.md`.
+
 Includes:
 
 - Implement the availability summary and focused local-date-safe editor without
@@ -490,6 +604,29 @@ Exit gate:
   data, and auto-assignment sees exactly the saved hard-block date set.
 
 #### Package 13: Item 20 - Scheduling Preference Editor
+
+Status:
+
+- Implemented locally on 2026-07-29 as a concise Profile summary and one
+  shared Android/iOS full-screen editor.
+- The existing `useSchedulingPreferences` hook remains the only query,
+  optimistic mutation, rollback, Retry, Realtime, and cleanup owner.
+- Immediate saves are serialized and visibly report pending, success, restored
+  failure, and retry states. Navigation waits for active saves.
+- Account/church/member operation scopes prevent a late response from changing
+  another membership's visible pending or error state. Focus ownership prevents
+  duplicate Profile/editor Realtime channels.
+- Package 13 is client-only. Live Supabase checks confirm the unchanged table,
+  RLS policies, Realtime publication, cascade cleanup, recurring-service
+  identity, and auto-assignment implementation.
+- Two identical live 90-day dry-run previews matched inside a rolled-back
+  transaction. A final rolled-back live fixture also confirmed that the RPC
+  reads a valid soft preference without persisting test data. Deterministic
+  fixtures cover role removal, recurring-service deletion, empty options, and
+  optimistic rollback.
+- TypeScript, full ESLint, all 229 automated tests, and Android/iOS production
+  Metro exports pass. See
+  `docs/PACKAGE_13_SCHEDULING_PREFERENCE_EDITOR.md`.
 
 Includes:
 
@@ -508,6 +645,25 @@ Exit gate:
   memberships, and assignment results are unchanged for the same stored input.
 
 #### Package 14: Item 21 - Real Notification Settings
+
+Status:
+
+- Implemented locally and deployed to Supabase on 2026-08-01.
+- Added additive, church-membership-scoped preference storage with secure
+  authenticated RPCs. Missing rows resolve to all four categories enabled for
+  released-client compatibility.
+- Deployed delete-account cleanup before the table, then applied migrations
+  `20260801223829_add_member_notification_preferences` and
+  `20260801225216_index_member_notification_preference_membership`.
+- All four active sender functions honor explicit push opt-outs while keeping
+  notification-bell history, admin recipients, OneSignal event contracts,
+  per-device targeting, and reminder cron deduplication.
+- Replaced placeholder App Updates/Promotions tags with a shared focused editor
+  for device permission and four real church delivery categories.
+- TypeScript, Deno checks, full ESLint, all 243 automated tests, live rollback
+  SQL, deployed-source inspection, and the OneSignal diagnostic pass. Android
+  and iOS production export results are recorded in
+  `docs/PACKAGE_14_REAL_NOTIFICATION_SETTINGS.md`.
 
 Includes:
 
@@ -529,6 +685,24 @@ Compatibility gate:
 
 #### Package 15: Item 22 - Account Actions and Danger Zone
 
+Status:
+
+- Implemented locally and deployed on 2026-08-01.
+- Added focused Account, Change Password, and Delete Account screens with
+  password-manager metadata, secure reauthentication, recovery email, app
+  version/build information, a live deletion preview, and typed confirmation.
+- Sign-out deactivates only the current device and cleans OneSignal, Realtime,
+  account cache, and persisted church selection after Auth succeeds. A failed
+  Auth sign-out restores the current device registration.
+- Account deletion preserves the released authenticated bodyless POST
+  contract. The additive preview branch returns before any mutation. Live
+  delete-account is version 4 with verify_jwt=true.
+- The linked cleanup-constraint rollback audit, TypeScript, all Edge Function
+  Deno checks, full ESLint, all 256 automated tests, and Android/iOS production
+  exports pass.
+- Remaining release gate: complete the physical-device and disposable-account
+  matrix in docs/PACKAGE_15_ACCOUNT_ACTIONS.md.
+
 Includes:
 
 - Add account identity, version/build information, change password, neutral
@@ -546,6 +720,549 @@ Final exit gate:
   admin-only, owner, mixed multi-church, and two-device accounts; deletion
   describes its real impact; and the released builds still complete their
   existing account actions.
+
+#### Package 16: Cross-App UI Polish and Consistency
+
+Status:
+
+- Planned; no implementation or deployment has started.
+- Client-only. Do not add a Supabase migration, change an RPC or Edge Function,
+  alter notification delivery, or remove any released route or persisted key.
+- Start only after the Package 9 through 15 workspace changes are committed and
+  pushed so this visual cleanup remains a separate, reviewable checkpoint.
+- The Schedule tab is explicitly out of scope. Its routes, cards, comments,
+  songs, fill-in requests, notification bell, and assignment behavior must
+  remain unchanged.
+
+Goal:
+
+- Make the rest of the app feel like one coherent product without redesigning
+  working workflows. Improve navigation semantics, visual hierarchy,
+  responsive behavior, feedback, and accessibility while preserving all
+  Package 1 through 15 data and behavior contracts.
+
+Checkpoint 16A: capture the UI compatibility baseline:
+
+- Record Android and iOS screenshots for onboarding, no-membership recovery,
+  the two- and three-item bottom navigation, Church overview and every focused
+  editor, Profile overview and every Profile editor, notification permission,
+  password change, sign-out, and account deletion.
+- Characterize current route destinations, Android back behavior, tab history,
+  active-tab selection, dynamic Church-tab visibility, modal close behavior,
+  unsaved-draft guards, keyboard dismissal, scroll position, and focus return.
+- Add Package 16 contract tests before extracting shared UI. Run Packages 0
+  through 15 as a regression suite after every checkpoint.
+
+Checkpoint 16B: refine the floating bottom navigation:
+
+- Preserve the existing floating visual identity, tab order, route names, and
+  admin-only Church tab. Replace stack-accumulating tab presses with proper tab
+  switching so repeated Schedule, Church, or Profile taps do not build a back
+  stack or produce duplicate screens.
+- Increase the compact 10px labels to a readable responsive size without
+  clipping at larger font/display scales. Keep icon and label lanes stable for
+  both two-tab and three-tab accounts.
+- Add explicit selected, disabled, label, and hint accessibility state; keep a
+  minimum 44-point touch target; provide a reduced-motion path for the animated
+  indicator; and keep the bar clear of content, keyboards, gesture navigation,
+  and device safe areas.
+- Verify that an account switching between admin and member churches updates
+  the available tabs without moving to an unauthorized route or leaking the
+  previous church's tab state.
+
+Checkpoint 16C: make Profile navigation visually consistent:
+
+- Move Identity, Availability, Scheduling Preferences, and Notification
+  Preferences onto the existing shared `ProfileFocusedHeader` contract one
+  screen at a time. Preserve their route names, queries, mutations, draft
+  handling, save guards, and accessibility announcements.
+- Keep the Profile overview's current section model and main responsive header.
+  Do not turn it into a dashboard or add decorative cards.
+- Replace the full inline list of every church with a compact current-church
+  row and a focused church selector screen or sheet. The selector must show
+  each membership's Owner/Admin/Member access, support switching and retry,
+  retain `Join Another Church`, and remain available to regular members.
+- Keep the existing inline switcher component until the focused selector has
+  parity tests for one church, many churches, slow/offline switching, removed
+  membership, admin-to-member switching, and Larger Text.
+
+Checkpoint 16D: standardize Church administration editors:
+
+- Keep the Package 9 Church Setup and Schedule Management overview, readiness
+  summaries, `Next` recommendation, invitation-code action, and all existing
+  admin capabilities.
+- Split the large Church route into focused destination components without
+  changing navigation or backend behavior. Use one shared editor header, body,
+  keyboard-aware scroll container, inline status region, and action footer.
+  Preserve the current in-tab back action until route-based editors have a
+  separately tested reason to replace it.
+- Migrate one destination at a time: Church Details, Roles, Weekly Services,
+  Members, Scheduling Rules, Song Types, Reminder Settings, Prepare Services,
+  and Assign Members. Run the full suite and compare screenshots after each
+  extraction.
+- Standardize add/edit forms on one responsive sheet/modal primitive with a
+  reachable close action, Android back support, drag/tap keyboard dismissal,
+  scrollable content, stable draft state, and visible save/cancel actions on
+  small phones and tablets.
+- Keep Reminder Settings concise: only Active/Paused state, selected reminder
+  times, validation, and save result. Do not expose cron checks, polling,
+  function versions, or implementation diagnostics.
+- Preserve every current RPC payload, direct compatibility fallback, Realtime
+  update, cache key, delete-impact preview, auto-assignment option, and released
+  client backend contract.
+
+Checkpoint 16E: improve onboarding hierarchy without changing its workflow:
+
+- Keep `Sign In`, `Join a Church`, and `Create a Church`, but make Sign In the
+  clear returning-user action and visually group Join/Create as new-account or
+  new-membership actions. When already authenticated, make the active account
+  context clear without exposing private identifiers.
+- Preserve required name validation, password-manager metadata, pending-intent
+  recovery, email verification, password reset, invitation handling, duplicate
+  submission protection, and deterministic post-onboarding bootstrap.
+- Reuse the existing form fields and validation. Do not combine this polish
+  with Auth logic, redirect URL, database, or session-storage changes.
+
+Checkpoint 16F: unify feedback and edge states:
+
+- Define one shared inline status treatment for loading, success, recoverable
+  error, offline, and retry states. Keep blocking alerts only for destructive
+  confirmation or an action that genuinely cannot continue in place.
+- Apply the same feedback hierarchy to Profile editors, Church editors,
+  notification settings, onboarding, and no-membership recovery. A successful
+  save should identify what changed without covering the next action.
+- Bring no-membership, initialization error, and retry screens into the same
+  semantic color, typography, icon, and button system as the main app while
+  retaining their current recovery actions and route behavior.
+- Never expose raw Supabase, OneSignal, RPC, account, membership, or invitation
+  identifiers in user-facing errors.
+
+Checkpoint 16G: accessibility and responsive release pass:
+
+- Verify VoiceOver, TalkBack, Voice Control, Larger Text, display scaling,
+  sufficient contrast, differentiation without color alone, Reduced Motion,
+  keyboard navigation, and Android back behavior across every changed screen.
+- Remove unnecessary font-scale caps where content can reflow safely. Where a
+  compact control requires a cap, provide the complete accessible label/value
+  and prove that adjacent controls remain readable and reachable.
+- Keep minimum touch targets, stable layout dimensions, word-safe church/person
+  names, visible focus/selected states, semantic headings, and announced busy,
+  error, and success states.
+- Test small and large Android phones, current and older supported iPhones,
+  landscape, tablet-size layouts, software keyboards, password managers, and
+  both two-tab and three-tab navigation.
+
+Out of scope:
+
+- Schedule-tab UI or behavior, dark mode, a new design system, marketing-style
+  pages, new backend capabilities, schema/RLS cleanup, notification delivery
+  changes, and removal of compatibility paths for released app versions.
+- Large animation, illustration, or color-palette changes. Continue using the
+  current semantic tokens and restrained navy/blue identity.
+
+Verification and release gate:
+
+- Add `test:package16` and `verify:package16` covering route preservation,
+  bottom-tab semantics, admin-tab visibility, shared-header parity, church
+  switching, modal/sheet contracts, feedback sanitization, accessibility state,
+  and the explicit Schedule-tab exclusion.
+- Run TypeScript, full ESLint, Packages 0 through 16, Android and iOS production
+  Metro exports, and `git diff --check`. No Supabase deployment should appear in
+  the Package 16 release log.
+- Complete screenshot comparison and the physical-device matrix before
+  publishing. Specifically verify sign in, create/join, church switching,
+  admin/member tab changes, every Church/Profile editor, password reset,
+  sign-out, deletion preview, and return navigation.
+- Rollback is a previous client build only. It must not require a database
+  rollback, migration-history repair, deletion of user data, or retirement of
+  any Package 1 through 15 contract.
+
+Done when:
+
+- The non-Schedule experience uses consistent navigation, headers, forms,
+  feedback, typography, and accessibility behavior; no tab or modal traps the
+  user; all prior package tests remain green; released app versions continue
+  working against the unchanged backend; and the before/after physical-device
+  matrix shows no workflow or responsive-layout regression.
+
+#### Package 17: Role-Aware and Availability-Safe Manual Assignment
+
+Status:
+
+- Planned; no implementation or deployment has started.
+- Requires an additive Supabase migration and a new app build. Existing direct
+  assignment updates, tables, RLS policies, and RPC signatures must remain in
+  place for released app versions.
+
+Goal:
+
+- Make the manual member picker deterministic and role-specific, and make the
+  database reject a manual assignment when the selected member is unavailable
+  for that service date. The app must explain the reason without exposing raw
+  database errors.
+
+Checkpoint 17A: characterize the existing assignment contract:
+
+- Cover both Schedule implementations, the shared service mutation layer,
+  assignment Realtime reconciliation, fill-in synchronization, the church
+  `allow one member in multiple roles` setting, and current assignment RLS.
+- Add fixtures for matching and non-matching roles, an owner/admin who also has
+  a ministry role, unavailable dates, duplicate names, blank names, same-service
+  assignments, deleted members, and a service changed while the picker is open.
+- Define hard blocks separately from soft scheduling preferences. A marked
+  unavailable date is a hard block; a weekly-service role preference may be
+  shown as context but must not prevent an intentional manual assignment.
+
+Checkpoint 17B: add an authoritative candidate/validation API:
+
+- Add a new, uniquely named RPC for manual-assignment candidates instead of
+  changing an existing RPC signature. It accepts an assignment id, derives the
+  church and service from that row, derives the caller from `(select
+  auth.uid())`, and permits only that church's owner or scheduling admins.
+- Return only active members who hold the assignment's church role, with stable
+  display name, role id/name, eligibility, and a small reason code such as
+  `unavailable_date` or `same_service_conflict`. Sort eligible names
+  deterministically and never use table-return order as UI order.
+- Add a second atomic assignment RPC, or a validated apply mode on the new RPC,
+  that locks/reloads the assignment and rechecks church membership, role,
+  service date, unavailable date, and the church's multiple-role setting at the
+  moment of writing. Do not trust candidate data cached by the device.
+- Give the privileged functions a fixed `search_path`, validate every joined
+  row belongs to the same church, revoke `PUBLIC` and `anon`, and grant only
+  `authenticated`. Keep existing direct writes available for released clients.
+
+Checkpoint 17C: rebuild the manual picker on the shared contract:
+
+- Replace the unfiltered `members.map` list in both Schedule routes with one
+  shared role-aware picker model. Show the target role as the section heading,
+  eligible members first in alphabetical order, and an `Unavailable` section
+  only when it helps the admin understand why a known role member cannot be
+  selected.
+- Disable unavailable rows and show a concise date-specific explanation, for
+  example, `Unavailable on Sunday, August 9`. If the server rejects a member
+  after the modal opened, keep the modal usable, refresh candidates, and show
+  the same friendly explanation inline.
+- Preserve clearing/reassigning behavior, optimistic UI safeguards, Realtime
+  reconciliation, fill-in cancellation/synchronization, and account/church
+  generation checks. A failed write must restore the prior assignment.
+
+Verification and release gate:
+
+- Add SQL tests proving a matching-role member can be assigned and that a
+  non-role member, unavailable member, cross-church member, unauthorized caller,
+  stale service, and prohibited same-service duplicate are rejected atomically.
+- Add shared client tests for deterministic role/name ordering, unavailable
+  reasons, duplicate names, stale picker recovery, and parity between Android
+  and iOS routes. Run TypeScript, lint, full regression tests, database advisors,
+  production exports, and `git diff --check`.
+- Deploy the additive migration first, run the released-build smoke test, then
+  publish the client. Rollback is the previous app build; the new RPCs may stay
+  live because no old contract was changed.
+
+Done when:
+
+- The picker displays only members who belong to the selected role in a stable,
+  understandable order; unavailable dates cannot be bypassed by the new client
+  or a direct new-client request; and manual assignment still synchronizes all
+  affected schedules and fill-in state.
+
+#### Package 18: Role-Scoped Fill Empty and Reassign All
+
+Status:
+
+- Planned; no implementation or deployment has started.
+- Depends on Package 17's shared role identity and eligibility rules. Requires
+  an additive Supabase migration and a new app build.
+
+Goal:
+
+- Let an admin run `Fill Empty Slots` or `Reassign All Upcoming Slots` for all
+  roles or one selected church role without modifying assignments for any
+  unselected role.
+
+Checkpoint 18A: freeze current auto-assignment behavior:
+
+- Extend the existing preview/apply tests for date ranges, visible services,
+  unavailable dates, weekly-service preferences, role rounds, recent-history
+  fairness, service spacing, admins with assigned roles, same-service duplicate
+  rules, skipped reports, and preview/apply parity.
+- Record exact current results for `fill_empty` and `reassign_all` so adding a
+  role scope cannot silently change the all-role default.
+
+Checkpoint 18B: add a versioned role-scoped RPC:
+
+- Add a new RPC name rather than replacing or overloading the released
+  six-argument `auto_assign_service_slots` contract. Accept the current mode,
+  dry-run, date/service range, and a nullable target role id where `null` means
+  all roles.
+- Validate that the selected role belongs to the target church. Restrict the
+  candidate slots, open-slot counts, clearing, preview, and skipped report to
+  that role, while still reading prior schedule history needed for fair load
+  and spacing decisions.
+- In `reassign_all`, clear and rebuild only the selected role's slots. Never
+  clear another role, even when both roles are on the same service. Keep the
+  operation atomic and preserve preview/apply parity under concurrent admin
+  requests.
+- Keep the released RPC and its output unchanged, regenerate TypeScript types,
+  and add an index only if `EXPLAIN` shows the role-scoped filter needs it.
+
+Checkpoint 18C: add role scope to the admin workflow:
+
+- Add a compact `All Roles` / `Specific Role` control to the existing assign
+  workflow. When `Specific Role` is selected, require one active church role
+  before preview can run and retain that selection while changing range/mode.
+- Include the selected role in the preview key so an old preview cannot be
+  confirmed after the role changes. Display the scope in the preview heading,
+  summary counts, skipped report, confirmation text, and completion result.
+- Invalidate only the affected church schedule/assignment queries after apply,
+  then let Realtime reconcile without duplicate rows or a full-screen reload.
+
+Verification and release gate:
+
+- Test all-role parity, each mode with one role, no eligible members,
+  unavailable dates, role deletion between preview/apply, concurrent admins,
+  selected-date and visible-service ranges, and proof that unrelated role
+  assignments remain byte-for-byte unchanged.
+- Deploy the additive RPC first and smoke-test released builds before the new
+  client is published. Rollback is the previous client, with the versioned RPC
+  left live.
+
+Done when:
+
+- Both auto-assignment modes can safely target one role, the preview precisely
+  matches the committed scope, and choosing `All Roles` preserves today's
+  scheduling behavior.
+
+#### Package 19: One-Time Fill-In Escalation After Three Hours
+
+Status:
+
+- Planned; no implementation or deployment has started.
+- Backend-first and backward-compatible. Existing fill-in inserts, acceptance,
+  cancellation, initial push delivery, notification preferences, and Edge
+  Function request contracts must remain valid for released clients.
+
+Goal:
+
+- When a fill-in request is still pending three hours after creation, send one
+  additional push to eligible members for that role and the church admins. Do
+  not resend after the request is filled, cancelled, or no longer relevant.
+
+Checkpoint 19A: define durable escalation state:
+
+- Add nullable/defaulted timing and lease fields to `fill_in_requests`, or an
+  additive child delivery table if the schema audit shows it better matches the
+  existing notification model. Old client inserts must automatically become
+  eligible without supplying new fields.
+- Add a partial due-work index for pending, unsent escalations. Keep the current
+  one-pending-request-per-assignment constraint and atomic accept/cancel trigger
+  behavior unchanged.
+- Add a private claim/finalize/release contract using row locks and a short lease
+  so overlapping cron runs cannot send the same escalation. A failed network
+  attempt must be retryable; a successful attempt must be durable.
+
+Checkpoint 19B: add the escalation Edge Function and cron:
+
+- Reuse the existing normalized role matching, notification preferences,
+  multi-device subscription resolution, invalid-subscription cleanup, and
+  OneSignal sender. Preserve admins as oversight recipients, exclude the
+  requester, and deduplicate member ids and device subscription ids.
+- Recheck `status = 'pending'`, the service still exists and is upcoming, and
+  the assignment still matches before each send. Use a distinct deterministic
+  event/idempotency key such as `fill_in_request_reminder:<request-id>` so a
+  retry cannot create duplicate pushes or notification-center rows.
+- Keep notification navigation compatible by retaining the existing
+  `fill_in_request` data type and request/service identifiers, while using copy
+  that clearly identifies this as a reminder and includes the requester's real
+  display name, role, church, and service date.
+- Schedule a cron run every five minutes; a request becomes eligible at exactly
+  three hours and sends on the first successful run after that, normally within
+  five minutes. Protect the `verify_jwt = false` cron endpoint with a dedicated
+  secret header stored in Supabase secrets/Vault, accept no caller-selected
+  request id, and keep the operation idempotent.
+
+Checkpoint 19C: preserve app and notification-feed behavior:
+
+- Record the escalation in `member_notifications` for each intended recipient
+  using the distinct event key. Existing notification preference
+  `fill_in_requests` controls both the initial request and its one-time reminder.
+- Confirm accepting or cancelling from either device updates all signed-in
+  devices through the existing RPC, cache, and Realtime paths and prevents a
+  claimed-but-not-sent reminder from being finalized incorrectly.
+- Add deployment diagnostics that report due, claimed, sent, skipped, retried,
+  and failed counts without exposing secrets or making cron internals visible in
+  the app's normal admin notification settings.
+
+Verification and release gate:
+
+- Use clock-controlled SQL/function tests for 2h59m, 3h, filled, cancelled,
+  deleted/past service, opted-out members, admins without the role, no devices,
+  two devices per account, overlapping cron calls, OneSignal failure/retry, and
+  successful idempotent replay.
+- Run Deno checks, shared notification tests, database tests/advisors, and a
+  staged live canary with a temporary request. Verify exactly one escalation on
+  each registered device and no Android duplicates, then remove test data.
+- Deploy schema and function before enabling cron. Released builds need no
+  update to create qualifying requests or open the resulting notification.
+
+Done when:
+
+- Every unresolved request receives at most one three-hour escalation per
+  recipient device, accepted/cancelled requests receive none, preferences and
+  admin oversight remain correct, and retries cannot produce duplicate pushes.
+
+#### Package 20: Cross-Platform Popup and Sheet Consistency
+
+Status:
+
+- Planned; no implementation or deployment has started.
+- Client-only. It extends Package 16's non-Schedule editor primitive across the
+  Schedule tab and all remaining popups after Packages 17 through 19 add their
+  final workflow surfaces.
+
+Goal:
+
+- Make every popup use one professional responsive presentation system on iOS
+  and Android, with consistent width, spacing, header, actions, keyboard
+  behavior, dismissal, and scrolling. Consistency means the same shell and size
+  rules; confirmations stay compact while forms and long previews receive the
+  space and scrolling they need.
+
+Checkpoint 20A: inventory and classify every popup:
+
+- Build a route-by-route inventory of every React Native `Modal`,
+  `AdminFormModal`, notification panel, confirmation, form, date/time picker,
+  preview, member selector, comments/songs editor, onboarding permission prompt,
+  and bulk-action flow in both platform Schedule routes and shared components.
+- Record purpose, current dimensions, safe-area behavior, keyboard behavior,
+  Android back action, outside-tap behavior, scroll ownership, destructive
+  action, loading lock, draft retention, and accessibility focus restoration.
+- Capture screenshots on the same physical-device matrix used by Package 16 and
+  add behavior tests before replacing any wrapper.
+
+Checkpoint 20B: finish one shared modal system:
+
+- Extend the Package 16 primitive with explicit `confirmation`, `form`, and
+  `long-content` variants that share outer margins, maximum width, radius,
+  backdrop, header, close control, body spacing, action footer, and semantic
+  colors. Avoid per-screen height constants.
+- Derive responsive maximum height from safe-area-adjusted window dimensions.
+  Keep small forms stable when the keyboard opens, make long content scroll
+  inside one owner, and keep save/confirm/cancel actions visible without nested
+  scroll views or popups inside popups.
+- Standardize drag/tap keyboard dismissal, date/time draft-and-confirm behavior,
+  Android back, iOS accessibility escape, loading/disabled state, destructive
+  confirmation, focus trap/return, and Larger Text reflow.
+
+Checkpoint 20C: migrate by risk, not all at once:
+
+- Migrate simple confirmations first, then short selectors, Church/Profile
+  forms, Schedule member/fill-in/song/comment forms, notification center, date
+  and time pickers, bulk service deletion, prepare-quarter, and auto-assignment
+  preview last.
+- Move genuinely shared Schedule popup content into shared components while
+  retaining platform presentation adapters where behavior differs. Delete old
+  wrappers only after Android/iOS parity tests pass for that flow.
+- Preserve every mutation payload, draft, validation rule, preview key,
+  destructive guard, cache update, and route. This package must not include a
+  database migration or business-logic rewrite.
+
+Verification and release gate:
+
+- Add visual/interaction tests for open, close, outside tap, keyboard open and
+  dismissed, orientation change, scroll to final action, loading lock, error,
+  destructive confirmation, Android back, iOS VoiceOver escape, and focus
+  restoration for every modal class.
+- Run TypeScript, full lint/tests, Android/iOS production exports, screenshot
+  comparisons, small/large phone and tablet checks, Larger Text, display
+  scaling, and `git diff --check` after each migration group.
+- Rollback is the previous client build; no backend rollback is allowed or
+  needed.
+
+Done when:
+
+- Every popup follows the same responsive presentation contract, no keyboard or
+  long list hides the final action, no popup blocks navigation, and all existing
+  workflows behave identically on Android and iOS.
+
+#### Package 21: iOS Upcoming-Schedule Widget
+
+Status:
+
+- Planned; no implementation, Apple credential change, or build has started.
+- iOS-only native feature requiring a new EAS build. It must not require a
+  Supabase schema change and must not alter Android or released-app behavior.
+
+Goal:
+
+- Add a polished WidgetKit widget that shows the signed-in member's next
+  assignments for the currently selected church and opens the existing Schedule
+  tab when tapped.
+
+Checkpoint 21A: complete an isolated native compatibility spike:
+
+- Verify the installed Expo SDK 54, CNG/prebuild setup, iOS 16 deployment
+  target, and existing `@bacons/apple-targets` version can produce a minimal
+  WidgetKit extension. Do not upgrade Expo solely to adopt a newer widget
+  package and do not continue until a preview EAS build installs successfully.
+- Give the widget a unique extension bundle identifier and declare it in
+  `extra.eas.build.experimental.ios.appExtensions` before credentials are
+  generated. Keep it distinct from the OneSignal Notification Service
+  Extension and its app group.
+- Create a dedicated widget app group and add it alongside, not in place of,
+  `group.com.lbkchano.musicministry.onesignal` on the main target. The widget
+  target receives only the widget group. Verify App ID capabilities and fresh
+  provisioning profiles for both targets before the feature branch proceeds.
+
+Checkpoint 21B: define a private, local widget snapshot:
+
+- Store only a sanitized JSON snapshot in the shared widget app group: current
+  church display name, a small list of the current member's next assignments,
+  service id/date/time/type, role, generated-at time, and schema version. Never
+  store Supabase access/refresh tokens, OneSignal identifiers, email, invitation
+  codes, or service-role/anon secrets there.
+- Update the snapshot after authenticated bootstrap, schedule or assignment
+  query success, relevant Realtime changes, pull-to-refresh, church switch, and
+  app foreground. Clear it immediately on sign-out, account deletion, lost
+  membership, or account switch so another account's schedule cannot remain on
+  the home screen.
+- Make writes atomic and generation-scoped so a slow response from a previous
+  account/church cannot overwrite the current snapshot. Widget refresh is
+  best-effort, not Realtime; show an honest empty/stale state and `Open Music
+  Ministry to refresh` when needed.
+
+Checkpoint 21C: build the WidgetKit presentation:
+
+- Support small and medium families first with the next service prominent and
+  additional assignments only where space permits. Use semantic system colors,
+  readable dates, role labels, word-safe church names, privacy redaction, and
+  Dynamic Type-aware layouts without squeezing text mid-word.
+- Use one deep link into the existing Schedule tab. Keep the first release
+  read-only because iOS 16 is supported; do not add iOS 17-only interactive
+  buttons or a second scheduling implementation inside the extension.
+- Provide signed-out, no church, no assignment, stale-data, and unavailable-data
+  timeline entries. Keep timeline generation bounded and resilient to malformed
+  or older snapshot schema versions.
+
+Verification and release gate:
+
+- Add TypeScript tests for snapshot filtering/versioning/account isolation and
+  Swift tests or preview fixtures for every widget state. Verify sign-in,
+  account/church switching, two devices on one account, assignment changes,
+  fill-in acceptance, offline launch, sign-out, deletion, deep linking, and
+  widget removal/re-addition on physical iOS devices.
+- Run prebuild/config inspection to prove the main app retains OneSignal
+  entitlements, the widget has only its intended app group, bundle identifiers
+  do not collide, and EAS recognizes both extensions. Then run a preview build,
+  notification regression test, production build, and TestFlight validation.
+- Rollback is an app build without the widget extension. No database rollback,
+  credential deletion, or Android release is required.
+
+Done when:
+
+- The widget reliably shows only the active member's upcoming assignments,
+  clears private data on every account transition, deep-links to Schedule, and
+  ships without disturbing OneSignal delivery, Android, or released clients.
 
 ### Ownership Boundaries for Items 12-23
 

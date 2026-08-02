@@ -20,6 +20,9 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { AdminFormModal } from '@/components/admin/admin-form-modal';
 import { BulkServiceDeleteModal } from '@/components/admin/bulk-service-delete-modal';
+import { AdminHubEditorHeader } from '@/components/church-admin/admin-hub-editor-header';
+import { AdminHubOverview } from '@/components/church-admin/admin-hub-overview';
+import { DeleteImpactSummary } from '@/components/church-admin/delete-impact-summary';
 import { RefreshErrorNotice } from '@/components/RefreshErrorNotice';
 import { WordSafeHeaderText } from '@/components/navigation/word-safe-header-text';
 import {
@@ -31,6 +34,7 @@ import { useChurch } from '@/hooks/useChurch';
 import { useServices } from '@/hooks/useServices';
 import { usePerformanceBaselineScreen } from '@/hooks/usePerformanceBaselineScreen';
 import { useRefreshController } from '@/hooks/useRefreshController';
+import { useChurchAdminSummary } from '@/hooks/useChurchAdminSummary';
 import { supabase } from '@/lib/supabase/client';
 import { createAutoAssignPreviewKey } from '@/lib/admin/operations';
 import {
@@ -38,6 +42,7 @@ import {
   shouldShowInitialLoader,
 } from '@/lib/query/refresh-coordinator';
 import { HEADER_ACTION_LANE_WIDTHS } from '@/lib/ui/header-typography';
+import type { ChurchAdminDestination } from '@/lib/church-admin/summary';
 import {
   LatestStateSaveQueue,
   type LatestStateSaveStatus,
@@ -368,21 +373,20 @@ export default function ChurchScreen() {
     sessionStatus,
     createChurch,
     deleteMember,
-    updateMember,
+    saveMemberAdmin,
     addRecurringService,
     updateRecurringService,
     deleteRecurringService,
     addChurchRole,
+    updateChurchRole,
     deleteChurchRole,
     updateRoleOrder,
-    addMemberRole,
-    removeMemberRole,
+    previewAdminDeleteImpact,
     updateNotificationSettings,
     updateChurchName,
     updateChurchSongTypes,
     applyChurchSongTypesLocally,
     updateChurchAutoAssignSettings,
-    signOut,
     refreshChurches,
     refreshMembers,
     refreshRecurringServices,
@@ -415,7 +419,7 @@ export default function ChurchScreen() {
     }
   );
 
-  const [activeTab, setActiveTab] = useState<'members' | 'services' | 'roles' | 'notifications'>('members');
+  const [activeHubDestination, setActiveHubDestination] = useState<ChurchAdminDestination | null>(null);
   const [isCreateChurchModalVisible, setCreateChurchModalVisible] = useState(false);
   const [isEditMemberModalVisible, setEditMemberModalVisible] = useState(false);
   const [isAddServiceModalVisible, setAddServiceModalVisible] = useState(false);
@@ -423,13 +427,16 @@ export default function ChurchScreen() {
   const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
   const [isDeleteServiceModalVisible, setDeleteServiceModalVisible] = useState(false);
   const [isDeleteRoleModalVisible, setDeleteRoleModalVisible] = useState(false);
-  const [isSignOutModalVisible, setSignOutModalVisible] = useState(false);
   const [showBulkServiceDeleteModal, setShowBulkServiceDeleteModal] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<string | null>(null);
   const [memberToEdit, setMemberToEdit] = useState<string | null>(null);
   const [serviceToDelete, setServiceToDelete] = useState<string | null>(null);
   const [serviceToEdit, setServiceToEdit] = useState<string | null>(null);
   const [roleToDelete, setRoleToDelete] = useState<string | null>(null);
+  const [roleToEdit, setRoleToEdit] = useState<string | null>(null);
+  const [deleteImpact, setDeleteImpact] = useState<Record<string, unknown> | null>(null);
+  const [isLoadingDeleteImpact, setIsLoadingDeleteImpact] = useState(false);
+  const [memberSearch, setMemberSearch] = useState('');
 
   const [newChurchName, setNewChurchName] = useState('');
   const [isCreatingChurch, setIsCreatingChurch] = useState(false);
@@ -456,6 +463,7 @@ export default function ChurchScreen() {
   );
   const [customHourInput, setCustomHourInput] = useState('');
   const [isSavingNotifications, setIsSavingNotifications] = useState(false);
+  const [reminderSaveStatus, setReminderSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [songTypeDraftOptions, setSongTypeDraftOptions] = useState<string[]>(() => (
     normalizeEditableSongTypeOptions(currentChurch?.song_type_options)
   ));
@@ -521,6 +529,37 @@ export default function ChurchScreen() {
   // Quarter preparation loading state
   const [isPreparing, setIsPreparing] = useState(false);
   const [quarterOperationStatus, setQuarterOperationStatus] = useState<string | null>(null);
+
+  const adminSummary = useChurchAdminSummary({
+    church: currentChurch,
+    memberCount: members.length,
+    roleCount: churchRoles.length,
+    weeklyServiceCount: recurringServices.length,
+    notificationSettings,
+  });
+  const activeHubRow = React.useMemo(
+    () => adminSummary
+      ? [...adminSummary.setupRows, ...adminSummary.scheduleRows]
+        .find(row => row.id === activeHubDestination) ?? null
+      : null,
+    [activeHubDestination, adminSummary],
+  );
+  const visibleMembers = React.useMemo(() => {
+    const search = memberSearch.trim().toLocaleLowerCase();
+    if (!search) return members;
+
+    return members.filter(member => {
+      const roleNames = member.memberRoles?.map(role => role.role_name).join(' ') ?? '';
+      return `${member.name ?? ''} ${member.email} ${roleNames}`
+        .toLocaleLowerCase()
+        .includes(search);
+    });
+  }, [memberSearch, members]);
+
+  React.useEffect(() => {
+    setActiveHubDestination(null);
+    setMemberSearch('');
+  }, [currentChurch?.id]);
 
   const {
     refreshing,
@@ -876,51 +915,23 @@ export default function ChurchScreen() {
     }
 
     const member = (members ?? []).find(m => m.id === memberToEdit);
+    if (!member || !editMemberName.trim() || !editMemberEmail.trim()) {
+      Alert.alert('Missing Information', 'Name and email are required.');
+      return;
+    }
     const isChurchOwner = member?.member_id === currentChurch.admin_id;
-    const updates: { name?: string; email?: string; is_admin?: boolean } = {};
-    
-    if (editMemberEmail.trim()) {
-      updates.email = editMemberEmail.trim();
-    }
-    if (editMemberName.trim()) {
-      updates.name = editMemberName.trim();
-    }
     const nextIsAdmin = isChurchOwner ? true : editMemberIsAdmin;
-    if (member && member.is_admin !== nextIsAdmin) {
-      updates.is_admin = nextIsAdmin;
-    }
-
-    const success = await updateMember(memberToEdit, currentChurch.id, updates);
+    const roleIds = editMemberRoles
+      .map(roleName => churchRoles.find(role => role.name === roleName)?.id)
+      .filter((roleId): roleId is string => Boolean(roleId));
+    const success = await saveMemberAdmin(memberToEdit, currentChurch.id, {
+      name: editMemberName.trim(),
+      email: editMemberEmail.trim(),
+      is_admin: nextIsAdmin,
+      roleIds,
+    });
     
     if (success) {
-      const currentRoleNames = member?.memberRoles?.map(r => r.role_name) || [];
-      
-      console.log('Current roles:', currentRoleNames);
-      console.log('New roles:', editMemberRoles);
-      
-      const safeEditRoles = editMemberRoles ?? [];
-      const rolesToRemove = currentRoleNames.filter(roleName => !safeEditRoles.includes(roleName));
-      const rolesToAdd = safeEditRoles.filter(roleName => !currentRoleNames.includes(roleName));
-      
-      console.log('Roles to remove:', rolesToRemove);
-      console.log('Roles to add:', rolesToAdd);
-      
-      for (const roleNameToRemove of rolesToRemove) {
-        const role = (churchRoles ?? []).find(r => r.name === roleNameToRemove);
-        if (role) {
-          console.log('Removing role:', roleNameToRemove);
-          await removeMemberRole(memberToEdit, role.id, currentChurch.id);
-        }
-      }
-      
-      for (const roleNameToAdd of rolesToAdd) {
-        const role = (churchRoles ?? []).find(r => r.name === roleNameToAdd);
-        if (role) {
-          console.log('Adding role:', roleNameToAdd);
-          await addMemberRole(memberToEdit, role.id, currentChurch.id);
-        }
-      }
-      
       setMemberToEdit(null);
       setEditMemberEmail('');
       setEditMemberName('');
@@ -943,21 +954,27 @@ export default function ChurchScreen() {
     }
   };
 
-  const handleSignOut = async () => {
-    console.log('User confirmed sign out');
-    try {
-      setSignOutModalVisible(false);
-      await signOut();
-      console.log('User signed out successfully — auth state listener will handle navigation');
-    } catch (err) {
-      console.error('Error signing out:', err);
-    }
-  };
-
-  const openDeleteModal = (memberId: string) => {
+  const openDeleteModal = async (memberId: string) => {
     console.log('User tapped delete member:', memberId);
+    const member = members.find(candidate => candidate.id === memberId);
+    if (member?.member_id === currentChurch?.admin_id) {
+      Alert.alert(
+        'Owner Protected',
+        'The church owner cannot be removed. Transfer ownership before removing this account.',
+      );
+      return;
+    }
     setMemberToDelete(memberId);
+    setDeleteImpact(null);
     setDeleteModalVisible(true);
+    if (!currentChurch) return;
+
+    setIsLoadingDeleteImpact(true);
+    const impact = await previewAdminDeleteImpact(currentChurch.id, 'member', memberId);
+    if (impact && typeof impact === 'object' && !Array.isArray(impact)) {
+      setDeleteImpact(impact as Record<string, unknown>);
+    }
+    setIsLoadingDeleteImpact(false);
   };
 
   const resetServiceForm = () => {
@@ -1045,23 +1062,48 @@ export default function ChurchScreen() {
     setDeleteServiceModalVisible(true);
   };
 
-  const handleAddRole = async () => {
-    console.log('User tapped Add Role button');
+  const handleSaveRole = async () => {
+    console.log('User tapped Save Role button');
     if (!currentChurch || !newRoleName.trim()) {
       return;
     }
 
-    const result = await addChurchRole(
-      currentChurch.id,
-      newRoleName.trim(),
-      newRoleDescription.trim() || undefined
-    );
+    const result = roleToEdit
+      ? await updateChurchRole(
+        roleToEdit,
+        currentChurch.id,
+        newRoleName.trim(),
+        newRoleDescription.trim() || undefined,
+      )
+      : await addChurchRole(
+        currentChurch.id,
+        newRoleName.trim(),
+        newRoleDescription.trim() || undefined,
+      );
 
     if (result) {
+      setRoleToEdit(null);
       setNewRoleName('');
       setNewRoleDescription('');
       setAddRoleModalVisible(false);
     }
+  };
+
+  const openAddRoleModal = () => {
+    setRoleToEdit(null);
+    setNewRoleName('');
+    setNewRoleDescription('');
+    setAddRoleModalVisible(true);
+  };
+
+  const openEditRoleModal = (roleId: string) => {
+    const role = churchRoles.find(candidate => candidate.id === roleId);
+    if (!role) return;
+
+    setRoleToEdit(role.id);
+    setNewRoleName(role.name);
+    setNewRoleDescription(role.description ?? '');
+    setAddRoleModalVisible(true);
   };
 
   const handleDeleteRole = async () => {
@@ -1077,10 +1119,19 @@ export default function ChurchScreen() {
     }
   };
 
-  const openDeleteRoleModal = (roleId: string) => {
+  const openDeleteRoleModal = async (roleId: string) => {
     console.log('User tapped delete role:', roleId);
     setRoleToDelete(roleId);
+    setDeleteImpact(null);
     setDeleteRoleModalVisible(true);
+    if (!currentChurch) return;
+
+    setIsLoadingDeleteImpact(true);
+    const impact = await previewAdminDeleteImpact(currentChurch.id, 'role', roleId);
+    if (impact && typeof impact === 'object' && !Array.isArray(impact)) {
+      setDeleteImpact(impact as Record<string, unknown>);
+    }
+    setIsLoadingDeleteImpact(false);
   };
 
   const moveRoleUp = async (index: number) => {
@@ -1165,6 +1216,7 @@ export default function ChurchScreen() {
 
     console.log('User tapped Save Notification Settings button');
     setIsSavingNotifications(true);
+    setReminderSaveStatus('saving');
 
     try {
       const success = await updateNotificationSettings(
@@ -1174,13 +1226,13 @@ export default function ChurchScreen() {
       );
 
       if (success) {
-        Alert.alert('Success', 'Notification settings saved successfully!');
+        setReminderSaveStatus('saved');
       } else {
-        Alert.alert('Error', 'Failed to save notification settings');
+        setReminderSaveStatus('error');
       }
     } catch (err) {
       console.error('Error saving notification settings:', err);
-      Alert.alert('Error', 'An error occurred while saving settings');
+      setReminderSaveStatus('error');
     } finally {
       setIsSavingNotifications(false);
     }
@@ -1784,7 +1836,6 @@ export default function ChurchScreen() {
   const createFirstChurchText = 'Create your first church to get started';
   const noMembersText = 'No members yet';
   const inviteMembersText = 'Share your invitation code with members to join';
-  const signOutText = 'Sign Out';
   const churchHeaderTitle = currentChurch?.name || 'Church Management';
 
   return (
@@ -1803,19 +1854,6 @@ export default function ChurchScreen() {
         accessibilityTitle={`Church management for ${churchHeaderTitle}`}
         trailing={(
           <>
-            {currentChurch ? (
-              <TabHeaderIconButton
-                accessibilityLabel="Edit church name"
-                onPress={openEditChurchNameModal}
-              >
-                <IconSymbol
-                  ios_icon_name="pencil"
-                  android_material_icon_name="edit"
-                  size={21}
-                  color="#FFFFFF"
-                />
-              </TabHeaderIconButton>
-            ) : null}
             <TabHeaderIconButton
               accessibilityLabel="Add church"
               onPress={() => {
@@ -1827,20 +1865,6 @@ export default function ChurchScreen() {
                 ios_icon_name="plus"
                 android_material_icon_name="add"
                 size={23}
-                color="#FFFFFF"
-              />
-            </TabHeaderIconButton>
-            <TabHeaderIconButton
-              accessibilityLabel="Sign out"
-              onPress={() => {
-                console.log('User tapped Sign Out');
-                setSignOutModalVisible(true);
-              }}
-            >
-              <IconSymbol
-                ios_icon_name="arrow.right.square"
-                android_material_icon_name="logout"
-                size={22}
                 color="#FFFFFF"
               />
             </TabHeaderIconButton>
@@ -1893,7 +1917,8 @@ export default function ChurchScreen() {
         }
       >
         {/* Church Selection */}
-        <View style={styles.section}>
+        {churches.length > 1 ? (
+          <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Churches</Text>
           </View>
@@ -1947,16 +1972,84 @@ export default function ChurchScreen() {
               })}
             </View>
           )}
-        </View>
+          </View>
+        ) : null}
 
-        {/* Quarterly Assignment Buttons */}
-        {currentChurch && (
+        {currentChurch && adminSummary && !activeHubDestination ? (
+          <AdminHubOverview
+            summary={adminSummary}
+            onOpen={setActiveHubDestination}
+          />
+        ) : null}
+
+        {currentChurch && activeHubDestination && activeHubRow ? (
+          <AdminHubEditorHeader
+            title={activeHubRow.title}
+            summary={activeHubRow.summary}
+            onBack={() => setActiveHubDestination(null)}
+          />
+        ) : null}
+
+        {currentChurch && activeHubDestination === 'details' ? (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Service Management</Text>
+            <View style={styles.adminDetailRows}>
+              <View style={[styles.adminDetailRow, { borderColor: colors.border }]}>
+                <View style={styles.adminDetailText}>
+                  <Text style={[styles.adminDetailLabel, { color: colors.textSecondary }]}>Church name</Text>
+                  <Text style={[styles.adminDetailValue, { color: colors.text }]}>{currentChurch.name}</Text>
+                </View>
+                <TouchableOpacity
+                  accessibilityLabel="Edit church name"
+                  accessibilityRole="button"
+                  onPress={openEditChurchNameModal}
+                  style={styles.adminDetailAction}
+                >
+                  <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+              <View style={[styles.adminDetailRow, { borderColor: colors.border }]}>
+                <View style={styles.adminDetailText}>
+                  <Text style={[styles.adminDetailLabel, { color: colors.textSecondary }]}>Invitation code</Text>
+                  <Text selectable style={[styles.adminDetailValue, { color: colors.text }]}>
+                    {currentChurch.invitation_code}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  accessibilityLabel="Copy invitation code"
+                  accessibilityRole="button"
+                  onPress={copyInvitationCode}
+                  style={styles.adminDetailAction}
+                >
+                  <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="file-copy" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+              <View style={[styles.adminDetailRow, { borderColor: colors.border }]}>
+                <View style={styles.adminDetailText}>
+                  <Text style={[styles.adminDetailLabel, { color: colors.textSecondary }]}>Your access</Text>
+                  <Text style={[styles.adminDetailValue, { color: colors.text }]}>
+                    {currentChurch.admin_id === user?.id ? 'Owner' : 'Scheduling Admin'}
+                  </Text>
+                </View>
+                <IconSymbol ios_icon_name="checkmark.shield.fill" android_material_icon_name="verified-user" size={22} color="#15803D" />
+              </View>
             </View>
+          </View>
+        ) : null}
+
+        {/* Focused scheduling, rules, and song-type editors */}
+        {currentChurch && (
+          activeHubDestination === 'prepare_services'
+          || activeHubDestination === 'assign_members'
+          || activeHubDestination === 'rules'
+          || activeHubDestination === 'song_types'
+        ) && (
+          <View style={styles.section}>
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: colors.accent }]}
+              style={[
+                styles.actionButton,
+                { backgroundColor: colors.accent },
+                activeHubDestination !== 'prepare_services' && styles.hidden,
+              ]}
               onPress={() => {
                 console.log('User tapped Prepare Next Quarter button');
                 setShowPrepareQuarterModal(true);
@@ -1972,7 +2065,11 @@ export default function ChurchScreen() {
               <Text style={styles.actionButtonText}>Prepare Next Quarter</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: colors.primary, marginTop: 12 }]}
+              style={[
+                styles.actionButton,
+                { backgroundColor: colors.primary },
+                activeHubDestination !== 'assign_members' && styles.hidden,
+              ]}
               onPress={() => openAutoAssignModal('fill_empty')}
               disabled={isAutoAssigning}
             >
@@ -1995,26 +2092,33 @@ export default function ChurchScreen() {
                 styles.actionButton,
                 styles.reassignButton,
                 { marginTop: 12, opacity: isAutoAssigning ? 0.6 : 1 },
+                activeHubDestination !== 'assign_members' && styles.hidden,
               ]}
               onPress={() => openAutoAssignModal('reassign_all')}
               disabled={isAutoAssigning}
             >
               {autoAssignMode === 'reassign_all' ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <ActivityIndicator size="small" color={colors.primary} />
               ) : (
                 <>
                   <IconSymbol
                     ios_icon_name="arrow.triangle.2.circlepath"
                     android_material_icon_name="sync"
                     size={24}
-                    color="#fff"
+                    color={colors.primary}
                   />
-                  <Text style={styles.actionButtonText}>Reassign All Upcoming Slots</Text>
+                  <Text style={[styles.actionButtonText, styles.reassignButtonText]}>
+                    Reassign All Upcoming Slots
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: '#4CAF50', marginTop: 12 }]}
+              style={[
+                styles.actionButton,
+                { backgroundColor: '#15803D', marginTop: 12 },
+                activeHubDestination !== 'prepare_services' && styles.hidden,
+              ]}
               onPress={() => {
                 console.log('User tapped Add Single Service button');
                 setShowAdHocServiceModal(true);
@@ -2035,6 +2139,7 @@ export default function ChurchScreen() {
                   borderColor: colors.border,
                   backgroundColor: colors.cardBackground,
                 },
+                activeHubDestination !== 'prepare_services' && styles.hidden,
               ]}
             >
               <View
@@ -2079,6 +2184,7 @@ export default function ChurchScreen() {
                   backgroundColor: allowMultipleRolesSameService ? '#EEF6FF' : colors.cardBackground,
                   borderColor: allowMultipleRolesSameService ? colors.primary : '#C7D2FE',
                 },
+                activeHubDestination !== 'rules' && styles.hidden,
               ]}
               activeOpacity={0.85}
               onPress={() => {
@@ -2128,7 +2234,13 @@ export default function ChurchScreen() {
               )}
             </TouchableOpacity>
 
-            <View style={[styles.songTypesCard, { backgroundColor: colors.cardBackground }]}>
+            <View
+              style={[
+                styles.songTypesCard,
+                { backgroundColor: colors.cardBackground },
+                activeHubDestination !== 'song_types' && styles.hidden,
+              ]}
+            >
               <View style={styles.songTypesHeader}>
                 <IconSymbol
                   ios_icon_name="music.note.list"
@@ -2250,94 +2362,23 @@ export default function ChurchScreen() {
           </View>
         )}
 
-        {/* Tabs and Content */}
+        {/* Focused setup editors */}
         {currentChurch && (
           <>
-            {/* Tab Selector */}
-            <View style={styles.tabContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.tab,
-                  activeTab === 'members' && [styles.activeTab, { borderBottomColor: colors.primary }],
-                ]}
-                onPress={() => {
-                  console.log('User switched to Members tab');
-                  setActiveTab('members');
-                }}
-              >
-                <Text
-                  style={[
-                    styles.tabText,
-                    { color: activeTab === 'members' ? colors.primary : colors.textSecondary },
-                  ]}
-                >
-                  Members
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.tab,
-                  activeTab === 'services' && [styles.activeTab, { borderBottomColor: colors.primary }],
-                ]}
-                onPress={() => {
-                  console.log('User switched to Services tab');
-                  setActiveTab('services');
-                }}
-              >
-                <Text
-                  style={[
-                    styles.tabText,
-                    { color: activeTab === 'services' ? colors.primary : colors.textSecondary },
-                  ]}
-                >
-                  Services
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.tab,
-                  activeTab === 'roles' && [styles.activeTab, { borderBottomColor: colors.primary }],
-                ]}
-                onPress={() => {
-                  console.log('User switched to Roles tab');
-                  setActiveTab('roles');
-                }}
-              >
-                <Text
-                  style={[
-                    styles.tabText,
-                    { color: activeTab === 'roles' ? colors.primary : colors.textSecondary },
-                  ]}
-                >
-                  Roles
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.tab,
-                  activeTab === 'notifications' && [styles.activeTab, { borderBottomColor: colors.primary }],
-                ]}
-                onPress={() => {
-                  console.log('User switched to Notifications tab');
-                  setActiveTab('notifications');
-                }}
-              >
-                <Text
-                  style={[
-                    styles.tabText,
-                    { color: activeTab === 'notifications' ? colors.primary : colors.textSecondary },
-                  ]}
-                >
-                  Notifications
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Members Tab */}
-            {activeTab === 'members' && (
+            {/* Members */}
+            {activeHubDestination === 'members' && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Text style={[styles.sectionTitle, { color: colors.text }]}>Members</Text>
+                  <TouchableOpacity
+                    accessibilityLabel="Copy invitation code to invite members"
+                    accessibilityRole="button"
+                    onPress={copyInvitationCode}
+                    style={[styles.inviteMembersButton, { borderColor: colors.primary }]}
+                  >
+                    <IconSymbol ios_icon_name="person.badge.plus" android_material_icon_name="person-add" size={18} color={colors.primary} />
+                    <Text style={[styles.inviteMembersButtonText, { color: colors.primary }]}>Invite</Text>
+                  </TouchableOpacity>
                 </View>
 
                 {(members ?? []).length === 0 ? (
@@ -2350,8 +2391,28 @@ export default function ChurchScreen() {
                     </Text>
                   </View>
                 ) : (
-                  <View style={styles.membersList}>
-                      {(members ?? []).map((member) => {
+                  <>
+                    {members.length >= 8 ? (
+                      <TextInput
+                        accessibilityLabel="Search members"
+                        autoCapitalize="none"
+                        onChangeText={setMemberSearch}
+                        placeholder="Search members or roles"
+                        placeholderTextColor={colors.textSecondary}
+                        returnKeyType="search"
+                        style={[
+                          styles.memberSearchInput,
+                          {
+                            backgroundColor: colors.inputBackground,
+                            borderColor: colors.border,
+                            color: colors.text,
+                          },
+                        ]}
+                        value={memberSearch}
+                      />
+                    ) : null}
+                    <View style={styles.membersList}>
+                      {visibleMembers.map((member) => {
                         const displayName = member.name || member.email;
                         const displayRoles = member.memberRoles && member.memberRoles.length > 0
                           ? member.memberRoles.map(r => r.role_name).join(', ')
@@ -2403,7 +2464,16 @@ export default function ChurchScreen() {
                             </TouchableOpacity>
                             <TouchableOpacity
                               onPress={() => openDeleteModal(member.id)}
-                              style={styles.deleteButton}
+                              disabled={member.member_id === currentChurch.admin_id}
+                              accessibilityLabel={
+                                member.member_id === currentChurch.admin_id
+                                  ? 'Church owner cannot be deleted'
+                                  : `Delete ${displayName}`
+                              }
+                              style={[
+                                styles.deleteButton,
+                                member.member_id === currentChurch.admin_id && styles.disabledAction,
+                              ]}
                             >
                               <IconSymbol
                                 ios_icon_name="trash"
@@ -2416,19 +2486,39 @@ export default function ChurchScreen() {
                         </View>
                       );
                     })}
-                  </View>
+                    </View>
+                    {visibleMembers.length === 0 ? (
+                      <Text style={[styles.emptyStateSubtext, { color: colors.textSecondary }]}>
+                        No members match this search.
+                      </Text>
+                    ) : null}
+                  </>
                 )}
               </View>
             )}
 
-            {/* Services Tab */}
-            {activeTab === 'services' && (
+            {/* Weekly Services */}
+            {activeHubDestination === 'weekly_services' && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Text style={[styles.sectionTitle, { color: colors.text }]}>Weekly Services</Text>
                   <TouchableOpacity
                     style={[styles.addButton, { backgroundColor: colors.primary }]}
                     onPress={() => {
+                      if (churchRoles.length === 0) {
+                        Alert.alert(
+                          'Add Roles First',
+                          'Weekly services need at least one church role.',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Open Roles',
+                              onPress: () => setActiveHubDestination('roles'),
+                            },
+                          ],
+                        );
+                        return;
+                      }
                       console.log('User tapped Add Service');
                       openAddServiceModal();
                     }}
@@ -2448,7 +2538,9 @@ export default function ChurchScreen() {
                       No recurring services
                     </Text>
                     <Text style={[styles.emptyStateSubtext, { color: colors.textSecondary }]}>
-                      Add weekly services that repeat
+                      {churchRoles.length === 0
+                        ? 'Create church roles before adding weekly services.'
+                        : 'Add weekly services that repeat. Template changes affect future generated services only.'}
                     </Text>
                   </View>
                 ) : (
@@ -2526,8 +2618,8 @@ export default function ChurchScreen() {
               </View>
             )}
 
-            {/* Roles Tab */}
-            {activeTab === 'roles' && (
+            {/* Roles */}
+            {activeHubDestination === 'roles' && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Text style={[styles.sectionTitle, { color: colors.text }]}>Church Roles</Text>
@@ -2535,7 +2627,7 @@ export default function ChurchScreen() {
                     style={[styles.addButton, { backgroundColor: colors.primary }]}
                     onPress={() => {
                       console.log('User tapped Add Role');
-                      setAddRoleModalVisible(true);
+                      openAddRoleModal();
                     }}
                   >
                     <IconSymbol
@@ -2612,17 +2704,32 @@ export default function ChurchScreen() {
                               )}
                             </View>
                           </View>
-                          <TouchableOpacity
-                            onPress={() => openDeleteRoleModal(role.id)}
-                            style={styles.deleteIconButton}
-                          >
-                            <IconSymbol
-                              ios_icon_name="trash"
-                              android_material_icon_name="delete"
-                              size={20}
-                              color="#ff3b30"
-                            />
-                          </TouchableOpacity>
+                          <View style={styles.roleActions}>
+                            <TouchableOpacity
+                              accessibilityLabel={`Edit ${role.name}`}
+                              onPress={() => openEditRoleModal(role.id)}
+                              style={styles.editIconButton}
+                            >
+                              <IconSymbol
+                                ios_icon_name="pencil"
+                                android_material_icon_name="edit"
+                                size={20}
+                                color={colors.primary}
+                              />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              accessibilityLabel={`Delete ${role.name}`}
+                              onPress={() => openDeleteRoleModal(role.id)}
+                              style={styles.deleteIconButton}
+                            >
+                              <IconSymbol
+                                ios_icon_name="trash"
+                                android_material_icon_name="delete"
+                                size={20}
+                                color="#ff3b30"
+                              />
+                            </TouchableOpacity>
+                          </View>
                         </View>
                       );
                     })}
@@ -2631,50 +2738,47 @@ export default function ChurchScreen() {
               </View>
             )}
 
-            {/* Notifications Tab */}
-            {activeTab === 'notifications' && (
+            {/* Reminder Settings */}
+            {activeHubDestination === 'reminders' && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Text style={[styles.sectionTitle, { color: colors.text }]}>Notification Settings</Text>
                 </View>
 
-                {/* Automation Status Banner */}
-                <View style={[styles.automationBanner, { backgroundColor: '#4CAF50' + '20', borderColor: '#4CAF50', borderWidth: 2 }]}>
+                <View
+                  style={[
+                    styles.reminderStatus,
+                    {
+                      backgroundColor: notificationsEnabled ? '#ECFDF5' : colors.inputBackground,
+                      borderColor: notificationsEnabled ? '#86EFAC' : colors.border,
+                    },
+                  ]}
+                >
                   <View style={styles.automationBannerContent}>
                     <IconSymbol
-                      ios_icon_name="checkmark.circle.fill"
-                      android_material_icon_name="notifications"
-                      size={32}
-                      color="#4CAF50"
+                      ios_icon_name={notificationsEnabled ? 'bell.badge.fill' : 'bell.slash.fill'}
+                      android_material_icon_name={notificationsEnabled ? 'notifications-active' : 'notifications-off'}
+                      size={26}
+                      color={notificationsEnabled ? '#15803D' : colors.textSecondary}
                     />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.automationBannerTitle, { color: '#4CAF50' }]}>
-                        ✅ Automated Notifications Active
+                    <View style={styles.reminderStatusText}>
+                      <Text
+                        style={[
+                          styles.automationBannerTitle,
+                          { color: notificationsEnabled ? '#15803D' : colors.text },
+                        ]}
+                      >
+                        {notificationsEnabled ? 'Reminders Active' : 'Reminders Paused'}
                       </Text>
                       <Text style={[styles.automationBannerText, { color: colors.text }]}>
-                        The system automatically checks every hour and sends reminders to members at the times you've configured below. Members will receive notifications even when the app is closed.
-                      </Text>
-                      <Text style={[styles.automationBannerText, { color: colors.text, marginTop: 8, fontWeight: '600' }]}>
-                        How it works:
-                      </Text>
-                      <Text style={[styles.automationBannerText, { color: colors.text }]}>
-                        • Every hour, the system checks for upcoming services
-                      </Text>
-                      <Text style={[styles.automationBannerText, { color: colors.text }]}>
-                        • If a service is 6 hours away (or 24 hours, etc.), notifications are sent
-                      </Text>
-                      <Text style={[styles.automationBannerText, { color: colors.text }]}>
-                        • Members receive push notifications on their devices
-                      </Text>
-                      <Text style={[styles.automationBannerText, { color: colors.text }]}>
-                        • Works for both recurring and single services
+                        {selectedNotificationHours.length} selected reminder {selectedNotificationHours.length === 1 ? 'time' : 'times'}
                       </Text>
                     </View>
                   </View>
                 </View>
 
                 <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 16, marginTop: 16 }]}>
-                  Configure when members receive reminders about their upcoming service assignments (including single services)
+                  Choose when assigned members should receive service reminders.
                 </Text>
 
                 {/* Enable/Disable Notifications */}
@@ -2808,32 +2912,33 @@ export default function ChurchScreen() {
                     </>
                   )}
                 </TouchableOpacity>
+                {reminderSaveStatus !== 'idle' ? (
+                  <View accessibilityLiveRegion="polite" style={styles.reminderSaveStatus}>
+                    {reminderSaveStatus === 'saving' ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <IconSymbol
+                        ios_icon_name={reminderSaveStatus === 'saved' ? 'checkmark.circle.fill' : 'exclamationmark.circle.fill'}
+                        android_material_icon_name={reminderSaveStatus === 'saved' ? 'check-circle' : 'error'}
+                        size={17}
+                        color={reminderSaveStatus === 'saved' ? '#15803D' : colors.error}
+                      />
+                    )}
+                    <Text
+                      style={[
+                        styles.reminderSaveStatusText,
+                        { color: reminderSaveStatus === 'error' ? colors.error : colors.textSecondary },
+                      ]}
+                    >
+                      {reminderSaveStatus === 'saving'
+                        ? 'Saving...'
+                        : reminderSaveStatus === 'saved'
+                          ? 'Saved'
+                          : 'Changes were not saved. Try again.'}
+                    </Text>
+                  </View>
+                ) : null}
 
-                <Text style={[styles.helperText, { color: colors.textSecondary, marginTop: 16, fontStyle: 'italic' }]}>
-                  Note: Members will receive notifications at the selected times before each service they are assigned to (including single services added via "Add Single Service")
-                </Text>
-
-                {/* Troubleshooting Info */}
-                <View style={[styles.troubleshootingCard, { backgroundColor: colors.inputBackground, marginTop: 16 }]}>
-                  <Text style={[styles.troubleshootingTitle, { color: colors.text }]}>
-                    💡 Not receiving notifications?
-                  </Text>
-                  <Text style={[styles.troubleshootingText, { color: colors.textSecondary }]}>
-                    The system checks every hour for services that match your reminder times. For example, if you have a 6-hour reminder enabled:
-                  </Text>
-                  <Text style={[styles.troubleshootingText, { color: colors.textSecondary, marginTop: 8 }]}>
-                    • A service at 3:00 PM will trigger a notification around 9:00 AM
-                  </Text>
-                  <Text style={[styles.troubleshootingText, { color: colors.textSecondary }]}>
-                    • A service at 7:30 PM will trigger a notification around 1:30 PM
-                  </Text>
-                  <Text style={[styles.troubleshootingText, { color: colors.textSecondary, marginTop: 8 }]}>
-                    The system checks within a 30-minute window, so notifications may arrive slightly before or after the exact time.
-                  </Text>
-                  <Text style={[styles.troubleshootingText, { color: colors.textSecondary, marginTop: 8, fontWeight: '600' }]}>
-                    To test: Create a service 6 hours from now and wait for the next hourly check!
-                  </Text>
-                </View>
               </View>
             )}
           </>
@@ -3092,8 +3197,9 @@ export default function ChurchScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Member</Text>
             <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
-              Are you sure you want to remove this member?
+              Removing this member also removes their church-scoped scheduling data.
             </Text>
+            <DeleteImpactSummary impact={deleteImpact} loading={isLoadingDeleteImpact} />
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -3102,6 +3208,7 @@ export default function ChurchScreen() {
                   console.log('User cancelled delete');
                   setDeleteModalVisible(false);
                   setMemberToDelete(null);
+                  setDeleteImpact(null);
                 }}
               >
                 <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
@@ -3109,6 +3216,7 @@ export default function ChurchScreen() {
               <TouchableOpacity
                 style={[styles.modalButton, { backgroundColor: '#ff3b30' }]}
                 onPress={handleDeleteMember}
+                disabled={isLoadingDeleteImpact}
               >
                 <Text style={styles.saveButtonText}>Delete</Text>
               </TouchableOpacity>
@@ -3259,7 +3367,9 @@ export default function ChurchScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Add Church Role</Text>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
+              {roleToEdit ? 'Edit Church Role' : 'Add Church Role'}
+            </Text>
 
             <TextInput
               style={[styles.input, { color: colors.text, borderColor: colors.border }]}
@@ -3283,8 +3393,9 @@ export default function ChurchScreen() {
               <TouchableOpacity
                 style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
                 onPress={() => {
-                  console.log('User cancelled add role');
+                  console.log('User cancelled role editor');
                   setAddRoleModalVisible(false);
+                  setRoleToEdit(null);
                   setNewRoleName('');
                   setNewRoleDescription('');
                 }}
@@ -3293,9 +3404,9 @@ export default function ChurchScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalButton, { backgroundColor: colors.primary }]}
-                onPress={handleAddRole}
+                onPress={handleSaveRole}
               >
-                <Text style={styles.saveButtonText}>Add</Text>
+                <Text style={styles.saveButtonText}>{roleToEdit ? 'Save' : 'Add'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -3349,8 +3460,9 @@ export default function ChurchScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Role</Text>
             <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
-              Are you sure you want to delete this role?
+              Deleting a role can affect templates, members, assignments, and preferences.
             </Text>
+            <DeleteImpactSummary impact={deleteImpact} loading={isLoadingDeleteImpact} />
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -3359,6 +3471,7 @@ export default function ChurchScreen() {
                   console.log('User cancelled delete role');
                   setDeleteRoleModalVisible(false);
                   setRoleToDelete(null);
+                  setDeleteImpact(null);
                 }}
               >
                 <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
@@ -3366,43 +3479,9 @@ export default function ChurchScreen() {
               <TouchableOpacity
                 style={[styles.modalButton, { backgroundColor: '#ff3b30' }]}
                 onPress={handleDeleteRole}
+                disabled={isLoadingDeleteImpact}
               >
                 <Text style={styles.saveButtonText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Sign Out Confirmation Modal */}
-      <Modal
-        visible={isSignOutModalVisible}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setSignOutModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Sign Out</Text>
-            <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
-              Are you sure you want to sign out?
-            </Text>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
-                onPress={() => {
-                  console.log('User cancelled sign out');
-                  setSignOutModalVisible(false);
-                }}
-              >
-                <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.primary }]}
-                onPress={handleSignOut}
-              >
-                <Text style={styles.saveButtonText}>{signOutText}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -4549,13 +4628,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 8,
     gap: 12,
   },
   reassignButton: {
-    backgroundColor: '#7C2D12',
+    backgroundColor: '#E8EEF8',
     borderWidth: 1,
-    borderColor: '#FDBA74',
+    borderColor: '#93A4BF',
+  },
+  reassignButtonText: {
+    color: colors.primary,
   },
   actionButtonText: {
     color: '#fff',
@@ -4673,26 +4755,6 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.65,
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    paddingHorizontal: 16,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  activeTab: {
-    borderBottomWidth: 2,
-  },
-  tabText: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   membersList: {
     gap: 12,
@@ -5436,5 +5498,86 @@ const styles = StyleSheet.create({
   troubleshootingText: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  hidden: {
+    display: 'none',
+  },
+  adminDetailRows: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  adminDetailRow: {
+    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 68,
+    paddingVertical: 12,
+  },
+  adminDetailText: {
+    flex: 1,
+    gap: 3,
+    minWidth: 0,
+  },
+  adminDetailLabel: {
+    fontSize: 13,
+  },
+  adminDetailValue: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  adminDetailAction: {
+    alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  inviteMembersButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: 12,
+  },
+  inviteMembersButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  memberSearchInput: {
+    borderRadius: 8,
+    borderWidth: 1,
+    fontSize: 15,
+    marginBottom: 14,
+    minHeight: 48,
+    paddingHorizontal: 14,
+  },
+  disabledAction: {
+    opacity: 0.35,
+  },
+  roleActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
+  },
+  reminderStatus: {
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 14,
+  },
+  reminderStatusText: {
+    flex: 1,
+  },
+  reminderSaveStatus: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 36,
+    paddingTop: 8,
+  },
+  reminderSaveStatusText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

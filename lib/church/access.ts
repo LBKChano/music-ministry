@@ -8,7 +8,7 @@ export interface ChurchAccessSummary {
   membershipId: string | null;
   isOwner: boolean;
   isAdmin: boolean;
-  roleLabel: 'Admin' | 'Member';
+  roleLabel: 'Owner' | 'Admin' | 'Member';
 }
 
 export function buildChurchAccessSummaries(
@@ -34,7 +34,7 @@ export function buildChurchAccessSummaries(
       membershipId: membership?.id ?? null,
       isOwner,
       isAdmin,
-      roleLabel: isAdmin ? 'Admin' : 'Member',
+      roleLabel: isOwner ? 'Owner' : isAdmin ? 'Admin' : 'Member',
     };
   });
 }

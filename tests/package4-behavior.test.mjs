@@ -51,7 +51,7 @@ test('church access is calculated independently for every membership', () => {
       membershipId: null,
       isOwner: true,
       isAdmin: true,
-      roleLabel: 'Admin',
+      roleLabel: 'Owner',
     },
     {
       churchId: 'church-member',

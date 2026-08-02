@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase/client';
 import { fetchSchedulingPreferences } from '@/lib/query/scheduling-preferences';
@@ -19,19 +19,37 @@ import type { Tables } from '@/lib/supabase/types';
 
 interface UseSchedulingPreferencesOptions {
   accountId: string | null | undefined;
+  active?: boolean;
   churchId: string | null | undefined;
   memberId: string | null | undefined;
 }
 
+export interface FailedSchedulingPreferenceChange
+  extends SchedulingPreferenceIdentity {
+  message: string;
+  shouldAvoid: boolean;
+}
+
 export function useSchedulingPreferences({
   accountId,
+  active = true,
   churchId,
   memberId,
 }: UseSchedulingPreferencesOptions) {
   const queryClient = useQueryClient();
   const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set());
   const [saveError, setSaveError] = useState<string | null>(null);
-  const enabled = Boolean(accountId && churchId && memberId);
+  const [failedPreference, setFailedPreference] =
+    useState<FailedSchedulingPreferenceChange | null>(null);
+  const identityKey = accountId && churchId && memberId
+    ? `${accountId}:${churchId}:${memberId}`
+    : null;
+  const operationScopeRef = useRef({ identityKey });
+  const pendingKeysRef = useRef<Set<string>>(new Set());
+  if (operationScopeRef.current.identityKey !== identityKey) {
+    operationScopeRef.current = { identityKey };
+  }
+  const enabled = Boolean(active && identityKey);
   const queryKey = useMemo(
     () => (
       accountId && churchId && memberId
@@ -45,6 +63,13 @@ export function useSchedulingPreferences({
     [accountId, churchId, memberId]
   );
 
+  useEffect(() => {
+    pendingKeysRef.current = new Set();
+    setPendingKeys(new Set());
+    setSaveError(null);
+    setFailedPreference(null);
+  }, [identityKey]);
+
   const preferenceQuery = useQuery({
     queryKey,
     enabled,
@@ -56,7 +81,7 @@ export function useSchedulingPreferences({
   });
 
   useEffect(() => {
-    if (!accountId || !churchId || !memberId) return;
+    if (!active || !accountId || !churchId || !memberId) return;
 
     const channelName = realtimeChannelNames.schedulingPreferences(
       accountId,
@@ -98,17 +123,17 @@ export function useSchedulingPreferences({
         }
       );
     };
-  }, [accountId, churchId, memberId, queryClient]);
+  }, [accountId, active, churchId, memberId, queryClient]);
 
   const setPreference = useCallback(async (
     recurringServiceId: string,
     roleId: string,
     shouldAvoid: boolean
   ): Promise<boolean> => {
-    if (!accountId || !churchId || !memberId) return false;
+    if (!active || !accountId || !churchId || !memberId) return false;
 
     const key = schedulingPreferenceKey(recurringServiceId, roleId);
-    if (pendingKeys.has(key)) return false;
+    if (pendingKeysRef.current.size > 0) return false;
 
     const concreteQueryKey = queryKeys.memberSchedulingPreferences(
       accountId,
@@ -125,9 +150,13 @@ export function useSchedulingPreferences({
       recurring_service_id: recurringServiceId,
       role_id: roleId,
     };
+    const operationScope = operationScopeRef.current;
+    const nextPendingKeys = new Set(pendingKeysRef.current).add(key);
 
-    setPendingKeys(current => new Set(current).add(key));
+    pendingKeysRef.current = nextPendingKeys;
+    setPendingKeys(nextPendingKeys);
     setSaveError(null);
+    setFailedPreference(null);
     queryClient.setQueryData<SchedulingPreferenceRecord[]>(
       concreteQueryKey,
       current => applySchedulingPreferenceToggle(
@@ -168,6 +197,10 @@ export function useSchedulingPreferences({
         if (error) throw error;
       }
 
+      if (operationScopeRef.current === operationScope) {
+        setSaveError(null);
+        setFailedPreference(null);
+      }
       return true;
     } catch (error) {
       queryClient.setQueryData(concreteQueryKey, previous);
@@ -175,31 +208,51 @@ export function useSchedulingPreferences({
         ? error.message
         : 'Could not save this scheduling preference.';
       console.error('[SchedulingPreferences] save failed:', error);
-      setSaveError(message);
+      if (operationScopeRef.current === operationScope) {
+        setSaveError(message);
+        setFailedPreference({
+          ...identity,
+          message,
+          shouldAvoid,
+        });
+      }
       return false;
     } finally {
-      setPendingKeys(current => {
-        const next = new Set(current);
+      if (operationScopeRef.current === operationScope) {
+        const next = new Set(pendingKeysRef.current);
         next.delete(key);
-        return next;
-      });
+        pendingKeysRef.current = next;
+        setPendingKeys(next);
+      }
     }
   }, [
     accountId,
+    active,
     churchId,
     memberId,
-    pendingKeys,
     queryClient,
   ]);
 
+  const retryFailedPreference = useCallback(async (): Promise<boolean> => {
+    if (!failedPreference) return false;
+    return setPreference(
+      failedPreference.recurring_service_id,
+      failedPreference.role_id,
+      failedPreference.shouldAvoid
+    );
+  }, [failedPreference, setPreference]);
+
   return {
     preferences: preferenceQuery.data ?? [],
-    isLoading: preferenceQuery.isPending,
+    hasSnapshot: preferenceQuery.data !== undefined,
+    isLoading: enabled && preferenceQuery.isPending,
     isRefetching: preferenceQuery.isFetching,
     loadError: preferenceQuery.error,
     saveError,
+    failedPreference,
     pendingKeys,
     setPreference,
+    retryFailedPreference,
     retry: preferenceQuery.refetch,
   };
 }

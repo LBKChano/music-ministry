@@ -469,6 +469,57 @@ export type Database = {
           },
         ]
       }
+      member_notification_preferences: {
+        Row: {
+          church_id: string
+          created_at: string
+          fill_in_requests: boolean
+          fill_in_updates: boolean
+          id: string
+          member_id: string
+          service_comments: boolean
+          service_reminders: boolean
+          updated_at: string
+        }
+        Insert: {
+          church_id: string
+          created_at?: string
+          fill_in_requests?: boolean
+          fill_in_updates?: boolean
+          id?: string
+          member_id: string
+          service_comments?: boolean
+          service_reminders?: boolean
+          updated_at?: string
+        }
+        Update: {
+          church_id?: string
+          created_at?: string
+          fill_in_requests?: boolean
+          fill_in_updates?: boolean
+          id?: string
+          member_id?: string
+          service_comments?: boolean
+          service_reminders?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_notification_preferences_church_id_fkey"
+            columns: ["church_id"]
+            isOneToOne: false
+            referencedRelation: "churches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_notification_preferences_membership_fkey"
+            columns: ["member_id", "church_id"]
+            isOneToOne: true
+            referencedRelation: "church_members"
+            referencedColumns: ["id", "church_id"]
+          },
+        ]
+      }
       member_notifications: {
         Row: {
           body: string
@@ -759,6 +810,40 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_my_notification_preferences: {
+        Args: {
+          target_church_id: string
+        }
+        Returns: {
+          church_id: string
+          member_id: string
+          service_reminders: boolean
+          fill_in_requests: boolean
+          fill_in_updates: boolean
+          service_comments: boolean
+          has_explicit_preferences: boolean
+          updated_at: string | null
+        }[]
+      }
+      update_my_notification_preferences: {
+        Args: {
+          target_church_id: string
+          receive_service_reminders: boolean
+          receive_fill_in_requests: boolean
+          receive_fill_in_updates: boolean
+          receive_service_comments: boolean
+        }
+        Returns: {
+          church_id: string
+          member_id: string
+          service_reminders: boolean
+          fill_in_requests: boolean
+          fill_in_updates: boolean
+          service_comments: boolean
+          has_explicit_preferences: boolean
+          updated_at: string | null
+        }[]
+      }
       auto_assign_service_slots: {
         Args: {
           target_church_id: string
@@ -798,12 +883,66 @@ export type Database = {
         }
         Returns: Json
       }
+      preview_church_admin_delete_impact: {
+        Args: {
+          target_church_id: string
+          target_type: string
+          target_id: string
+        }
+        Returns: Json
+      }
+      reorder_church_roles_admin: {
+        Args: {
+          target_church_id: string
+          ordered_role_ids: string[]
+        }
+        Returns: Json
+      }
       reorder_service_songs: {
         Args: {
           target_service_id: string
           ordered_comment_ids: string[]
         }
         Returns: Database["public"]["Tables"]["service_comments"]["Row"][]
+      }
+      save_church_member_admin: {
+        Args: {
+          target_church_id: string
+          target_member_id: string
+          member_name: string
+          member_email: string
+          member_is_admin: boolean
+          member_role_ids: string[]
+        }
+        Returns: Json
+      }
+      update_own_church_profile: {
+        Args: {
+          target_church_id: string
+          display_name: string
+        }
+        Returns: Database["public"]["Tables"]["church_members"]["Row"]
+      }
+      save_church_role_admin: {
+        Args: {
+          target_church_id: string
+          target_role_id: string
+          role_name: string
+          role_description: string
+        }
+        Returns: Database["public"]["Tables"]["church_roles"]["Row"]
+      }
+      save_recurring_service_admin: {
+        Args: {
+          target_church_id: string
+          target_service_id: string | null
+          service_name: string
+          service_day_of_week: number
+          service_time: string
+          service_notes: string
+          service_role_names: string[]
+        }
+        Returns: Database["public"]["Tables"]["recurring_services"]["Row"]
       }
       update_assignments_batch: {
         Args: {
@@ -915,6 +1054,14 @@ export type Database = {
           allow_multiple_roles_same_service: boolean
         }
         Returns: Database["public"]["Tables"]["churches"]["Row"]
+      }
+      upsert_church_notification_settings_admin: {
+        Args: {
+          target_church_id: string
+          reminder_hours: number[]
+          reminders_enabled: boolean
+        }
+        Returns: Database["public"]["Tables"]["notification_settings"]["Row"]
       }
     }
     Enums: {

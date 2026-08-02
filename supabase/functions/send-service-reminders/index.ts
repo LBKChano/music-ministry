@@ -4,6 +4,7 @@ import {
   resolveNotificationSubscriptions,
   sendOneSignalNotification,
 } from '../_shared/onesignal.ts'
+import { resolveNotificationPreferenceRecipients } from '../_shared/notification-preferences.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,6 +37,25 @@ type OneSignalMessage = {
 }
 
 async function sendOneSignalMessages(messages: OneSignalMessage[]) {
+  if (messages.length === 0) {
+    return {
+      sent: 0,
+      errors: [] as string[],
+      warnings: [] as string[],
+      invalidSubscriptionIds: [] as string[],
+      notificationRows: [] as {
+        church_id: string
+        member_id: string
+        notification_type: string
+        title: string
+        body: string
+        data: Record<string, string>
+        event_key: string
+      }[],
+      reminderKeysToRecord: [] as string[],
+    }
+  }
+
   if (!ONESIGNAL_REST_API_KEY) {
     throw new Error(`OneSignal REST API key is not configured. Set one of: ${ONESIGNAL_REST_API_KEY_NAMES.join(', ')}`)
   }
@@ -212,14 +232,21 @@ Deno.serve(async (req) => {
       })
     }
 
-    // 6. Get OneSignal subscription IDs for all relevant members
-    const subscriptionRows = await resolveNotificationSubscriptions(
+    const preferenceResolution = await resolveNotificationPreferenceRecipients(
       supabase,
       Array.from(allMemberIds),
+      'service_reminders',
+    )
+    const optedOutMemberIds = new Set(preferenceResolution.optedOutMemberIds)
+
+    // 6. Get OneSignal subscription IDs for members with reminder push enabled.
+    const subscriptionRows = await resolveNotificationSubscriptions(
+      supabase,
+      preferenceResolution.enabledMemberIds,
     )
 
     const targets = buildNotificationTargets(
-      Array.from(allMemberIds),
+      preferenceResolution.enabledMemberIds,
       subscriptionRows,
     )
     const subscriptionMap = new Map<string, string[]>()
@@ -240,6 +267,16 @@ Deno.serve(async (req) => {
 
     // 8. Build messages
     const messages: OneSignalMessage[] = []
+    const preferenceSuppressedNotificationRows: {
+      church_id: string
+      member_id: string
+      notification_type: string
+      title: string
+      body: string
+      data: Record<string, string>
+      event_key: string
+    }[] = []
+    const preferenceSuppressedReminderKeys = new Set<string>()
     const pendingSentKeys = new Set<string>()
     const stats = {
       churches: churchIds.length,
@@ -249,6 +286,7 @@ Deno.serve(async (req) => {
       dueAssignments: 0,
       skippedNoSubscription: 0,
       skippedAlreadySent: 0,
+      skippedPreference: 0,
     }
 
     // Build a map of church_id -> notification_hours
@@ -296,8 +334,32 @@ Deno.serve(async (req) => {
           const body = timeDisplay
             ? `You're scheduled as ${assignment.role} for ${service.service_type} on ${dateDisplay} at ${timeDisplay} (in ~${reminderLabel})`
             : `You're scheduled as ${assignment.role} for ${service.service_type} on ${dateDisplay} (in ~${reminderLabel})`
+          const data = {
+            type: 'service_reminder',
+            serviceId: service.id,
+            serviceType: service.service_type,
+            serviceDate: service.date,
+            role: assignment.role,
+            reminderHours: String(windowHours),
+          }
 
           stats.dueAssignments += 1
+          if (optedOutMemberIds.has(assignment.member_id)) {
+            stats.skippedPreference += 1
+            preferenceSuppressedNotificationRows.push({
+              church_id: service.church_id,
+              member_id: assignment.member_id,
+              event_key: `service_reminder:${reminderKey}`,
+              notification_type: 'service_reminder',
+              title,
+              body,
+              data,
+            })
+            preferenceSuppressedReminderKeys.add(reminderKey)
+            pendingSentKeys.add(reminderKey)
+            continue
+          }
+
           if (subscriptionIds.length === 0) stats.skippedNoSubscription += 1
           messages.push({
             churchId: service.church_id,
@@ -306,14 +368,7 @@ Deno.serve(async (req) => {
             reminderKey,
             title,
             body,
-            data: {
-              type: 'service_reminder',
-              serviceId: service.id,
-              serviceType: service.service_type,
-              serviceDate: service.date,
-              role: assignment.role,
-              reminderHours: String(windowHours),
-            },
+            data,
           })
 
           pendingSentKeys.add(reminderKey)
@@ -321,7 +376,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (messages.length === 0) {
+    if (messages.length === 0 && preferenceSuppressedNotificationRows.length === 0) {
       return new Response(JSON.stringify({ sent: 0, message: 'No reminders due', stats }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
@@ -336,6 +391,14 @@ Deno.serve(async (req) => {
       notificationRows,
       reminderKeysToRecord,
     } = await sendOneSignalMessages(messages)
+    const allNotificationRows = [
+      ...notificationRows,
+      ...preferenceSuppressedNotificationRows,
+    ]
+    const allReminderKeysToRecord = Array.from(new Set([
+      ...reminderKeysToRecord,
+      ...preferenceSuppressedReminderKeys,
+    ]))
 
     if (invalidSubscriptionIds.length > 0) {
       await supabase
@@ -344,10 +407,10 @@ Deno.serve(async (req) => {
         .in('subscription_id', invalidSubscriptionIds)
     }
 
-    if (notificationRows.length > 0) {
+    if (allNotificationRows.length > 0) {
       const { error: notificationHistoryError } = await supabase
         .from('member_notifications')
-        .upsert(notificationRows, {
+        .upsert(allNotificationRows, {
           onConflict: 'member_id,event_key',
           ignoreDuplicates: true,
         })
@@ -362,18 +425,18 @@ Deno.serve(async (req) => {
       members_found: stats.dueAssignments,
       tokens_found: messages.length,
       notifications_sent: sent,
-      onesignal_response: JSON.stringify({ errors, warnings, invalidSubscriptionIds, notificationHistoryRows: notificationRows.length, reminderKeysToRecord }),
+      onesignal_response: JSON.stringify({ errors, warnings, invalidSubscriptionIds, notificationHistoryRows: allNotificationRows.length, reminderKeysToRecord: allReminderKeysToRecord }),
       notes: `service reminder batch; stats=${JSON.stringify(stats)}`,
     })
 
     // 10. Record reminders that were accepted, or whose saved subscriptions are
     // all invalid, so cron does not retry the same device cleanup every minute.
-    if (reminderKeysToRecord.length > 0) {
-      console.log(`Recording ${reminderKeysToRecord.length} reminder keys`)
+    if (allReminderKeysToRecord.length > 0) {
+      console.log(`Recording ${allReminderKeysToRecord.length} reminder keys`)
       const { error: sentReminderError } = await supabase
         .from('sent_reminders')
         .upsert(
-          reminderKeysToRecord.map(key => ({ reminder_key: key })),
+          allReminderKeysToRecord.map(key => ({ reminder_key: key })),
           { onConflict: 'reminder_key' }
         )
 

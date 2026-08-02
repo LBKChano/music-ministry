@@ -17,6 +17,7 @@ const androidSchedule = readSource('app', '(tabs)', '(home)', 'index.tsx');
 const iosSchedule = readSource('app', '(tabs)', '(home)', 'index.ios.tsx');
 const androidProfile = readSource('app', '(tabs)', 'profile.tsx');
 const iosProfile = readSource('app', '(tabs)', 'profile.ios.tsx');
+const sharedProfile = readSource('components', 'profile', 'profile-screen.tsx');
 const servicesHook = readSource('hooks', 'useServices.ts');
 
 test('Church context exposes separate initialization and refresh state', () => {
@@ -77,10 +78,12 @@ test('refreshable tabs share nonblocking and deduplicated refresh behavior', () 
 
 test('Profile loading guards preserve populated content during transitions', () => {
   for (const source of [androidProfile, iosProfile]) {
-    assert.match(source, /initializing/);
-    assert.match(source, /shouldShowInitialLoader/);
-    assert.doesNotMatch(source, /if \(loading \|\| !user\)/);
+    assert.match(source, /ProfileScreen/);
   }
+  assert.match(sharedProfile, /initializing/);
+  assert.match(sharedProfile, /shouldShowInitialLoader/);
+  assert.match(sharedProfile, /refreshing=\{refreshing\}/);
+  assert.doesNotMatch(sharedProfile, /if \(loading \|\| !user\)/);
 });
 
 test('service refresh keeps cached data and deduplicates manual requests', () => {
