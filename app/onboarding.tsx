@@ -14,6 +14,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
+import { InlineStatus } from '@/components/feedback/inline-status';
 import { LabeledTextInput } from '@/components/auth/LabeledTextInput';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChurch } from '@/hooks/useChurch';
@@ -545,24 +546,10 @@ export default function OnboardingScreen() {
   );
 
   const renderFeedback = () => (
-    <>
-      {message ? (
-        <View
-          style={styles.messageContainer}
-          accessibilityLiveRegion="polite"
-        >
-          <Text style={styles.messageText}>{message}</Text>
-        </View>
-      ) : null}
-      {error ? (
-        <View
-          style={styles.errorContainer}
-          accessibilityLiveRegion="assertive"
-        >
-          <Text selectable style={styles.errorText}>{error}</Text>
-        </View>
-      ) : null}
-    </>
+    <InlineStatus
+      message={error ?? message}
+      tone={error ? 'error' : message ? 'success' : 'info'}
+    />
   );
 
   const renderBackButton = () => (
@@ -643,34 +630,62 @@ export default function OnboardingScreen() {
               {renderFeedback()}
 
               <View style={styles.actionList}>
-                {!session ? (
+                {session ? (
+                  <View
+                    accessibilityRole="text"
+                    style={[
+                      styles.welcomeAccount,
+                      {
+                        backgroundColor: screenColors.surface,
+                        borderColor: screenColors.border,
+                      },
+                    ]}
+                  >
+                    <IconSymbol
+                      ios_icon_name="person.crop.circle.badge.checkmark"
+                      android_material_icon_name="verified-user"
+                      size={24}
+                      color={screenColors.primary}
+                    />
+                    <View style={styles.signedInCopy}>
+                      <Text style={[styles.noticeLabel, { color: screenColors.textSecondary }]}>Signed in as</Text>
+                      <Text selectable style={[styles.noticeValue, { color: screenColors.text }]}>{signedInEmail}</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.actionGroup}>
+                    <Text style={[styles.actionGroupLabel, { color: screenColors.textSecondary }]}>RETURNING MEMBER</Text>
+                    <WelcomeAction
+                      title="Sign In"
+                      subtitle="Use your existing Music Ministry account"
+                      iconIos="person.crop.circle"
+                      iconAndroid="login"
+                      primary
+                      colors={screenColors}
+                      onPress={() => openStep('signIn')}
+                    />
+                  </View>
+                )}
+                <View style={styles.actionGroup}>
+                  <Text style={[styles.actionGroupLabel, { color: screenColors.textSecondary }]}>CHURCH ACCESS</Text>
                   <WelcomeAction
-                    title="Sign In"
-                    subtitle="Use your existing Music Ministry account"
-                    iconIos="person.crop.circle"
-                    iconAndroid="login"
-                    primary
+                    title="Join a Church"
+                    subtitle="Use an invitation code from your church admin"
+                    iconIos="person.badge.plus"
+                    iconAndroid="group-add"
+                    primary={Boolean(session)}
                     colors={screenColors}
-                    onPress={() => openStep('signIn')}
+                    onPress={() => openStep('join')}
                   />
-                ) : null}
-                <WelcomeAction
-                  title="Join a Church"
-                  subtitle="Use an invitation code from your church admin"
-                  iconIos="person.badge.plus"
-                  iconAndroid="group-add"
-                  primary={Boolean(session)}
-                  colors={screenColors}
-                  onPress={() => openStep('join')}
-                />
-                <WelcomeAction
-                  title="Create a Church"
-                  subtitle="Set up a new church and become its first admin"
-                  iconIos="building.2.crop.circle"
-                  iconAndroid="add-business"
-                  colors={screenColors}
-                  onPress={() => openStep('create')}
-                />
+                  <WelcomeAction
+                    title="Create a Church"
+                    subtitle="Set up a new church and become its first admin"
+                    iconIos="building.2.crop.circle"
+                    iconAndroid="add-business"
+                    colors={screenColors}
+                    onPress={() => openStep('create')}
+                  />
+                </View>
               </View>
             </View>
           ) : null}
@@ -986,7 +1001,25 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   actionList: {
-    gap: 12,
+    gap: 18,
+  },
+  actionGroup: {
+    gap: 10,
+  },
+  actionGroupLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 15,
+  },
+  welcomeAccount: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 11,
+    minHeight: 58,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   welcomeAction: {
     minHeight: 78,
@@ -1096,26 +1129,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 19,
     fontWeight: '700',
-  },
-  errorContainer: {
-    backgroundColor: '#FDECEC',
-    borderRadius: 8,
-    padding: 12,
-  },
-  errorText: {
-    color: '#A51D1D',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  messageContainer: {
-    backgroundColor: '#EAF7EF',
-    borderRadius: 8,
-    padding: 12,
-  },
-  messageText: {
-    color: '#176B3A',
-    fontSize: 14,
-    lineHeight: 20,
   },
   pressed: {
     opacity: 0.78,

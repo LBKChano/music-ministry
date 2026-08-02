@@ -28,6 +28,11 @@ EAS uses remote app-version sourcing and production auto-increment. Therefore,
 the values above describe the source tree and do not prove which build is
 currently installed from TestFlight, App Store, or Play Store.
 
+The recorded app version remains the released-client compatibility floor. New
+source releases may increase the semantic version, but the automated contract
+test rejects any regression below `1.1.1` and continues to protect all released
+identifiers, build-source values, routes, RPCs, tables, and notification events.
+
 Before Package 1 is deployed, record these external values here:
 
 | Distribution | Confirmed version/build | Confirmed date | Tester |

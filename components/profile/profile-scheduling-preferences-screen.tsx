@@ -17,7 +17,7 @@ import {
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
-import { WordSafeHeaderText } from '@/components/navigation/word-safe-header-text';
+import { ProfileFocusedHeader } from '@/components/profile/profile-focused-header';
 import { ProfileStatus } from '@/components/profile/profile-primitives';
 import { useChurch } from '@/hooks/useChurch';
 import { useSchedulingPreferences } from '@/hooks/useSchedulingPreferences';
@@ -212,44 +212,15 @@ export function ProfileSchedulingPreferencesScreen() {
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back to Profile"
-          disabled={pendingKeys.size > 0}
-          hitSlop={10}
-          onPress={() => router.back()}
-          style={({ pressed }) => [
-            styles.headerButton,
-            pressed && styles.pressed,
-            pendingKeys.size > 0 && styles.disabled,
-          ]}
-        >
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow-back"
-            size={24}
-            color={colors.headerText}
-          />
-        </Pressable>
-        <View style={styles.headerCopy}>
-          <Text accessibilityRole="header" style={styles.headerTitle}>
-            Scheduling Preferences
-          </Text>
-          <WordSafeHeaderText
-            accessible={false}
-            maxFontSizeMultiplier={1.35}
-            maxLines={2}
-            style={styles.headerSubtitle}
-            text={currentChurch.name}
-          />
-        </View>
-        <View style={styles.headerButtonSpacer}>
-          {isRefetching && !isLoading ? (
+      <ProfileFocusedHeader
+        disabled={pendingKeys.size > 0}
+        onBack={() => router.back()}
+        subtitle={currentChurch.name}
+        title="Scheduling Preferences"
+        trailing={isRefetching && !isLoading ? (
             <ActivityIndicator size="small" color={colors.headerText} />
           ) : null}
-        </View>
-      </View>
+      />
 
       <ScrollView
         contentContainerStyle={[

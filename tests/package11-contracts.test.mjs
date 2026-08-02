@@ -15,6 +15,11 @@ assert.ok(migrationName, 'Package 11 migration should exist');
 const migration = read('supabase', 'migrations', migrationName);
 const context = read('contexts', 'ChurchContext.tsx');
 const overview = read('components', 'profile', 'profile-screen.tsx');
+const churchSelector = read(
+  'components',
+  'profile',
+  'profile-churches-screen.tsx',
+);
 const editor = read('components', 'profile', 'profile-identity-screen.tsx');
 const route = read('app', 'profile-identity.tsx');
 const layout = read('app', '_layout.tsx');
@@ -62,7 +67,8 @@ test('the client updates only account, church, and membership keyed caches', () 
 test('Profile links to one focused church identity editor', () => {
   assert.match(overview, /title="Church Profile"/);
   assert.match(overview, /router\.push\('\/profile-identity'\)/);
-  assert.match(overview, /<ChurchSwitcher \/>/);
+  assert.match(overview, /router\.push\('\/profile-churches'\)/);
+  assert.match(churchSelector, /<ChurchSwitcher \/>/);
   assert.match(route, /<ProfileIdentityScreen \/>/);
   assert.match(layout, /name="profile-identity"/);
 });

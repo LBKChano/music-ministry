@@ -8,7 +8,6 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Modal,
   ActivityIndicator,
   Alert,
   Switch,
@@ -18,6 +17,7 @@ import { Stack, Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { AppModal } from '@/components/ui/app-modal';
 import { AdminFormModal } from '@/components/admin/admin-form-modal';
 import { BulkServiceDeleteModal } from '@/components/admin/bulk-service-delete-modal';
 import { AdminHubEditorHeader } from '@/components/church-admin/admin-hub-editor-header';
@@ -36,7 +36,11 @@ import { usePerformanceBaselineScreen } from '@/hooks/usePerformanceBaselineScre
 import { useRefreshController } from '@/hooks/useRefreshController';
 import { useChurchAdminSummary } from '@/hooks/useChurchAdminSummary';
 import { supabase } from '@/lib/supabase/client';
-import { createAutoAssignPreviewKey } from '@/lib/admin/operations';
+import {
+  createAutoAssignPreviewKey,
+  isMissingAutoAssignRoleError,
+  isStaleAutoAssignPreviewError,
+} from '@/lib/admin/operations';
 import {
   runRefreshBatch,
   shouldShowInitialLoader,
@@ -61,6 +65,7 @@ interface SpecialService {
 }
 
 type AutoAssignMode = 'fill_empty' | 'reassign_all';
+type AutoAssignRoleScopeMode = 'all' | 'specific';
 type AutoAssignRangeMode = 'next_30_days' | 'next_quarter' | 'selected_range' | 'visible_services';
 type AutoAssignPreviewAssignment = {
   assignment_id: string;
@@ -101,6 +106,9 @@ type AutoAssignResult = {
   cleared_count: number;
   preview: AutoAssignPreviewAssignment[];
   skipped_report: AutoAssignSkippedSlot[];
+  scope_role_id: string | null;
+  scope_role_name: string | null;
+  preview_token: string;
 };
 type AutoAssignListItem =
   | {
@@ -495,6 +503,8 @@ export default function ChurchScreen() {
   const [autoAssignMode, setAutoAssignMode] = useState<AutoAssignMode | null>(null);
   const [showAutoAssignModal, setShowAutoAssignModal] = useState(false);
   const [pendingAutoAssignMode, setPendingAutoAssignMode] = useState<AutoAssignMode>('fill_empty');
+  const [autoAssignRoleScopeMode, setAutoAssignRoleScopeMode] = useState<AutoAssignRoleScopeMode>('all');
+  const [selectedAutoAssignRoleId, setSelectedAutoAssignRoleId] = useState<string | null>(null);
   const [autoAssignRangeMode, setAutoAssignRangeMode] = useState<AutoAssignRangeMode>('next_30_days');
   const [autoAssignStartDate, setAutoAssignStartDate] = useState(() => getStartOfLocalDay(new Date()));
   const [autoAssignEndDate, setAutoAssignEndDate] = useState(() => addDays(getStartOfLocalDay(new Date()), 30));
@@ -512,6 +522,20 @@ export default function ChurchScreen() {
     currentChurch?.allow_member_multiple_roles_same_service ?? false
   );
   const [isSavingAutoAssignSettings, setIsSavingAutoAssignSettings] = useState(false);
+
+  React.useEffect(() => {
+    if (
+      selectedAutoAssignRoleId
+      && !churchRoles.some(role => role.id === selectedAutoAssignRoleId)
+    ) {
+      setSelectedAutoAssignRoleId(null);
+      setAutoAssignPreview(null);
+      setAutoAssignPreviewKey(null);
+      setAutoAssignOperationStatus(
+        'The selected role is no longer available. Choose another role.',
+      );
+    }
+  }, [churchRoles, selectedAutoAssignRoleId]);
 
   // Ad-hoc service modal states
   const [showAdHocServiceModal, setShowAdHocServiceModal] = useState(false);
@@ -756,6 +780,14 @@ export default function ChurchScreen() {
     }
   };
 
+  const selectedAutoAssignRole = React.useMemo(
+    () => churchRoles.find(role => role.id === selectedAutoAssignRoleId) ?? null,
+    [churchRoles, selectedAutoAssignRoleId],
+  );
+  const autoAssignScopeLabel = autoAssignRoleScopeMode === 'specific'
+    ? selectedAutoAssignRole?.name ?? 'Choose a Role'
+    : 'All Roles';
+
   const autoAssignSections = React.useMemo<AutoAssignListSection[]>(() => {
     if (!autoAssignPreview) return [];
 
@@ -764,7 +796,7 @@ export default function ChurchScreen() {
     if (autoAssignPreview.preview.length > 0) {
       sections.push({
         key: 'preview',
-        title: 'Schedule Preview',
+        title: `Schedule Preview · ${autoAssignPreview.scope_role_name ?? 'All Roles'}`,
         data: autoAssignPreview.preview.map(assignment => ({
           kind: 'assignment',
           assignment,
@@ -775,7 +807,7 @@ export default function ChurchScreen() {
     if (autoAssignPreview.skipped_report.length > 0) {
       sections.push({
         key: 'skipped',
-        title: 'Skipped Slots',
+        title: `Skipped Slots · ${autoAssignPreview.scope_role_name ?? 'All Roles'}`,
         data: autoAssignPreview.skipped_report.map(skipped => ({
           kind: 'skipped',
           skipped,
@@ -1374,12 +1406,14 @@ export default function ChurchScreen() {
   };
 
   const formatAutoAssignMessage = (result: AutoAssignResult, mode: AutoAssignMode) => {
+    const scopeLabel = result.scope_role_name ?? 'All Roles';
     const intro = mode === 'reassign_all'
       ? `${result.cleared_count} existing assignment${result.cleared_count !== 1 ? 's' : ''} cleared and rebuilt.`
       : 'Existing assignments were kept.';
 
     return [
       'Auto-assignment completed!',
+      `Scope: ${scopeLabel}`,
       intro,
       `${result.assigned_count} of ${result.open_slot_count} open slot${result.open_slot_count !== 1 ? 's' : ''} assigned`,
       `${result.skipped_count} slot${result.skipped_count !== 1 ? 's' : ''} remain open`,
@@ -1402,6 +1436,9 @@ export default function ChurchScreen() {
     cleared_count: number;
     preview?: Json;
     skipped_report?: Json;
+    scope_role_id?: string | null;
+    scope_role_name?: string | null;
+    preview_token?: string | null;
   }): AutoAssignResult => ({
     assigned_count: row.assigned_count ?? 0,
     open_slot_count: row.open_slot_count ?? 0,
@@ -1413,6 +1450,9 @@ export default function ChurchScreen() {
     cleared_count: row.cleared_count ?? 0,
     preview: normalizeAutoAssignPreview(row.preview),
     skipped_report: normalizeAutoAssignSkippedReport(row.skipped_report),
+    scope_role_id: row.scope_role_id ?? null,
+    scope_role_name: row.scope_role_name ?? null,
+    preview_token: row.preview_token ?? '',
   });
 
   const getAutoAssignRangeConfig = (): AutoAssignRangeConfig | null => {
@@ -1475,6 +1515,9 @@ export default function ChurchScreen() {
     createAutoAssignPreviewKey({
       churchId: currentChurch?.id ?? '',
       mode: pendingAutoAssignMode,
+      targetRoleId: autoAssignRoleScopeMode === 'specific'
+        ? selectedAutoAssignRoleId
+        : null,
       range,
       allowMultipleRolesSameService,
       services,
@@ -1496,6 +1539,8 @@ export default function ChurchScreen() {
 
     const today = getStartOfLocalDay(new Date());
     setPendingAutoAssignMode(mode);
+    setAutoAssignRoleScopeMode('all');
+    setSelectedAutoAssignRoleId(null);
     setAutoAssignRangeMode('next_30_days');
     setAutoAssignStartDate(today);
     setAutoAssignEndDate(addDays(today, 30));
@@ -1513,6 +1558,14 @@ export default function ChurchScreen() {
       return;
     }
 
+    const targetRoleId = autoAssignRoleScopeMode === 'specific'
+      ? selectedAutoAssignRoleId
+      : null;
+    if (autoAssignRoleScopeMode === 'specific' && !targetRoleId) {
+      Alert.alert('Choose a Role', 'Select the role you want to auto-assign.');
+      return;
+    }
+
     const range = getAutoAssignRangeConfig();
     if (!range) return;
     const requestKey = getAutoAssignPreviewKey(range);
@@ -1524,6 +1577,7 @@ export default function ChurchScreen() {
     console.log('Generating auto-assign preview:', {
       mode: pendingAutoAssignMode,
       rangeMode: autoAssignRangeMode,
+      targetRoleId,
       range,
     });
 
@@ -1533,30 +1587,43 @@ export default function ChurchScreen() {
     setAutoAssignOperationStatus('Calculating the schedule preview...');
 
     try {
-      const { data, error: rpcError } = await supabase.rpc('auto_assign_service_slots', {
+      const { data, error: rpcError } = await supabase.rpc('auto_assign_service_slots_v2', {
         target_church_id: currentChurch.id,
         assignment_mode: pendingAutoAssignMode,
         dry_run: true,
         target_start_date: range.target_start_date,
         target_end_date: range.target_end_date,
         target_service_ids: range.target_service_ids,
+        target_role_id: targetRoleId,
+        expected_preview_token: null,
       });
 
       if (rpcError) {
         console.error('Error generating auto-assign preview:', rpcError);
-        setAutoAssignOperationStatus(null);
-        Alert.alert('Error', rpcError.message || 'Could not generate the assignment preview.');
+        if (isMissingAutoAssignRoleError(rpcError)) {
+          setSelectedAutoAssignRoleId(null);
+          setAutoAssignOperationStatus(
+            'The selected role is no longer available. Choose another role.',
+          );
+          Alert.alert(
+            'Role No Longer Available',
+            'Choose another active church role and generate the preview again.',
+          );
+        } else {
+          setAutoAssignOperationStatus(null);
+          Alert.alert('Error', rpcError.message || 'Could not generate the assignment preview.');
+        }
         return;
       }
 
       const result = data?.[0] ? normalizeAutoAssignResult(data[0]) : null;
-      if (result) {
+      if (result?.preview_token) {
         setAutoAssignPreview(result);
         setAutoAssignPreviewKey(requestKey);
         setAutoAssignOperationStatus('Preview ready.');
       } else {
         setAutoAssignOperationStatus(null);
-        Alert.alert('Info', 'No assignment preview was returned.');
+        Alert.alert('Info', 'No valid assignment preview was returned.');
       }
     } catch (err) {
       console.error('Error generating auto-assign preview:', err);
@@ -1592,6 +1659,7 @@ export default function ChurchScreen() {
     console.log('Applying auto-assign preview:', {
       mode: pendingAutoAssignMode,
       rangeMode: autoAssignRangeMode,
+      targetRoleId: autoAssignPreview.scope_role_id,
       range,
     });
 
@@ -1600,19 +1668,42 @@ export default function ChurchScreen() {
     setAutoAssignOperationStatus('Saving assignments atomically...');
 
     try {
-      const { data, error: rpcError } = await supabase.rpc('auto_assign_service_slots', {
+      const { data, error: rpcError } = await supabase.rpc('auto_assign_service_slots_v2', {
         target_church_id: currentChurch.id,
         assignment_mode: pendingAutoAssignMode,
         dry_run: false,
         target_start_date: range.target_start_date,
         target_end_date: range.target_end_date,
         target_service_ids: range.target_service_ids,
+        target_role_id: autoAssignPreview.scope_role_id,
+        expected_preview_token: autoAssignPreview.preview_token,
       });
 
       if (rpcError) {
         console.error('Error applying auto-assign RPC:', rpcError);
-        setAutoAssignOperationStatus('Save failed. The preview is still available.');
-        Alert.alert('Error', rpcError.message || 'Auto-assignment failed');
+        if (isStaleAutoAssignPreviewError(rpcError)) {
+          clearAutoAssignPreview();
+          setAutoAssignOperationStatus(
+            'The schedule changed. Generate a fresh preview before saving.',
+          );
+          Alert.alert(
+            'Preview Out of Date',
+            'The schedule changed after this preview was created. Nothing was saved. Generate a new preview and confirm it again.',
+          );
+        } else if (isMissingAutoAssignRoleError(rpcError)) {
+          setSelectedAutoAssignRoleId(null);
+          clearAutoAssignPreview();
+          setAutoAssignOperationStatus(
+            'The selected role is no longer available. Choose another role.',
+          );
+          Alert.alert(
+            'Role No Longer Available',
+            'Nothing was saved. Choose another active church role and generate a new preview.',
+          );
+        } else {
+          setAutoAssignOperationStatus('Save failed. The preview is still available.');
+          Alert.alert('Error', rpcError.message || 'Auto-assignment failed');
+        }
         return;
       }
 
@@ -2951,138 +3042,103 @@ export default function ChurchScreen() {
         )}
       </ScrollView>
 
-      {/* All modals remain the same - keeping them for completeness */}
-      {/* Create Church Modal */}
-      <Modal
+      <AdminFormModal
         visible={isCreateChurchModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => {
+        title="Create Church"
+        onClose={() => {
           if (!isCreatingChurch) setCreateChurchModalVisible(false);
         }}
+        backgroundColor={colors.cardBackground || '#FFFFFF'}
+        textColor={colors.text}
+        borderColor={colors.border}
+        primaryColor={colors.primary}
+        maxWidth={440}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: () => {
+            if (isCreatingChurch) return;
+            setCreateChurchModalVisible(false);
+            setNewChurchName('');
+          },
+          disabled: isCreatingChurch,
+        }}
+        primaryAction={{
+          label: 'Create',
+          onPress: handleCreateChurch,
+          disabled: isCreatingChurch || !newChurchName.trim(),
+          loading: isCreatingChurch,
+        }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Create Church</Text>
+        <TextInput
+          style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+          placeholder="Church Name"
+          placeholderTextColor={colors.textSecondary}
+          value={newChurchName}
+          onChangeText={setNewChurchName}
+          editable={!isCreatingChurch}
+          autoCapitalize="words"
+          returnKeyType="done"
+          onSubmitEditing={handleCreateChurch}
+        />
+      </AdminFormModal>
 
-            <TextInput
-              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Church Name"
-              placeholderTextColor={colors.textSecondary}
-              value={newChurchName}
-              onChangeText={setNewChurchName}
-              editable={!isCreatingChurch}
-              autoCapitalize="words"
-              returnKeyType="done"
-              onSubmitEditing={handleCreateChurch}
-            />
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[
-                  styles.modalButton,
-                  styles.cancelButton,
-                  { backgroundColor: '#e0e0e0' },
-                  isCreatingChurch && styles.disabledButton,
-                ]}
-                onPress={() => {
-                  if (isCreatingChurch) return;
-                  console.log('User cancelled create church');
-                  setCreateChurchModalVisible(false);
-                  setNewChurchName('');
-                }}
-                disabled={isCreatingChurch}
-              >
-                <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.modalButton,
-                  { backgroundColor: colors.primary },
-                  isCreatingChurch && styles.disabledButton,
-                ]}
-                onPress={handleCreateChurch}
-                disabled={isCreatingChurch}
-              >
-                {isCreatingChurch ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.saveButtonText}>Create</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Edit Church Name Modal */}
-      <Modal
+      <AdminFormModal
         visible={isEditChurchNameModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={closeEditChurchNameModal}
+        title="Edit Church Name"
+        onClose={closeEditChurchNameModal}
+        backgroundColor={colors.cardBackground || '#FFFFFF'}
+        textColor={colors.text}
+        borderColor={colors.border}
+        primaryColor={colors.primary}
+        maxWidth={440}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: closeEditChurchNameModal,
+          disabled: isSavingChurchName,
+        }}
+        primaryAction={{
+          label: 'Save',
+          onPress: handleUpdateChurchName,
+          disabled: isSavingChurchName || !editChurchName.trim(),
+          loading: isSavingChurchName,
+        }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Church Name</Text>
+        <TextInput
+          style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+          placeholder="Church Name"
+          placeholderTextColor={colors.textSecondary}
+          value={editChurchName}
+          onChangeText={setEditChurchName}
+          autoCapitalize="words"
+          returnKeyType="done"
+          editable={!isSavingChurchName}
+          onSubmitEditing={handleUpdateChurchName}
+        />
+      </AdminFormModal>
 
-            <TextInput
-              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Church Name"
-              placeholderTextColor={colors.textSecondary}
-              value={editChurchName}
-              onChangeText={setEditChurchName}
-              autoCapitalize="words"
-              returnKeyType="done"
-              editable={!isSavingChurchName}
-              onSubmitEditing={handleUpdateChurchName}
-            />
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[
-                  styles.modalButton,
-                  styles.cancelButton,
-                  { backgroundColor: '#e0e0e0' },
-                  isSavingChurchName && styles.disabledButton,
-                ]}
-                onPress={closeEditChurchNameModal}
-                disabled={isSavingChurchName}
-              >
-                <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.modalButton,
-                  { backgroundColor: colors.primary },
-                  isSavingChurchName && styles.disabledButton,
-                ]}
-                onPress={handleUpdateChurchName}
-                disabled={isSavingChurchName}
-              >
-                {isSavingChurchName ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.saveButtonText}>Save</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Edit Member Modal */}
-      <Modal
+      <AdminFormModal
         visible={isEditMemberModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setEditMemberModalVisible(false)}
+        title="Edit Member"
+        onClose={() => setEditMemberModalVisible(false)}
+        backgroundColor={colors.cardBackground || '#FFFFFF'}
+        textColor={colors.text}
+        borderColor={colors.border}
+        primaryColor={colors.primary}
+        maxWidth={500}
+        variant="long-content"
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: () => {
+            setEditMemberModalVisible(false);
+            setMemberToEdit(null);
+            setEditMemberEmail('');
+            setEditMemberName('');
+            setEditMemberRoles([]);
+            setEditMemberIsAdmin(false);
+          },
+        }}
+        primaryAction={{ label: 'Save', onPress: handleEditMember }}
       >
-        <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalScrollContent}>
-            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Member</Text>
-
               <TextInput
                 style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                 placeholder="Email"
@@ -3159,71 +3215,39 @@ export default function ChurchScreen() {
                   />
                 </View>
 
-                <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
-                  onPress={() => {
-                    console.log('User cancelled edit member');
-                    setEditMemberModalVisible(false);
-                    setMemberToEdit(null);
-                    setEditMemberEmail('');
-                      setEditMemberName('');
-                      setEditMemberRoles([]);
-                      setEditMemberIsAdmin(false);
-                    }}
-                >
-                  <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, { backgroundColor: colors.primary }]}
-                  onPress={handleEditMember}
-                >
-                  <Text style={styles.saveButtonText}>Save</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
+      </AdminFormModal>
 
-      {/* Delete Confirmation Modal */}
-      <Modal
+      <AdminFormModal
         visible={isDeleteModalVisible}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setDeleteModalVisible(false)}
+        title="Delete Member"
+        variant="confirmation"
+        onClose={() => setDeleteModalVisible(false)}
+        backgroundColor={colors.cardBackground || '#FFFFFF'}
+        textColor={colors.text}
+        borderColor={colors.border}
+        primaryColor={colors.primary}
+        maxWidth={440}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: () => {
+            setDeleteModalVisible(false);
+            setMemberToDelete(null);
+            setDeleteImpact(null);
+          },
+        }}
+        primaryAction={{
+          label: 'Delete',
+          onPress: handleDeleteMember,
+          disabled: isLoadingDeleteImpact,
+          loading: isLoadingDeleteImpact,
+          destructive: true,
+        }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Member</Text>
-            <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
-              Removing this member also removes their church-scoped scheduling data.
-            </Text>
-            <DeleteImpactSummary impact={deleteImpact} loading={isLoadingDeleteImpact} />
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
-                onPress={() => {
-                  console.log('User cancelled delete');
-                  setDeleteModalVisible(false);
-                  setMemberToDelete(null);
-                  setDeleteImpact(null);
-                }}
-              >
-                <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: '#ff3b30' }]}
-                onPress={handleDeleteMember}
-                disabled={isLoadingDeleteImpact}
-              >
-                <Text style={styles.saveButtonText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
+          Removing this member also removes their church-scoped scheduling data.
+        </Text>
+        <DeleteImpactSummary impact={deleteImpact} loading={isLoadingDeleteImpact} />
+      </AdminFormModal>
 
       <AdminFormModal
         visible={isAddServiceModalVisible}
@@ -3358,161 +3382,158 @@ export default function ChurchScreen() {
         onApply={applyScheduledServiceDeletion}
       />
 
-      {/* Add Role Modal */}
-      <Modal
+      <AdminFormModal
         visible={isAddRoleModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setAddRoleModalVisible(false)}
+        title={roleToEdit ? 'Edit Church Role' : 'Add Church Role'}
+        onClose={() => setAddRoleModalVisible(false)}
+        backgroundColor={colors.cardBackground || '#FFFFFF'}
+        textColor={colors.text}
+        borderColor={colors.border}
+        primaryColor={colors.primary}
+        maxWidth={440}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: () => {
+            setAddRoleModalVisible(false);
+            setRoleToEdit(null);
+            setNewRoleName('');
+            setNewRoleDescription('');
+          },
+        }}
+        primaryAction={{
+          label: roleToEdit ? 'Save' : 'Add',
+          onPress: handleSaveRole,
+          disabled: !newRoleName.trim(),
+        }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>
-              {roleToEdit ? 'Edit Church Role' : 'Add Church Role'}
-            </Text>
+        <TextInput
+          style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+          placeholder="Role Name (e.g., Worship Leader)"
+          placeholderTextColor={colors.textSecondary}
+          value={newRoleName}
+          onChangeText={setNewRoleName}
+        />
+        <TextInput
+          style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.border }]}
+          placeholder="Description (optional)"
+          placeholderTextColor={colors.textSecondary}
+          value={newRoleDescription}
+          onChangeText={setNewRoleDescription}
+          multiline
+          numberOfLines={3}
+        />
+      </AdminFormModal>
 
-            <TextInput
-              style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Role Name (e.g., Worship Leader)"
-              placeholderTextColor={colors.textSecondary}
-              value={newRoleName}
-              onChangeText={setNewRoleName}
-            />
-
-            <TextInput
-              style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Description (optional)"
-              placeholderTextColor={colors.textSecondary}
-              value={newRoleDescription}
-              onChangeText={setNewRoleDescription}
-              multiline
-              numberOfLines={3}
-            />
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
-                onPress={() => {
-                  console.log('User cancelled role editor');
-                  setAddRoleModalVisible(false);
-                  setRoleToEdit(null);
-                  setNewRoleName('');
-                  setNewRoleDescription('');
-                }}
-              >
-                <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.primary }]}
-                onPress={handleSaveRole}
-              >
-                <Text style={styles.saveButtonText}>{roleToEdit ? 'Save' : 'Add'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Delete Service Confirmation Modal */}
-      <Modal
+      <AdminFormModal
         visible={isDeleteServiceModalVisible}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setDeleteServiceModalVisible(false)}
+        title="Delete Service"
+        variant="confirmation"
+        onClose={() => setDeleteServiceModalVisible(false)}
+        backgroundColor={colors.cardBackground || '#FFFFFF'}
+        textColor={colors.text}
+        borderColor={colors.border}
+        primaryColor={colors.primary}
+        maxWidth={440}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: () => {
+            setDeleteServiceModalVisible(false);
+            setServiceToDelete(null);
+          },
+        }}
+        primaryAction={{
+          label: 'Delete',
+          onPress: handleDeleteService,
+          destructive: true,
+        }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Service</Text>
-            <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
-              Are you sure you want to delete this recurring service?
-            </Text>
+        <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
+          Are you sure you want to delete this recurring service?
+        </Text>
+      </AdminFormModal>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
-                onPress={() => {
-                  console.log('User cancelled delete service');
-                  setDeleteServiceModalVisible(false);
-                  setServiceToDelete(null);
-                }}
-              >
-                <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: '#ff3b30' }]}
-                onPress={handleDeleteService}
-              >
-                <Text style={styles.saveButtonText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Delete Role Confirmation Modal */}
-      <Modal
+      <AdminFormModal
         visible={isDeleteRoleModalVisible}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setDeleteRoleModalVisible(false)}
+        title="Delete Role"
+        variant="confirmation"
+        onClose={() => setDeleteRoleModalVisible(false)}
+        backgroundColor={colors.cardBackground || '#FFFFFF'}
+        textColor={colors.text}
+        borderColor={colors.border}
+        primaryColor={colors.primary}
+        maxWidth={440}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: () => {
+            setDeleteRoleModalVisible(false);
+            setRoleToDelete(null);
+            setDeleteImpact(null);
+          },
+        }}
+        primaryAction={{
+          label: 'Delete',
+          onPress: handleDeleteRole,
+          disabled: isLoadingDeleteImpact,
+          loading: isLoadingDeleteImpact,
+          destructive: true,
+        }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Role</Text>
-            <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
-              Deleting a role can affect templates, members, assignments, and preferences.
-            </Text>
-            <DeleteImpactSummary impact={deleteImpact} loading={isLoadingDeleteImpact} />
+        <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
+          Deleting a role can affect templates, members, assignments, and preferences.
+        </Text>
+        <DeleteImpactSummary impact={deleteImpact} loading={isLoadingDeleteImpact} />
+      </AdminFormModal>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
-                onPress={() => {
-                  console.log('User cancelled delete role');
-                  setDeleteRoleModalVisible(false);
-                  setRoleToDelete(null);
-                  setDeleteImpact(null);
-                }}
-              >
-                <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: '#ff3b30' }]}
-                onPress={handleDeleteRole}
-                disabled={isLoadingDeleteImpact}
-              >
-                <Text style={styles.saveButtonText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Auto Assign Preview Modal */}
-      <Modal
+      <AppModal
         visible={showAutoAssignModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => {
+        title={pendingAutoAssignMode === 'reassign_all' ? 'Preview Reassign All' : 'Preview Fill Empty Slots'}
+        subtitle={(
+          <View style={styles.autoAssignModalHeader}>
+            <Text style={[styles.autoAssignScopeHeading, { color: colors.primary }]}>
+              {autoAssignScopeLabel}
+            </Text>
+            <Text style={[styles.autoAssignDescription, { color: colors.textSecondary }]}>
+              {pendingAutoAssignMode === 'reassign_all'
+                ? `This preview clears and rebuilds ${autoAssignScopeLabel} assignments in the selected range before anything is saved.`
+                : `This preview keeps current assignments and fills only open ${autoAssignScopeLabel} slots before anything is saved.`}
+            </Text>
+          </View>
+        )}
+        variant="long-content"
+        bodyScroll={false}
+        maxWidth={720}
+        backgroundColor={colors.cardBackground || '#FFFFFF'}
+        textColor={colors.text}
+        borderColor={colors.border}
+        primaryColor={colors.primary}
+        busy={isApplyingAutoAssign}
+        onClose={() => {
           if (!isApplyingAutoAssign) {
             setShowAutoAssignModal(false);
             clearAutoAssignPreview();
           }
         }}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: () => {
+            setShowAutoAssignModal(false);
+            clearAutoAssignPreview();
+          },
+          disabled: isApplyingAutoAssign,
+        }}
+        primaryAction={{
+          label: autoAssignPreview?.scope_role_name
+            ? `Confirm ${autoAssignPreview.scope_role_name}`
+            : pendingAutoAssignMode === 'reassign_all'
+              ? 'Confirm Reassign'
+              : 'Confirm Fill',
+          onPress: applyAutoAssignPreview,
+          disabled: !autoAssignPreview || isApplyingAutoAssign,
+          loading: isApplyingAutoAssign,
+          destructive: pendingAutoAssignMode === 'reassign_all',
+        }}
+        testID="auto-assign-preview-modal"
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, styles.autoAssignModalContent, { backgroundColor: colors.cardBackground || '#fff' }]}>
-            <View style={[styles.autoAssignModalHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>
-                {pendingAutoAssignMode === 'reassign_all' ? 'Preview Reassign All' : 'Preview Fill Empty Slots'}
-              </Text>
-              <Text style={[styles.autoAssignDescription, { color: colors.textSecondary }]}>
-                {pendingAutoAssignMode === 'reassign_all'
-                  ? 'This preview clears assignments in the selected range and rebuilds them before anything is saved.'
-                  : 'This preview keeps current assignments and fills only open slots before anything is saved.'}
-              </Text>
-            </View>
-
             <SectionList<AutoAssignListItem, AutoAssignListSection>
               style={styles.autoAssignModalBody}
               contentContainerStyle={styles.autoAssignModalBodyContent}
@@ -3537,6 +3558,95 @@ export default function ChurchScreen() {
               )}
               ListHeaderComponent={(
                 <>
+                  <Text style={[styles.label, { color: colors.text }]}>Role Scope</Text>
+                  <View
+                    accessibilityRole="radiogroup"
+                    accessibilityLabel="Auto-assignment role scope"
+                    style={[styles.autoAssignScopeControl, { borderColor: colors.border }]}
+                  >
+                    {([
+                      { mode: 'all' as const, label: 'All Roles' },
+                      { mode: 'specific' as const, label: 'Specific Role' },
+                    ]).map(option => {
+                      const isSelected = autoAssignRoleScopeMode === option.mode;
+                      return (
+                        <TouchableOpacity
+                          key={option.mode}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: isSelected }}
+                          style={[
+                            styles.autoAssignScopeOption,
+                            { backgroundColor: isSelected ? colors.primary : colors.inputBackground },
+                          ]}
+                          onPress={() => {
+                            setAutoAssignRoleScopeMode(option.mode);
+                            clearAutoAssignPreview();
+                          }}
+                          disabled={isGeneratingAutoAssignPreview || isApplyingAutoAssign}
+                        >
+                          <Text
+                            style={[
+                              styles.autoAssignScopeOptionText,
+                              { color: isSelected ? '#fff' : colors.text },
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {autoAssignRoleScopeMode === 'specific' && churchRoles.length > 0 ? (
+                    <ScrollView
+                      horizontal
+                      contentContainerStyle={styles.autoAssignRoleList}
+                      showsHorizontalScrollIndicator={false}
+                    >
+                      {churchRoles.map(role => {
+                        const isSelected = role.id === selectedAutoAssignRoleId;
+                        return (
+                          <TouchableOpacity
+                            key={role.id}
+                            accessibilityRole="radio"
+                            accessibilityLabel={`Assign only ${role.name}`}
+                            accessibilityState={{ checked: isSelected }}
+                            style={[
+                              styles.autoAssignRoleChip,
+                              {
+                                borderColor: isSelected ? colors.primary : colors.border,
+                                backgroundColor: isSelected ? colors.backgroundAlt : colors.inputBackground,
+                              },
+                            ]}
+                            onPress={() => {
+                              setSelectedAutoAssignRoleId(role.id);
+                              clearAutoAssignPreview();
+                            }}
+                            disabled={isGeneratingAutoAssignPreview || isApplyingAutoAssign}
+                          >
+                            {isSelected ? (
+                              <IconSymbol
+                                ios_icon_name="checkmark.circle.fill"
+                                android_material_icon_name="check-circle"
+                                size={18}
+                                color={colors.primary}
+                              />
+                            ) : null}
+                            <Text style={[styles.autoAssignRoleChipText, { color: colors.text }]}>
+                              {role.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  ) : autoAssignRoleScopeMode === 'specific' ? (
+                    <Text
+                      style={[styles.autoAssignEmptyText, { color: colors.textSecondary }]}
+                    >
+                      Add a role in Church Setup before assigning one role.
+                    </Text>
+                  ) : null}
+
                   <Text style={[styles.label, { color: colors.text }]}>Assignment Range</Text>
                   <View style={styles.autoAssignRangeGrid}>
                     {AUTO_ASSIGN_RANGE_OPTIONS.map(option => {
@@ -3696,6 +3806,11 @@ export default function ChurchScreen() {
 
                   {autoAssignPreview && (
                     <View style={styles.autoAssignPreviewPanel}>
+                      <Text
+                        style={[styles.autoAssignScopeSummary, { color: colors.text }]}
+                      >
+                        Scope: {autoAssignPreview.scope_role_name ?? 'All Roles'}
+                      </Text>
                       <View style={styles.autoAssignStatsGrid}>
                         <View style={[styles.autoAssignStat, { backgroundColor: colors.inputBackground }]}>
                           <Text style={[styles.autoAssignStatValue, { color: colors.primary }]}>{autoAssignPreview.assigned_count}</Text>
@@ -3742,47 +3857,70 @@ export default function ChurchScreen() {
               ListFooterComponent={<View style={styles.autoAssignListFooter} />}
             />
 
-            <View style={[styles.modalButtons, styles.autoAssignModalFooter, { borderTopColor: colors.border }]}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton, { backgroundColor: '#e0e0e0' }]}
-                onPress={() => {
-                  setShowAutoAssignModal(false);
-                  clearAutoAssignPreview();
-                }}
-                disabled={isApplyingAutoAssign}
-              >
-                <Text style={[styles.cancelButtonText, { color: '#333' }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.modalButton,
-                  { backgroundColor: pendingAutoAssignMode === 'reassign_all' ? '#C2410C' : colors.primary },
-                  (!autoAssignPreview || isApplyingAutoAssign) && styles.disabledButton,
-                ]}
-                onPress={applyAutoAssignPreview}
-                disabled={!autoAssignPreview || isApplyingAutoAssign}
-              >
-                {isApplyingAutoAssign ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.saveButtonText}>
-                    {pendingAutoAssignMode === 'reassign_all' ? 'Confirm Reassign' : 'Confirm Fill'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      </AppModal>
 
-      {/* Prepare Quarter Modal - TWO-STEP WORKFLOW */}
-      <Modal visible={showPrepareQuarterModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalScrollContent}>
-            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff', maxWidth: 500 }]}>
-              <Text style={[styles.modalTitle, { color: colors.text, fontSize: 22, marginBottom: 8 }]}>
-                {prepareQuarterStep === 'block' ? 'Step 1: Block Recurring Dates' : 'Step 2: Add Special Services'}
-              </Text>
+      <AppModal
+        visible={showPrepareQuarterModal}
+        title={prepareQuarterStep === 'block'
+          ? 'Step 1: Block Recurring Dates'
+          : showAddSpecialService
+            ? 'Add Special Service'
+            : 'Step 2: Add Special Services'}
+        variant="long-content"
+        maxWidth={520}
+        backgroundColor={colors.cardBackground || '#FFFFFF'}
+        textColor={colors.text}
+        borderColor={colors.border}
+        primaryColor={colors.primary}
+        busy={isPreparing}
+        onClose={() => {
+          if (isPreparing) return;
+          setShowPrepareQuarterModal(false);
+          setPrepareQuarterStep('block');
+          setBlockedServices(new Set());
+          setSpecialServices([]);
+        }}
+        secondaryAction={{
+          label: prepareQuarterStep === 'block'
+            ? 'Cancel'
+            : showAddSpecialService
+              ? 'Back'
+              : 'Back to Dates',
+          onPress: () => {
+            if (prepareQuarterStep === 'block') {
+              setShowPrepareQuarterModal(false);
+              setPrepareQuarterStep('block');
+              setBlockedServices(new Set());
+              setSpecialServices([]);
+            } else if (showAddSpecialService) {
+              setShowAddSpecialService(false);
+              setSpecialServiceName('');
+              setSpecialServiceTime(new Date());
+              setSpecialServiceNotes('');
+              setSpecialServiceRoles([]);
+              setSpecialServiceDate(new Date());
+            } else {
+              setPrepareQuarterStep('block');
+            }
+          },
+          disabled: isPreparing,
+        }}
+        primaryAction={{
+          label: prepareQuarterStep === 'block'
+            ? 'Continue'
+            : showAddSpecialService
+              ? 'Add Service'
+              : 'Generate Services',
+          onPress: prepareQuarterStep === 'block'
+            ? handleSaveBlockedDates
+            : showAddSpecialService
+              ? handleAddSpecialService
+              : handlePrepareQuarter,
+          disabled: isPreparing || (showAddSpecialService && !specialServiceName.trim()),
+          loading: isPreparing,
+        }}
+        testID="prepare-quarter-modal"
+      >
               
               {prepareQuarterStep === 'block' && (
                 <>
@@ -3826,7 +3964,7 @@ export default function ChurchScreen() {
                   <Text style={[styles.helperText, { color: colors.textSecondary, marginBottom: 8 }]}>
                     Select dates to skip for recurring services
                   </Text>
-                  <ScrollView style={{ maxHeight: 200 }}>
+                  <View>
                     {(recurringServices ?? []).map(template => {
                       const { startDate, endDate } = getQuarterDates(selectedQuarter, selectedYear);
                       const currentDate = new Date(startDate);
@@ -3870,32 +4008,12 @@ export default function ChurchScreen() {
                         );
                       });
                     })}
-                  </ScrollView>
-
-                  <TouchableOpacity 
-                    style={[styles.primaryButton, { backgroundColor: colors.primary, marginTop: 20 }]} 
-                    onPress={handleSaveBlockedDates}
-                  >
-                    <Text style={styles.primaryButtonText}>Continue to Special Services</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.secondaryButton, { backgroundColor: '#e0e0e0', marginTop: 12 }]} 
-                    onPress={() => {
-                      console.log('User cancelled prepare quarter');
-                      setShowPrepareQuarterModal(false);
-                      setPrepareQuarterStep('block');
-                      setBlockedServices(new Set());
-                      setSpecialServices([]);
-                    }}
-                  >
-                    <Text style={[styles.secondaryButtonText, { color: '#333' }]}>Cancel</Text>
-                  </TouchableOpacity>
+                  </View>
                 </>
               )}
 
               {prepareQuarterStep === 'special' && showAddSpecialService && (
                 <View>
-                  <Text style={[styles.modalTitle, { color: colors.text, fontSize: 20, marginBottom: 16 }]}>Add Special Service</Text>
                   <Text style={[styles.label, { color: colors.text }]}>Service Name</Text>
                   <TextInput
                     style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.cardBackground }]}
@@ -4020,20 +4138,6 @@ export default function ChurchScreen() {
                       );
                     })}
                   </View>
-                  <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.primary, marginTop: 20 }]} onPress={handleAddSpecialService}>
-                    <Text style={[styles.primaryButtonText]}>Add Service</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.secondaryButton, { backgroundColor: '#e0e0e0', marginTop: 12 }]} onPress={() => {
-                    console.log('User cancelled Add Special Service form');
-                    setShowAddSpecialService(false);
-                    setSpecialServiceName('');
-                    setSpecialServiceTime(new Date());
-                    setSpecialServiceNotes('');
-                    setSpecialServiceRoles([]);
-                    setSpecialServiceDate(new Date());
-                  }}>
-                    <Text style={[styles.secondaryButtonText, { color: colors.text }]}>Cancel</Text>
-                  </TouchableOpacity>
                 </View>
               )}
               {prepareQuarterStep === 'special' && !showAddSpecialService && (
@@ -4082,17 +4186,6 @@ export default function ChurchScreen() {
                     <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '600' }}>+ Add Special Service</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity 
-                    style={[styles.primaryButton, { backgroundColor: colors.primary }]} 
-                    onPress={handlePrepareQuarter}
-                    disabled={isPreparing}
-                  >
-                    {isPreparing ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Text style={styles.primaryButtonText}>Generate All Services</Text>
-                    )}
-                  </TouchableOpacity>
                   {quarterOperationStatus ? (
                     <Text
                       style={[
@@ -4103,203 +4196,9 @@ export default function ChurchScreen() {
                       {quarterOperationStatus}
                     </Text>
                   ) : null}
-                  <TouchableOpacity 
-                    style={[
-                      styles.secondaryButton,
-                      {
-                        backgroundColor: '#e0e0e0',
-                        marginTop: 12,
-                        opacity: isPreparing ? 0.55 : 1,
-                      },
-                    ]}
-                    onPress={() => {
-                      console.log('User went back to block dates step');
-                      setPrepareQuarterStep('block');
-                    }}
-                    disabled={isPreparing}
-                  >
-                    <Text style={[styles.secondaryButtonText, { color: '#333' }]}>Back to Block Dates</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[
-                      styles.secondaryButton,
-                      {
-                        backgroundColor: '#e0e0e0',
-                        marginTop: 12,
-                        opacity: isPreparing ? 0.55 : 1,
-                      },
-                    ]}
-                    onPress={() => {
-                      console.log('User cancelled prepare quarter');
-                      setShowPrepareQuarterModal(false);
-                      setPrepareQuarterStep('block');
-                      setBlockedServices(new Set());
-                      setSpecialServices([]);
-                    }}
-                    disabled={isPreparing}
-                  >
-                    <Text style={[styles.secondaryButtonText, { color: '#333' }]}>Cancel</Text>
-                  </TouchableOpacity>
                 </>
               )}
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* Add Special Service - rendered inline inside Prepare Quarter modal to avoid nested Modal issues */}
-      <Modal visible={false} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalScrollContent}>
-            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground || '#fff', maxWidth: 500 }]}>
-              <Text style={[styles.modalTitle, { color: colors.text, fontSize: 22 }]}>Add Special Service</Text>
-              
-              <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border, marginTop: 16 }]}
-                placeholder="Service Name (e.g., Christmas Eve)"
-                placeholderTextColor={colors.textSecondary}
-                value={specialServiceName}
-                onChangeText={setSpecialServiceName}
-              />
-
-              <TouchableOpacity
-                  style={[styles.dateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
-                  onPress={() => {
-                    console.log('User tapped date picker button');
-                    setDraftSpecialServiceDate(specialServiceDate);
-                    setShowSpecialServiceDatePicker(true);
-                  }}
-              >
-                <Text style={[styles.dateButtonText, { color: colors.text }]}>
-                  Date: {formatDate(specialServiceDate.toISOString())}
-                </Text>
-              </TouchableOpacity>
-              {showSpecialServiceDatePicker && (
-                <View style={styles.datePickerWrapper}>
-                  <DateTimePicker
-                    value={draftSpecialServiceDate}
-                    mode="date"
-                    display="spinner"
-                    themeVariant="light"
-                    onChange={(event, date) => {
-                      console.log('User selected date:', date);
-                      if (date) setDraftSpecialServiceDate(date);
-                    }}
-                  />
-                  <View style={styles.pickerActionRow}>
-                    <TouchableOpacity
-                      style={[styles.pickerActionButton, styles.pickerCancelButton]}
-                      onPress={() => {
-                        setDraftSpecialServiceDate(specialServiceDate);
-                        setShowSpecialServiceDatePicker(false);
-                      }}
-                    >
-                      <Text style={styles.pickerCancelText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.pickerActionButton, styles.pickerConfirmButton]}
-                      onPress={() => {
-                        setSpecialServiceDate(draftSpecialServiceDate);
-                        setShowSpecialServiceDatePicker(false);
-                      }}
-                    >
-                      <Text style={styles.pickerConfirmText}>Confirm</Text>
-                    </TouchableOpacity>
-                  </View>
-                  </View>
-                )}
-
-              <TouchableOpacity
-                  style={[styles.dateButton, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.border }]}
-                  onPress={() => {
-                    console.log('User tapped time picker button');
-                    setDraftSpecialServiceTime(specialServiceTime);
-                    setShowSpecialServiceTimePicker(true);
-                  }}
-              >
-                <Text style={[styles.dateButtonText, { color: colors.text }]}>
-                  Time: {formatTimeForDatabase(specialServiceTime)}
-                </Text>
-              </TouchableOpacity>
-              {showSpecialServiceTimePicker && (
-                <View style={styles.datePickerWrapper}>
-                  <DateTimePicker
-                    value={draftSpecialServiceTime}
-                    mode="time"
-                    display="spinner"
-                    themeVariant="light"
-                    onChange={(event, date) => {
-                      console.log('User selected time:', date);
-                      if (date) setDraftSpecialServiceTime(date);
-                    }}
-                  />
-                  <View style={styles.pickerActionRow}>
-                    <TouchableOpacity
-                      style={[styles.pickerActionButton, styles.pickerCancelButton]}
-                      onPress={() => {
-                        setDraftSpecialServiceTime(specialServiceTime);
-                        setShowSpecialServiceTimePicker(false);
-                      }}
-                    >
-                      <Text style={styles.pickerCancelText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.pickerActionButton, styles.pickerConfirmButton]}
-                      onPress={() => {
-                        setSpecialServiceTime(draftSpecialServiceTime);
-                        setShowSpecialServiceTimePicker(false);
-                      }}
-                    >
-                      <Text style={styles.pickerConfirmText}>Confirm</Text>
-                    </TouchableOpacity>
-                  </View>
-                  </View>
-                )}
-
-              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 16 }]}>Select Roles</Text>
-              <ScrollView style={{ maxHeight: 200, marginBottom: 16 }}>
-                {(churchRoles ?? []).map(role => {
-                  const isSelected = (specialServiceRoles ?? []).includes(role.id);
-                  return (
-                    <TouchableOpacity
-                      key={role.id}
-                      style={[styles.roleItem, { backgroundColor: colors.inputBackground }]}
-                      onPress={() => toggleSpecialServiceRole(role.id)}
-                    >
-                      <Text style={[styles.roleItemText, { color: colors.text }]}>{role.name}</Text>
-                      <View style={[
-                        styles.checkbox,
-                        { borderColor: colors.primary },
-                        isSelected && { backgroundColor: colors.primary },
-                      ]}>
-                        {isSelected && (
-                          <IconSymbol ios_icon_name="checkmark" android_material_icon_name="done" size={16} color="#fff" />
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-
-              <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border, minHeight: 60 }]}
-                placeholder="Notes (optional)"
-                placeholderTextColor={colors.textSecondary}
-                value={specialServiceNotes}
-                onChangeText={setSpecialServiceNotes}
-                multiline
-              />
-
-              <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.primary, marginTop: 20 }]} onPress={handleAddSpecialService}>
-                <Text style={styles.primaryButtonText}>Add Service</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.secondaryButton, { backgroundColor: '#e0e0e0', marginTop: 12 }]} onPress={() => setShowAddSpecialService(false)}>
-                <Text style={[styles.secondaryButtonText, { color: '#333' }]}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
+      </AppModal>
 
       <AdminFormModal
         visible={showAdHocServiceModal}
@@ -5169,6 +5068,50 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 0,
   },
+  autoAssignScopeHeading: {
+    fontSize: 15,
+    fontWeight: '800',
+    lineHeight: 20,
+    marginTop: 3,
+  },
+  autoAssignScopeControl: {
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    marginBottom: 12,
+    minHeight: 46,
+    overflow: 'hidden',
+  },
+  autoAssignScopeOption: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  autoAssignScopeOptionText: {
+    fontSize: 14,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  autoAssignRoleList: {
+    gap: 8,
+    paddingBottom: 14,
+  },
+  autoAssignRoleChip: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    minHeight: 42,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  autoAssignRoleChipText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
   autoAssignRangeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -5200,6 +5143,10 @@ const styles = StyleSheet.create({
   },
   autoAssignPreviewPanel: {
     gap: 12,
+  },
+  autoAssignScopeSummary: {
+    fontSize: 15,
+    fontWeight: '800',
   },
   autoAssignSectionHeader: {
     paddingTop: 12,

@@ -28,6 +28,15 @@ export const queryKeys = {
     [...queryKeys.church(accountId, churchId), 'current-member'] as const,
   fillInRequests: (accountId: string, churchId: string) =>
     [...queryKeys.church(accountId, churchId), 'fill-in-requests'] as const,
+  manualAssignmentCandidates: (
+    accountId: string,
+    churchId: string,
+    assignmentId: string,
+  ) => [
+    ...queryKeys.church(accountId, churchId),
+    'manual-assignment-candidates',
+    assignmentId,
+  ] as const,
   memberUnavailability: (
     accountId: string,
     churchId: string,
@@ -60,6 +69,12 @@ export const queryKeys = {
     ] as const,
   memberNotifications: (accountId: string, memberId: string) =>
     [...queryKeys.account(accountId), 'member-notifications', memberId] as const,
+  memberNotificationUnreadCount: (accountId: string, memberId: string) =>
+    [
+      ...queryKeys.account(accountId),
+      'member-notification-unread-count',
+      memberId,
+    ] as const,
   disabled: (feature: string) =>
     [...appQueryRoot, 'disabled', feature] as const,
 };

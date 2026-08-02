@@ -1,15 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
+import { ResponsiveText } from '@/components/ui/responsive-text';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useChurchSession } from '@/contexts/ChurchContext';
 import {
@@ -133,199 +130,142 @@ export function NotificationPermissionOnboarding({
     }
   };
 
+  if (!visible) return null;
+
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={() => {
-        void chooseNotNow();
-      }}
+    <View
+      accessibilityLabel="Notification permission options"
+      style={styles.container}
     >
-      <SafeAreaView style={styles.overlay}>
-        <ScrollView
-          accessibilityViewIsModal
-          accessibilityLabel="Enable service notifications"
-          style={styles.sheet}
-          contentContainerStyle={styles.sheetContent}
-          bounces={false}
-          showsVerticalScrollIndicator={false}
+      <View style={styles.headerRow}>
+        <View style={styles.iconContainer} accessibilityElementsHidden>
+          <IconSymbol
+            ios_icon_name="bell.badge.fill"
+            android_material_icon_name="notifications-active"
+            size={25}
+            color={colors.headerText}
+          />
+        </View>
+        <View style={styles.copy}>
+          <ResponsiveText
+            accessibilityRole="header"
+            text="Stay ready for every service"
+            textStyle={styles.title}
+            variant="stateTitle"
+          />
+          <ResponsiveText
+            text="Enable Service reminders and Fill-in requests on this device."
+            textStyle={styles.description}
+            variant="supportingCopy"
+          />
+        </View>
+      </View>
+      {requestError ? (
+        <ResponsiveText
+          accessibilityRole="alert"
+          text={requestError}
+          textStyle={styles.errorText}
+          variant="supportingCopy"
+        />
+      ) : null}
+      <View style={styles.actions}>
+        <Pressable
+          accessibilityHint="Opens the operating-system notification permission prompt"
+          accessibilityLabel="Enable notifications"
+          accessibilityRole="button"
+          accessibilityState={{ busy: requesting, disabled: requesting }}
+          disabled={requesting}
+          onPress={() => void enableNotifications()}
+          style={({ pressed }) => [
+            styles.primaryButton,
+            pressed && styles.pressed,
+            requesting && styles.disabled,
+          ]}
         >
-          <View style={styles.iconContainer}>
-            <IconSymbol
-              ios_icon_name="bell.badge.fill"
-              android_material_icon_name="notifications-active"
-              size={30}
-              color={colors.headerText}
-            />
-          </View>
-
-          <View style={styles.copy}>
-            <Text accessibilityRole="header" style={styles.title}>
-              Stay ready for every service
-            </Text>
-            <Text style={styles.description}>
-              Enable notifications to receive the updates that directly affect
-              your ministry schedule.
-            </Text>
-          </View>
-
-          <View style={styles.benefits}>
-            <View style={styles.benefitRow}>
-              <IconSymbol
-                ios_icon_name="calendar.badge.clock"
-                android_material_icon_name="event"
-                size={21}
-                color={colors.primary}
-              />
-              <View style={styles.benefitCopy}>
-                <Text style={styles.benefitTitle}>Service reminders</Text>
-                <Text style={styles.benefitText}>
-                  Know before a service where you have an assigned role.
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.benefitRow}>
-              <IconSymbol
-                ios_icon_name="person.2.fill"
-                android_material_icon_name="group"
-                size={21}
-                color={colors.primary}
-              />
-              <View style={styles.benefitCopy}>
-                <Text style={styles.benefitTitle}>Fill-in requests</Text>
-                <Text style={styles.benefitText}>
-                  Respond when someone with your role needs help.
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.actions}>
-            {requestError ? (
-              <Text accessibilityRole="alert" style={styles.errorText}>
-                {requestError}
-              </Text>
-            ) : null}
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Enable notifications"
-              accessibilityState={{ busy: requesting, disabled: requesting }}
-              disabled={requesting}
-              onPress={() => {
-                void enableNotifications();
-              }}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                pressed && styles.pressed,
-                requesting && styles.disabled,
-              ]}
-            >
-              {requesting ? (
-                <ActivityIndicator size="small" color={colors.headerText} />
-              ) : (
-                <IconSymbol
-                  ios_icon_name="bell.fill"
-                  android_material_icon_name="notifications"
-                  size={19}
-                  color={colors.headerText}
-                />
-              )}
-              <Text style={styles.primaryButtonText}>Enable Notifications</Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Not now"
-              disabled={requesting}
-              onPress={() => {
-                void chooseNotNow();
-              }}
-              style={({ pressed }) => [
-                styles.secondaryButton,
-                pressed && styles.pressed,
-                requesting && styles.disabled,
-              ]}
-            >
-              <Text style={styles.secondaryButtonText}>Not Now</Text>
-            </Pressable>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
+          {requesting ? (
+            <ActivityIndicator color={colors.headerText} size="small" />
+          ) : null}
+          <ResponsiveText
+            accessible={false}
+            style={styles.primaryButtonLabel}
+            text="Enable Notifications"
+            textStyle={styles.primaryButtonText}
+            variant="actionLabel"
+          />
+        </Pressable>
+        <Pressable
+          accessibilityHint="Dismisses this notification permission reminder"
+          accessibilityLabel="Not now"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: requesting }}
+          disabled={requesting}
+          onPress={() => void chooseNotNow()}
+          style={({ pressed }) => [
+            styles.secondaryButton,
+            pressed && styles.pressed,
+            requesting && styles.disabled,
+          ]}
+        >
+          <ResponsiveText
+            accessible={false}
+            style={styles.secondaryButtonLabel}
+            text="Not Now"
+            textStyle={styles.secondaryButtonText}
+            variant="actionLabel"
+          />
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    padding: 16,
-    backgroundColor: `${colors.navyDark}90`,
-  },
-  sheet: {
-    width: '100%',
-    maxWidth: 440,
-    maxHeight: '100%',
+  container: {
     alignSelf: 'center',
+    backgroundColor: colors.backgroundAlt,
+    borderColor: colors.border,
     borderRadius: 8,
-    backgroundColor: colors.card,
+    borderWidth: 1,
+    gap: 12,
+    marginBottom: 8,
+    maxWidth: 728,
+    padding: 14,
+    width: '92%',
   },
-  sheetContent: {
-    padding: 20,
-    gap: 18,
+  headerRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
   },
   iconContainer: {
-    width: 54,
-    height: 54,
+    width: 44,
+    height: 44,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
   },
   copy: {
+    flex: 1,
     gap: 7,
   },
   title: {
     color: colors.text,
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 17,
+    lineHeight: 22,
     fontWeight: '800',
   },
   description: {
-    color: colors.textSecondary,
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  benefits: {
-    gap: 14,
-  },
-  benefitRow: {
-    minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  benefitCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  benefitTitle: {
-    color: colors.text,
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: '700',
-  },
-  benefitText: {
     color: colors.textSecondary,
     fontSize: 14,
     lineHeight: 20,
   },
   actions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
+    justifyContent: 'flex-end',
   },
   errorText: {
     color: colors.error,
@@ -334,7 +274,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   primaryButton: {
-    minHeight: 50,
+    minHeight: 44,
     borderRadius: 8,
     paddingHorizontal: 16,
     flexDirection: 'row',
@@ -345,21 +285,28 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: colors.headerText,
-    fontSize: 16,
-    lineHeight: 21,
+    fontSize: 14,
+    lineHeight: 19,
     fontWeight: '800',
   },
+  primaryButtonLabel: {
+    minWidth: 132,
+  },
   secondaryButton: {
-    minHeight: 48,
+    minHeight: 44,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 14,
   },
   secondaryButtonText: {
     color: colors.textSecondary,
-    fontSize: 15,
+    fontSize: 14,
     lineHeight: 20,
     fontWeight: '700',
+  },
+  secondaryButtonLabel: {
+    minWidth: 62,
   },
   pressed: {
     opacity: 0.72,

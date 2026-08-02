@@ -15,10 +15,16 @@ const churchContext = readSource('contexts', 'ChurchContext.tsx');
 const rootLayout = readSource('app', '_layout.tsx');
 const tabLayout = readSource('app', '(tabs)', '_layout.tsx');
 const iosTabLayout = readSource('app', '(tabs)', '_layout.ios.tsx');
+const appTabs = readSource('components', 'navigation', 'app-tabs.tsx');
 const churchScreen = readSource('app', '(tabs)', 'church.tsx');
 const profile = readSource('app', '(tabs)', 'profile.tsx');
 const iosProfile = readSource('app', '(tabs)', 'profile.ios.tsx');
 const sharedProfile = readSource('components', 'profile', 'profile-screen.tsx');
+const profileChurches = readSource(
+  'components',
+  'profile',
+  'profile-churches-screen.tsx',
+);
 const switcher = readSource('components', 'profile', 'ChurchSwitcher.tsx');
 const deviceService = readSource(
   'lib',
@@ -31,13 +37,14 @@ const package1Migration = readSource(
   '20260729182446_add_multi_church_account_device_foundation.sql',
 );
 
-test('Profile exposes the same reusable church switcher on Android and iOS', () => {
+test('Profile exposes the same focused reusable church switcher on Android and iOS', () => {
   assert.match(profile, /import \{ ProfileScreen \}/);
   assert.match(profile, /<ProfileScreen implementation="default" \/>/);
   assert.match(iosProfile, /import \{ ProfileScreen \}/);
   assert.match(iosProfile, /<ProfileScreen implementation="ios" \/>/);
-  assert.match(sharedProfile, /import \{ ChurchSwitcher \}/);
-  assert.match(sharedProfile, /<ChurchSwitcher \/>/);
+  assert.match(sharedProfile, /router\.push\('\/profile-churches'\)/);
+  assert.match(profileChurches, /import \{ ChurchSwitcher \}/);
+  assert.match(profileChurches, /<ChurchSwitcher \/>/);
   assert.match(switcher, /Your Churches/);
   assert.match(switcher, /Join Another Church/);
   assert.match(switcher, /switchChurch\(churchId\)/);
@@ -54,11 +61,11 @@ test('church discovery and switching remain account scoped and centralized', () 
 
 test('admin navigation requires a fully ready current-church membership', () => {
   for (const source of [tabLayout, iosTabLayout]) {
-    assert.match(
-      source,
-      /showAdminTab = sessionStatus === 'ready' && isAdmin/,
-    );
+    assert.match(source, /<AppTabs \/>/);
   }
+  assert.match(appTabs, /shouldDisplayAdminTab\(sessionStatus, isAdmin\)/);
+  assert.match(appTabs, /shouldLeaveChurchTab/);
+  assert.match(appTabs, /router\.replace\('\/\(tabs\)\/\(home\)'\)/);
   assert.match(
     churchScreen,
     /sessionStatus !== 'ready' \|\| !isAdmin/,

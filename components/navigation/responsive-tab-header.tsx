@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AdaptiveHeaderText } from '@/components/navigation/adaptive-header-text';
+import { ResponsiveText } from '@/components/ui/responsive-text';
 import {
   calculateHeaderTitleLaneWidth,
   type HeaderTypographyVariant,
@@ -126,15 +127,14 @@ export function TabHeaderPill({
       {icon}
       <View style={styles.pillText}>
         {detail ? <Text style={styles.pillLabel}>{label}</Text> : null}
-        <Text
-          adjustsFontSizeToFit
-          minimumFontScale={0.82}
+        <ResponsiveText
+          accessible={!onPress}
           numberOfLines={1}
           selectable={!onPress}
-          style={detail ? styles.pillDetail : styles.pillSingleLine}
-        >
-          {detail ?? label}
-        </Text>
+          text={detail ?? label}
+          textStyle={detail ? styles.pillDetail : styles.pillSingleLine}
+          variant="compactLabel"
+        />
       </View>
       {trailing}
     </>
@@ -166,15 +166,14 @@ export function TabHeaderPill({
 
 export function TabHeaderMetaText({ children }: { children: string }) {
   return (
-    <Text
-      adjustsFontSizeToFit
-      minimumFontScale={0.82}
+    <ResponsiveText
       numberOfLines={1}
       selectable
-      style={styles.metaText}
-    >
-      {children}
-    </Text>
+      style={styles.metaTextLane}
+      text={children}
+      textStyle={styles.metaText}
+      variant="supportingCopy"
+    />
   );
 }
 
@@ -307,12 +306,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   metaText: {
-    minWidth: 0,
-    flexShrink: 1,
     color: '#DBEAFE',
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0,
+  },
+  metaTextLane: {
+    flexShrink: 1,
+    minWidth: 120,
   },
   iconButton: {
     width: 42,

@@ -13,6 +13,7 @@ const readSource = (...segments) => readFileSync(
 
 const androidSchedule = readSource('app', '(tabs)', '(home)', 'index.tsx');
 const iosSchedule = readSource('app', '(tabs)', '(home)', 'index.ios.tsx');
+const sharedSchedule = readSource('components', 'schedules', 'schedule-screen.tsx');
 const nativeContext = readSource('contexts', 'NotificationContext.native.tsx');
 const webContext = readSource('contexts', 'NotificationContext.tsx');
 const rootLayout = readSource('app', '_layout.tsx');
@@ -34,12 +35,13 @@ const preferences = readSource(
 );
 
 test('both native Schedules use one contextual explainer and no automatic OS prompt', () => {
-  for (const source of [androidSchedule, iosSchedule]) {
-    assert.match(source, /NotificationPermissionOnboarding/);
-    assert.match(source, /<NotificationPermissionOnboarding scheduleReady \/>/);
-    assert.doesNotMatch(source, /Request notification permission on first load/);
-    assert.doesNotMatch(source, /requestPermission\(\)\.then/);
+  for (const route of [androidSchedule, iosSchedule]) {
+    assert.match(route, /schedule-screen/);
   }
+  assert.match(sharedSchedule, /NotificationPermissionOnboarding/);
+  assert.match(sharedSchedule, /<NotificationPermissionOnboarding scheduleReady \/>/);
+  assert.doesNotMatch(sharedSchedule, /Request notification permission on first load/);
+  assert.doesNotMatch(sharedSchedule, /requestPermission\(\)\.then/);
 });
 
 test('the explainer waits for the exact linked church membership', () => {

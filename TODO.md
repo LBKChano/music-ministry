@@ -725,11 +725,29 @@ Final exit gate:
 
 Status:
 
-- Planned; no implementation or deployment has started.
+- Implemented locally on 2026-08-01; automated verification passes.
+- Client-only as planned. No Supabase migration, RPC, Edge Function,
+  notification contract, released route, or persisted key changed.
+- Android and iOS now share one tab-layout contract; admin visibility still
+  requires a fully ready admin membership, and a member arriving from an admin
+  church is redirected away from the Church route.
+- Profile church switching now has a focused route while the released
+  `ChurchSwitcher` remains the single behavior owner. Profile and Church
+  focused editors share the same header contract, and Church forms retain their
+  existing state and backend payloads behind the improved shared modal.
+- Onboarding, Profile, refresh failures, and no-membership recovery now use
+  shared accessible feedback/state treatments that hide technical backend
+  details.
+- TypeScript, Edge Function Deno checks, full ESLint, all 267 automated tests,
+  Package 16 contract tests, and Android/iOS production exports pass. The
+  remaining physical-device/screenshot gate is recorded in
+  `docs/PACKAGE_16_UI_POLISH.md`.
+- Not deployed because this package has no backend changes. A new app build is
+  required to publish the visual changes.
 - Client-only. Do not add a Supabase migration, change an RPC or Edge Function,
   alter notification delivery, or remove any released route or persisted key.
-- Start only after the Package 9 through 15 workspace changes are committed and
-  pushed so this visual cleanup remains a separate, reviewable checkpoint.
+- Package 9 through 15 remained the committed baseline, keeping this visual
+  cleanup as a separate, reviewable checkpoint.
 - The Schedule tab is explicitly out of scope. Its routes, cards, comments,
   songs, fill-in requests, notification bell, and assignment behavior must
   remain unchanged.
@@ -889,10 +907,13 @@ Done when:
 
 Status:
 
-- Planned; no implementation or deployment has started.
-- Requires an additive Supabase migration and a new app build. Existing direct
-  assignment updates, tables, RLS policies, and RPC signatures must remain in
-  place for released app versions.
+- Implemented and deployed to Supabase production on August 2, 2026.
+- The additive candidate and validated-assignment RPCs are live. Existing direct
+  assignment updates, tables, RLS policies, and RPC signatures remain in place,
+  so released app versions keep working without this client update.
+- Automated client, contract, SQL, advisor, type, lint, export, and regression
+  gates are complete. Physical Android and iOS release-device checks remain a
+  publishing gate for the new build.
 
 Goal:
 
@@ -966,13 +987,34 @@ Done when:
   or a direct new-client request; and manual assignment still synchronizes all
   affected schedules and fill-in state.
 
+Implementation record:
+
+- `get_manual_assignment_candidates_v1` derives the assignment context and
+  returns active, same-role candidates with deterministic names and explicit
+  unavailable/conflict reasons.
+- `assign_member_to_slot_v2` locks and revalidates assignment, church, role,
+  date, membership, unavailability, and same-service rules before updating.
+- Both Schedule routes use the same React Query-backed picker. Clearing an
+  assignment still uses the released path, and the existing database trigger
+  still synchronizes fill-in requests after a successful reassignment.
+- Production contains the additive migration and its two forward corrections:
+  `add_role_aware_manual_assignment`,
+  `fix_role_aware_manual_assignment_builtin_calls`, and
+  `fix_manual_assignment_service_date_contract`.
+- Rollback remains a previous client build. The Package 17 RPCs can stay live
+  because they do not change any released contract.
+
 #### Package 18: Role-Scoped Fill Empty and Reassign All
 
 Status:
 
-- Planned; no implementation or deployment has started.
-- Depends on Package 17's shared role identity and eligibility rules. Requires
-  an additive Supabase migration and a new app build.
+- Implemented and deployed to Supabase production on August 2, 2026.
+- The additive `auto_assign_service_slots_v2` RPC is live. The released
+  six-argument RPC and all direct assignment paths remain unchanged, so older
+  app versions continue working.
+- Automated client, SQL, advisor, type, lint, regression, and production-export
+  gates are complete. Physical Android and iOS checks remain required before
+  publishing the new client build.
 
 Goal:
 
@@ -1033,14 +1075,52 @@ Done when:
   matches the committed scope, and choosing `All Roles` preserves today's
   scheduling behavior.
 
+Implementation record:
+
+- `auto_assign_service_slots_v2` accepts the existing range/mode inputs plus a
+  nullable role id and a preview token. `null` retains exact All Roles behavior.
+- The private v2 planner restricts clearing, slot counts, preview rows, skipped
+  reports, and writes to the selected role while preserving full church history
+  and unrelated same-service assignments for fairness and conflict decisions.
+- Apply recomputes the plan under the church advisory lock, rejects stale
+  tokens before writing, and rolls the transaction back if the committed member
+  plan differs from the approved preview.
+- The Church workflow includes accessible `All Roles` / `Specific Role`
+  controls, requires an active role, includes scope in preview identity and
+  result copy, and handles deleted roles or stale previews without exposing raw
+  database errors.
+- Production SQL proves all-role parity, both scoped modes, selected date and
+  visible-service ranges, unavailable/no-candidate reports, preview/apply
+  parity, deleted roles, stale previews, and byte-for-byte preservation of
+  unrelated assignments.
+- `EXPLAIN` and both Supabase advisors found no Package 18 index requirement or
+  advisory issue. Rollback is the previous client; the additive v2 RPC can stay
+  live.
+
 #### Package 19: One-Time Fill-In Escalation After Three Hours
 
 Status:
 
-- Planned; no implementation or deployment has started.
-- Backend-first and backward-compatible. Existing fill-in inserts, acceptance,
-  cancellation, initial push delivery, notification preferences, and Edge
-  Function request contracts must remain valid for released clients.
+- Implemented and deployed to the live Supabase project on 2026-08-01/02 UTC.
+  The private queue and service-only lease RPCs are additive, and released
+  fill-in inserts, acceptance/cancellation, initial push delivery, notification
+  preferences, Realtime rows, and navigation payloads remain unchanged.
+- Live migration versions are `20260802013910` (queue/RPC/Vault contract) and
+  `20260802014444` (five-minute cron). Edge Function
+  `send-fill-in-escalations` is active at version 2 with `verify_jwt = false`
+  plus a dedicated Vault-backed secret header.
+- The rollback-safe SQL behavior suite passed live for 2h59/3h eligibility,
+  overlapping workers, release/retry, final relevance, skipped stale work, and
+  successful replay. Custom-auth rejection returned 401, Vault-authenticated
+  diagnostics returned 200, and the first scheduled cron invocation returned
+  200 with zero due work and zero sends.
+- Deno, Package 19 behavior/contracts, TypeScript, and targeted lint pass.
+  Supabase advisors found no Package 19 issue. See
+  `docs/PACKAGE_19_FILL_IN_ESCALATIONS.md`.
+- Remaining external release gate: a three-hour physical iOS/Android canary must
+  confirm one reminder per registered device, no Android duplicate, navigation,
+  and acceptance/cancellation suppression before Package 19 is called fully
+  device-verified.
 
 Goal:
 
@@ -1115,10 +1195,11 @@ Done when:
 
 Status:
 
-- Planned; no implementation or deployment has started.
-- Client-only. It extends Package 16's non-Schedule editor primitive across the
-  Schedule tab and all remaining popups after Packages 17 through 19 add their
-  final workflow surfaces.
+- Implementation complete; automated verification is complete and the physical
+  device release matrix remains a store-submission gate.
+- Client-only. No database migration, Edge Function deployment, route change,
+  mutation payload change, or persisted-data change was introduced, so released
+  app versions continue to work unchanged.
 
 Goal:
 
@@ -1189,15 +1270,31 @@ Done when:
 
 Status:
 
-- Planned; no implementation, Apple credential change, or build has started.
+- Implemented locally on 2026-08-01. TypeScript behavior/contracts, Expo config,
+  clean iOS prebuild, native Swift SDK typecheck, lint, Deno checks, and the full
+  automated test suite pass.
+- No Supabase migration or deployment is required. A physical-device preview
+  build, Apple capability/profile regeneration, and TestFlight validation remain
+  release gates because this environment cannot validate Apple credentials or a
+  Home Screen widget on a real device.
 - iOS-only native feature requiring a new EAS build. It must not require a
   Supabase schema change and must not alter Android or released-app behavior.
 
 Goal:
 
-- Add a polished WidgetKit widget that shows the signed-in member's next
-  assignments for the currently selected church and opens the existing Schedule
-  tab when tapped.
+- Add one WidgetKit extension with two independently addable widget choices for
+  the currently selected church:
+  - `Next Church Service`: the church's next scheduled service, whether or not
+    the signed-in member has an assignment in it.
+  - `My Next Assignment`: the next scheduled service where the signed-in member
+    is assigned to at least one role.
+- Let a user add either choice or both choices at the same time. Both open the
+  existing Schedule tab when tapped.
+- Implement these as two static widget kinds in one `WidgetBundle`, not as an
+  iOS 17 AppIntent or a device-wide setting inside Profile. This keeps the full
+  feature available on the existing iOS 16 deployment target and lets each Home
+  Screen widget retain its own purpose without adding a native configuration
+  intent or backend preference.
 
 Checkpoint 21A: complete an isolated native compatibility spike:
 
@@ -1213,44 +1310,97 @@ Checkpoint 21A: complete an isolated native compatibility spike:
   `group.com.lbkchano.musicministry.onesignal` on the main target. The widget
   target receives only the widget group. Verify App ID capabilities and fresh
   provisioning profiles for both targets before the feature branch proceeds.
+- Register one extension containing a `WidgetBundle` with two stable, unique
+  widget kinds such as `MusicMinistryNextChurchService` and
+  `MusicMinistryMyNextAssignment`. Give each kind a clear gallery title,
+  description, icon treatment, and small/medium family declarations so users
+  understand the difference before adding it.
 
 Checkpoint 21B: define a private, local widget snapshot:
 
-- Store only a sanitized JSON snapshot in the shared widget app group: current
-  church display name, a small list of the current member's next assignments,
-  service id/date/time/type, role, generated-at time, and schema version. Never
-  store Supabase access/refresh tokens, OneSignal identifiers, email, invitation
-  codes, or service-role/anon secrets there.
+- Derive both widget projections from the already authenticated, currently
+  selected church schedule cache. Do not let the widget extension contact
+  Supabase or hold an Auth session.
+- `Next Church Service` selects the first upcoming service after deterministic
+  date/time ordering without checking assignment membership. It displays church
+  name, service type, date, and time; it must not imply that the member is
+  assigned when they are not.
+- `My Next Assignment` filters services to assignments whose `member_id` equals
+  the fully initialized current church member id, then selects the first result
+  using the same ordering. If the member has multiple roles in that service,
+  show all distinct assigned roles in stable role order rather than duplicating
+  the service.
+- Use the app's existing local service-date/time semantics so the widget does
+  not shift a service to another day. Define deterministic tie-breaking by
+  service date, service time, then service id. Treat an undated/invalid service
+  as unusable, and define a consistent rule for same-day services with no time.
+- Store only a versioned, sanitized JSON snapshot in the shared widget app
+  group: current church display name, a bounded upcoming church-service list, a
+  bounded upcoming member-assignment list, service id/date/time/type, assigned
+  role names where applicable, generated-at time, and schema version. Keeping a
+  few ordered entries for each mode lets WidgetKit advance to the following
+  service without waiting for the app to reopen. Never store Supabase
+  access/refresh tokens, OneSignal identifiers, account/member email,
+  invitation codes, or service-role/anon secrets there.
 - Update the snapshot after authenticated bootstrap, schedule or assignment
   query success, relevant Realtime changes, pull-to-refresh, church switch, and
-  app foreground. Clear it immediately on sign-out, account deletion, lost
-  membership, or account switch so another account's schedule cannot remain on
-  the home screen.
+  app foreground. Assignment insertion, reassignment, clearing, fill-in
+  acceptance, service creation/edit/deletion, and bulk deletion must recompute
+  both projections from the latest complete cache rather than patching only one
+  widget mode.
+- Clear the snapshot and reload both widget timelines immediately on sign-out,
+  account deletion, lost membership, no-membership recovery, or account switch
+  so another account's church or assignment cannot remain on the Home Screen.
 - Make writes atomic and generation-scoped so a slow response from a previous
   account/church cannot overwrite the current snapshot. Widget refresh is
-  best-effort, not Realtime; show an honest empty/stale state and `Open Music
-  Ministry to refresh` when needed.
+  best-effort, not Realtime. Reload both widget kinds after one committed
+  snapshot write; do not write or reload once per widget and do not create a
+  feedback loop between the extension and app.
 
 Checkpoint 21C: build the WidgetKit presentation:
 
-- Support small and medium families first with the next service prominent and
-  additional assignments only where space permits. Use semantic system colors,
-  readable dates, role labels, word-safe church names, privacy redaction, and
-  Dynamic Type-aware layouts without squeezing text mid-word.
+- Give the two choices a shared visual system but distinct headings and symbols:
+  `Next Church Service` for the church-wide result and `My Next Assignment` for
+  the member-specific result. Never silently fall back from an empty personal
+  assignment to the next church service because that would misrepresent the
+  member's schedule.
+- Support small and medium families first. Keep the selected next service
+  prominent; medium may show the following one or two entries from the matching
+  projection when space permits. The church-wide widget never shows other
+  members or role assignments. The personal widget shows only the current
+  member's own role or roles.
+- Use semantic system colors, readable dates, role labels, word-safe church
+  names, privacy-sensitive redaction, and Dynamic Type-aware layouts without
+  squeezing text mid-word. Each widget includes an accessibility label that
+  announces its mode, church, service, time, and personal roles when applicable.
 - Use one deep link into the existing Schedule tab. Keep the first release
   read-only because iOS 16 is supported; do not add iOS 17-only interactive
   buttons or a second scheduling implementation inside the extension.
-- Provide signed-out, no church, no assignment, stale-data, and unavailable-data
-  timeline entries. Keep timeline generation bounded and resilient to malformed
-  or older snapshot schema versions.
+- Provide mode-correct signed-out, no-church, stale-data, and unavailable-data
+  timeline entries. `Next Church Service` uses `No upcoming services`; `My Next
+  Assignment` uses `No upcoming assignments`. Both can show `Open Music
+  Ministry to refresh` when the snapshot is absent, stale, malformed, or from
+  an unsupported schema version.
+- Build bounded timelines from the stored ordered lists and schedule the next
+  refresh at safe service boundaries. When the last usable entry passes, show
+  the correct empty or stale state instead of continuing to display a past
+  service indefinitely.
 
 Verification and release gate:
 
-- Add TypeScript tests for snapshot filtering/versioning/account isolation and
-  Swift tests or preview fixtures for every widget state. Verify sign-in,
-  account/church switching, two devices on one account, assignment changes,
-  fill-in acceptance, offline launch, sign-out, deletion, deep linking, and
-  widget removal/re-addition on physical iOS devices.
+- Add TypeScript tests for snapshot filtering, stable ordering, bounded lists,
+  versioning, account/church generation isolation, and atomic clearing. Include
+  fixtures where the next church service has no personal assignment, the next
+  personal assignment is a later service, one member has multiple roles in one
+  service, two services share a time, a service is deleted, and an assignment is
+  reassigned or accepted through fill-in.
+- Add Swift tests or preview fixtures for both modes in small and medium sizes,
+  including normal, multiple-role, no-service, no-assignment, stale, malformed,
+  signed-out, long church name, Larger Text, and privacy-redacted states.
+- Verify both widget choices can be added simultaneously and remain independent.
+  Test sign-in, account/church switching, two devices on one account, assignment
+  changes, fill-in acceptance, offline launch, sign-out, deletion, deep linking,
+  app upgrade, and widget removal/re-addition on physical iOS devices.
 - Run prebuild/config inspection to prove the main app retains OneSignal
   entitlements, the widget has only its intended app group, bundle identifiers
   do not collide, and EAS recognizes both extensions. Then run a preview build,
@@ -1260,9 +1410,336 @@ Verification and release gate:
 
 Done when:
 
-- The widget reliably shows only the active member's upcoming assignments,
-  clears private data on every account transition, deep-links to Schedule, and
-  ships without disturbing OneSignal delivery, Android, or released clients.
+- `Next Church Service` reliably shows the active church's next service without
+  implying an assignment, `My Next Assignment` reliably shows only the active
+  member's next assigned service and role or roles, either or both widgets can
+  coexist, private data clears on every account transition, both deep-link to
+  Schedule, and the extension ships without disturbing OneSignal delivery,
+  Android, Supabase, or released clients.
+
+#### Package 22: Responsive Schedule Experience Redesign
+
+Status:
+
+- Checkpoints 22A through 22J implemented locally on 2026-08-01. Android and iOS now
+  use one shared Schedule tree, iOS widget synchronization is isolated behind a
+  platform hook, and cache-local `All Services`, `My Schedule`, and
+  `Needs Attention` views are implemented. Cache-local service type, role, and
+  loaded-date filters include an active count and clear action. Services now use
+  virtualized local-month sections and compact, expandable summaries with admin
+  service deletion behind an overflow action. Responsive role-first team rows
+  now use the focused availability-safe assignment interaction, and numbered
+  song rows preserve author ownership, ordering, deletion, and long-list access.
+  Pending fill-ins now use responsive attention rows with duplicate-action guards,
+  and the bell opens a focused Schedule notification history backed by one shared
+  read/unread and Realtime owner. Schedule bootstrap, membership loss, recoverable
+  initialization failure, offline cache, range failure, setup, personal, filter,
+  and no-service states are now distinct without replacing usable cached content.
+  Schedule names, roles, songs, requester copy, notification titles, month labels,
+  state copy, and action labels now share one measured word-safe typography
+  contract with readable font floors, bounded lines, exact accessibility/source
+  strings, and fixed action lanes. Services, sections, songs, fill-in alerts,
+  assignments, filters, notification history, and modal actions now expose
+  complete semantics and interaction states. Targets are at least 44dp, status
+  colors meet contrast requirements and retain non-color cues, reorder changes
+  are announced, and disclosure/modal motion follows the operating-system
+  Reduced Motion preference.
+- No backend, permission-delivery, push-recipient, event-key, Edge Function, or
+  database contract changed; no Supabase migration or deployment is required for
+  22A-22J.
+- TypeScript, full ESLint, all 356 automated tests, Edge Function Deno checks,
+  whitespace validation, and clean Android/iOS production exports pass. A
+  physical-device visual pass remains part of the eventual Package 22 release
+  gate.
+- Client-only polish package. It must preserve every released Supabase table,
+  policy, RPC, Edge Function, Realtime channel, notification payload, cache key,
+  route, mutation, and response shape so installed older versions continue to
+  work unchanged.
+
+Goal:
+
+- Rebuild the Schedule tab into a calm, professional, highly scannable
+  experience that uses the same visual hierarchy, responsive typography,
+  focused actions, loading behavior, and accessibility standards as Profile and
+  Church.
+- Preserve every current workflow. This package reorganizes and polishes the
+  presentation; it does not remove scheduling, assignment, fill-in, song,
+  notification, refresh, pagination, Realtime, or widget functionality.
+- Make the same information and actions reliable on narrow and wide Android
+  phones, supported iPhones, tablets, landscape, display scaling, and Larger
+  Text without shrinking names unpredictably, breaking words, or covering
+  actions.
+
+Non-negotiable authorization boundary:
+
+- Only a verified owner or scheduling admin for the active church may directly
+  change services or assignments. Service deletion, manual assignment,
+  reassignment, clearing an assignment, and every other direct schedule mutation
+  remain behind the existing church-scoped admin check in both rendering and
+  mutation handlers.
+- A regular member receives no direct service or assignment editing control.
+  Members may add songs and edit only songs they authored. A regular member must
+  never receive edit/delete controls for another member's song.
+- Preserve currently released constrained self-service workflows so redesigning
+  the UI does not remove functionality: eligible members can accept fill-in
+  requests, assigned members can request a fill-in, requesters can cancel their
+  own pending requests, and currently authorized own-song delete/reorder actions
+  remain available. Treat any future change to those permissions as a separate
+  functional/security package, not part of this visual redesign.
+- Admins retain all current song moderation and ordering capabilities. Every
+  mutation must still rely on backend authorization; hiding a button is not the
+  security boundary.
+- Resolve permissions only from the fully initialized current church membership.
+  Never infer admin access from account history, another church, cached UI mode,
+  the account that originally created a church, or which onboarding button was
+  used.
+
+Checkpoint 22A: freeze behavior and define one shared Schedule contract:
+
+- Record a regression matrix for every currently reachable action in both
+  `index.tsx` and `index.ios.tsx`: refresh, range loading, service deletion,
+  manual assignment, clear assignment, add/edit/delete/reorder songs, request/
+  accept/cancel fill-in, notification history, permission onboarding, empty and
+  error recovery, Realtime updates, and iOS widget snapshot refresh.
+- Add permission fixtures for owner, scheduling admin, ordinary member, song
+  author, non-author, assigned member, eligible fill-in member, requester, and a
+  single account that is admin in church A and member in church B.
+- Define one view model for month sections, card summaries, current-member
+  assignment state, pending fill-in attention, ordered songs, admin capabilities,
+  and member-owned actions. Derive it from the current query cache without
+  changing fetched data or mutation contracts.
+- Extract one shared Schedule screen and shared style/component system for
+  Android and iOS. Keep only the native iOS widget synchronization in a small
+  platform-specific hook or wrapper. Do not maintain two large visual trees or
+  use platform name as the layout breakpoint.
+- Preserve stable service and assignment identities, FlatList/SectionList keys,
+  memoization boundaries, cache updates, scroll position, Realtime idempotency,
+  and the current bottom safe-area clearance.
+
+Checkpoint 22B: retain the shared tab header and add useful view controls:
+
+- Keep `ResponsiveTabHeader`, the active church name, Schedule eyebrow, loaded
+  range, notification bell, unread badge, safe-area behavior, and reserved bell
+  lane. Reuse the existing adaptive and word-safe title primitives rather than
+  introducing Schedule-specific font calculations.
+- Replace the low-value raw service count with concise loaded-range and relevant
+  schedule context while retaining an accurate upcoming count where it helps.
+  Metadata must wrap as a group below the title and never compete with the bell.
+- Add a true segmented control below the header for `All Services` and
+  `My Schedule`. `All Services` remains the default and displays exactly the
+  current service set. `My Schedule` derives locally and must not trigger a new
+  backend contract.
+- `My Schedule` includes services where the current member is assigned. Keep a
+  separate visible `Needs Attention` section above the filtered results for the
+  member's own fill-in requests and eligible fill-in requests, so selecting the
+  personal view can never hide an actionable fill-in.
+- Add one compact filter button for service type, role, and loaded date range
+  only if all filters can be performed on the already loaded cache. Show an
+  active-filter count and a clear action; never silently persist a filter that
+  makes a future launch appear to have missing services.
+- Keep `Load Next N Days` and retry behavior. A filter must never change the
+  source window, pagination cursor, widget projection, notification targeting,
+  or backend query semantics.
+
+Checkpoint 22C: organize the schedule into virtualized month sections:
+
+- Replace the uninterrupted service stream with one virtualized `SectionList`
+  grouped by local service month and year. Use stable month keys and sticky,
+  accessible section headers while retaining deterministic service date/time/id
+  ordering.
+- Keep service dates in the app's existing local-date semantics. Do not parse a
+  date-only service through UTC or move it to another day at timezone or daylight
+  saving boundaries.
+- Preserve pull-to-refresh, nonblocking cached content, loaded range footer,
+  maintain-visible-position behavior where supported, and sufficient bottom
+  inset for the floating tab bar.
+- Constrain the content to a readable maximum width on tablets while retaining
+  one chronological column. Do not turn a schedule into a two-column card grid
+  where reading order becomes ambiguous.
+
+Checkpoint 22D: redesign the service summary for fast scanning:
+
+- Use an 8px-or-less service surface with a hairline border, restrained or no
+  shadow, 14-16px internal spacing, and clear separation between services. Avoid
+  nested decorative cards and the current heavy 16px floating-card treatment.
+- Lead with a stable date lane containing weekday, day, and month. Place service
+  type and localized time in the flexible center lane. Reserve the right lane
+  for status and one overflow action so text can never collide with controls.
+- For admins, move destructive service actions into an accessible overflow menu
+  with a confirmation. Do not expose a prominent trash icon in the title row.
+  Include only actions backed by an existing working mutation; do not add a dead
+  `Edit Service` command as visual decoration.
+- Show a compact, prominent `Your Assignment` summary near the top when the
+  current member has one or more roles. Combine multiple roles without
+  duplicating the service and never imply assignment on an unassigned service.
+- Use progressive disclosure for large services: the collapsed summary retains
+  date, service, time, personal assignment, fill-in attention, team count, and
+  song count; expanding reveals the complete team and ordered song list. Keep
+  expansion device-local and ephemeral, and automatically expose content needed
+  for an active action or error.
+
+Checkpoint 22E: rebuild team rows around role and permission clarity:
+
+- Present assignments as quiet Profile-style rows with role as the primary
+  label, assigned person as the value, and an explicit `Unassigned` state.
+  Maintain the church's configured role order.
+- On compact widths or large font scales, stack role and person vertically.
+  On wider widths, use separate flexible lanes. Never force the iOS inline row
+  or Android stacked row purely by platform.
+- For admins, tapping an assignment row opens the existing availability-safe,
+  role-grouped manual assignment modal. Put assign/reassign/clear commands in
+  that focused interaction instead of showing multiple small icons on every row.
+- For members, assignment rows are read-only except for the existing
+  `Request Fill-In` action on their own eligible assignment. Use a full minimum
+  44x44 touch target and a clear pending state after a request exists.
+- Keep unavailable-date blocking, role eligibility, candidate ordering, error
+  messages, optimistic/cache updates, and all Package 17/18 RPC fallbacks exactly
+  as implemented.
+
+Checkpoint 22F: simplify songs without changing ownership or ordering:
+
+- Display songs as one ordered list with stable numeric position, song type,
+  optional song number, title/details, and author metadata. Use one list row per
+  song rather than multiple badges and nested action surfaces competing for
+  space.
+- Put one icon-only Add Song command with an accessibility label in the Songs
+  section heading. Keep the current multi-song draft, order controls, optional
+  member notification selection, keyboard behavior, validation, and responsive
+  shared modal.
+- Tapping an authored song opens the existing edit flow. A regular member gets
+  no edit affordance for a song authored by someone else. Admin moderation stays
+  available through the row overflow menu.
+- Preserve current delete and reorder functionality for every actor already
+  authorized to use it. Reorder mode must expose position, disabled boundaries,
+  busy state, rollback/error feedback, and minimum touch targets without
+  changing persisted `display_order` semantics.
+- For long song lists, show a useful ordered preview and an explicit `Show All`
+  expansion rather than letting songs push assignments and actions many screens
+  apart. No song may become inaccessible while collapsed.
+
+Checkpoint 22G: elevate fill-in requests and notification history:
+
+- Render pending fill-ins as a single high-priority, non-nested attention row
+  immediately below the service summary. In one readable sentence show the
+  requester's resolved display name, role, optional reason, and whether the
+  current member can accept or cancel.
+- Keep requester-name fallbacks, admin visibility, role eligibility, duplicate
+  acceptance protection, cancellation, three-hour escalation, acceptance
+  notification, navigation payload, and Realtime/cache convergence unchanged.
+- Keep the bell in the shared header, but move long notification history to a
+  focused Schedule-owned screen using the same focused header pattern as Profile
+  subpages. Preserve unread count, read-at updates, realtime insert/update/delete,
+  permission-disabled behavior, loading/error/empty states, and a route-safe
+  fallback so notification taps and restored navigation cannot fail.
+- Do not alter OneSignal identity, push subscriptions, recipient resolution,
+  notification event keys, or any Edge Function in this package.
+
+Checkpoint 22H: unify loading, refresh, empty, and recovery states:
+
+- Use the shared app state and refresh notice primitives from Packages 6, 10,
+  and 16. Initial bootstrap may use a full-screen state; background refresh must
+  retain the last usable schedule and never flash the whole screen.
+- Provide distinct states for no upcoming services, no personal assignments,
+  filters with no matches, incomplete church setup, service-range failure,
+  offline cached data, lost membership, and recoverable initialization failure.
+- Admin-only recovery may link to the existing Church Setup destination. A
+  regular member must never receive an admin setup command or a misleading blank
+  admin tab.
+- Keep notification permission education contextual and nonblocking. It must not
+  displace the schedule repeatedly or trigger the OS prompt without the existing
+  explicit Enable action.
+
+Checkpoint 22I: make every name and action responsive once, not per screen:
+
+- Apply the existing deterministic typography and word-safe wrapping system to
+  church names, service types, member names, roles, song titles, requester names,
+  notification titles, month labels, button labels, and empty/error copy where
+  appropriate. Do not use viewport-proportional font sizes or arbitrary
+  per-platform shrink rules.
+- Test short names, ordinary names, long multi-word names, one very long token,
+  compound and hyphenated names, apostrophes, accents, emoji, right-to-left text,
+  long translated action labels, and duplicate names. Preserve exact stored text
+  for database writes, selection, copying, notifications, and accessibility;
+  visual normalization must never mutate source data.
+- Allow names to wrap at word boundaries up to the component's explicit line
+  limit. Disable hyphenation and mid-word breaks. After the readable font floor
+  is reached, ellipsize only the visual label while VoiceOver/TalkBack announces
+  the complete value.
+- Reserve fixed-width action lanes before measuring text. Switch rows from
+  horizontal to stacked layouts using available width and font scale, not device
+  model. Text must never render beneath the bell, overflow an action, resize a
+  touch target, or change card width when status changes.
+- Validate 320, 360, 375, 390, 430, 768, and 1024 point/dp widths; portrait and
+  landscape; Android display scaling; iOS Larger Text; and font scales from 1.0
+  through the app's supported accessibility maximum.
+
+Checkpoint 22J: accessibility and interaction polish:
+
+- Give every service, section, assignment, song, fill-in alert, disclosure,
+  menu, and action a semantic role, complete label, useful hint, selected/
+  expanded/disabled/busy state, and logical reading order.
+- Make every interactive target at least 44x44 points/dp. Support VoiceOver,
+  TalkBack, Voice Control, keyboard navigation where available, reduced motion,
+  sufficient contrast, and differentiation without color alone.
+- Use subtle disclosure/row transitions only when reduced motion is off. Preserve
+  scroll position when a card expands, a realtime event arrives, or a mutation
+  updates one service.
+- Keep all popups on the shared Package 20 modal contract with fixed actions,
+  keyboard dismissal, accessibility escape, Android Back, safe areas, and one
+  vertical scroll owner.
+
+Compatibility and rollout gate:
+
+- This package requires no Supabase migration or deployment. Do not alter or
+  redeploy backend objects merely to support visual grouping, filters,
+  disclosure, or notification presentation.
+- Build the new view model and shared components beside the current screen,
+  protect them with a local client rollout flag during development, and retain a
+  one-build rollback path to the current Schedule presentation.
+- Before removing duplicated visual code, compare every existing handler,
+  mutation, modal, query, cache update, realtime subscription, permission gate,
+  and iOS widget refresh trigger against the shared replacement. No handler may
+  disappear because its visible button moved.
+- Run the released Android and iOS builds against the unchanged backend before
+  and after publishing the redesigned client. Installed older builds must still
+  load, refresh, mutate, receive realtime changes and notifications, and use
+  fill-ins exactly as before.
+- Rollback is a client build that restores the old visual composition. It must
+  not require a database rollback, data repair, push reconfiguration, or removal
+  of user-created services, assignments, songs, or fill-in requests.
+
+Verification:
+
+- Add pure unit tests for section grouping, local date boundaries, ordering,
+  `All Services`, `My Schedule`, needs-attention inclusion, filter clearing,
+  expansion state, personal assignment summaries, and long-name layout choices.
+- Add permission contract tests proving owner/admin controls are available only
+  in the active admin church; ordinary members cannot mutate services or direct
+  assignments; song authors cannot edit another author's song; and all current
+  fill-in and own-song workflows remain reachable.
+- Add component contracts proving Android and iOS render one shared Schedule
+  tree, every action maps to its existing handler, admin menus contain no dead
+  command, notification history retains read/realtime behavior, and Package 21
+  widget sync remains iOS-only.
+- Test service creation/deletion, manual reassignment/clear, bulk deletion,
+  auto-assignment results, fill-in request/accept/cancel/escalation, song add/
+  multi-add/edit/delete/reorder, notification opening, pull-to-refresh, range
+  loading, offline recovery, and realtime changes while cards are collapsed and
+  expanded.
+- Capture visual screenshots for the complete width/name/font matrix in member,
+  admin, no-assignment, multiple-role, unassigned-slot, many-song, fill-in-alert,
+  empty, loading, refreshing, error, and filtered states on Android and iOS.
+- Run TypeScript, ESLint, Deno function checks, all automated tests, Android and
+  iOS JavaScript exports, and physical-device smoke tests before release.
+
+Done when:
+
+- Members can immediately understand what is next, what they are assigned to,
+  and what needs attention; admins can manage the same complete schedule without
+  cluttering every row; songs and fill-ins remain easy to use; every short or
+  long name remains readable and stable; Android and iOS share one responsive
+  implementation; all current functionality and permissions are preserved; and
+  released app versions continue to work against the unchanged backend.
 
 ### Ownership Boundaries for Items 12-23
 

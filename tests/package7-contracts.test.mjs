@@ -23,6 +23,7 @@ const adaptiveText = readSource(
 );
 const androidSchedule = readSource('app', '(tabs)', '(home)', 'index.tsx');
 const iosSchedule = readSource('app', '(tabs)', '(home)', 'index.ios.tsx');
+const sharedSchedule = readSource('components', 'schedules', 'schedule-screen.tsx');
 const church = readSource('app', '(tabs)', 'church.tsx');
 const androidProfile = readSource('app', '(tabs)', 'profile.tsx');
 const iosProfile = readSource('app', '(tabs)', 'profile.ios.tsx');
@@ -67,13 +68,14 @@ test('AdaptiveHeaderText supports Larger Text and full-name accessibility', () =
 });
 
 test('Schedule and Church reserve stable action lanes explicitly', () => {
-  for (const schedule of [androidSchedule, iosSchedule]) {
-    assert.match(schedule, /titleVariant="primaryTitle"/);
-    assert.match(
-      schedule,
-      /trailingWidth=\{HEADER_ACTION_LANE_WIDTHS\.bell\}/,
-    );
+  for (const route of [androidSchedule, iosSchedule]) {
+    assert.match(route, /schedule-screen/);
   }
+  assert.match(sharedSchedule, /titleVariant="primaryTitle"/);
+  assert.match(
+    sharedSchedule,
+    /trailingWidth=\{HEADER_ACTION_LANE_WIDTHS\.bell\}/,
+  );
 
   assert.match(church, /titleVariant="primaryTitle"/);
   assert.match(

@@ -15,6 +15,7 @@ const churchContext = readSource('contexts', 'ChurchContext.tsx');
 const churchScreen = readSource('app', '(tabs)', 'church.tsx');
 const androidSchedule = readSource('app', '(tabs)', '(home)', 'index.tsx');
 const iosSchedule = readSource('app', '(tabs)', '(home)', 'index.ios.tsx');
+const sharedSchedule = readSource('components', 'schedules', 'schedule-screen.tsx');
 const androidProfile = readSource('app', '(tabs)', 'profile.tsx');
 const iosProfile = readSource('app', '(tabs)', 'profile.ios.tsx');
 const sharedProfile = readSource('components', 'profile', 'profile-screen.tsx');
@@ -67,7 +68,10 @@ test('failed background reads retain the last good member and settings', () => {
 });
 
 test('refreshable tabs share nonblocking and deduplicated refresh behavior', () => {
-  for (const source of [churchScreen, androidSchedule, iosSchedule]) {
+  for (const route of [androidSchedule, iosSchedule]) {
+    assert.match(route, /schedule-screen/);
+  }
+  for (const source of [churchScreen, sharedSchedule]) {
     assert.match(source, /useRefreshController/);
     assert.match(source, /runRefreshBatch/);
     assert.match(source, /RefreshErrorNotice/);

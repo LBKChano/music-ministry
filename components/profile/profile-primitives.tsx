@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
+import { InlineStatus } from '@/components/feedback/inline-status';
 import { colors } from '@/styles/commonStyles';
 
 type AndroidIconName = ComponentProps<typeof IconSymbol>['android_material_icon_name'];
@@ -172,58 +173,7 @@ export function ProfileStatus({
   tone = 'info',
   live = true,
 }: ProfileStatusProps) {
-  if (!message) return null;
-
-  const isError = tone === 'error';
-  const isSuccess = tone === 'success';
-  const foreground = isError
-    ? colors.error
-    : isSuccess
-      ? '#166534'
-      : colors.primary;
-  const background = isError
-    ? colors.errorBackground
-    : isSuccess
-      ? '#F0FDF4'
-      : colors.backgroundAlt;
-  const border = isError
-    ? colors.errorBorder
-    : isSuccess
-      ? '#BBF7D0'
-      : colors.border;
-
-  return (
-    <View
-      accessibilityLiveRegion={live ? (isError ? 'assertive' : 'polite') : 'none'}
-      accessibilityRole={live && isError ? 'alert' : undefined}
-      style={[
-        styles.status,
-        { backgroundColor: background, borderColor: border },
-      ]}
-    >
-      <IconSymbol
-        ios_icon_name={
-          isError
-            ? 'exclamationmark.circle.fill'
-            : isSuccess
-              ? 'checkmark.circle.fill'
-              : 'info.circle.fill'
-        }
-        android_material_icon_name={
-          isError ? 'error' : isSuccess ? 'check-circle' : 'info'
-        }
-        size={19}
-        color={foreground}
-      />
-      <Text
-        maxFontSizeMultiplier={1.45}
-        selectable
-        style={[styles.statusText, { color: foreground }]}
-      >
-        {message}
-      </Text>
-    </View>
-  );
+  return <InlineStatus live={live} message={message} tone={tone} />;
 }
 
 export interface ProfileOverviewSection {
@@ -353,23 +303,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 18,
     textAlign: 'right',
-  },
-  status: {
-    alignItems: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 9,
-    marginBottom: 4,
-    minHeight: 44,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  statusText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '600',
-    lineHeight: 18,
   },
   list: {
     flex: 1,

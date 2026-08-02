@@ -5,7 +5,7 @@ This checklist is specific to the current Expo/EAS project.
 ## Build Configuration
 
 - App name: Music Ministry
-- Version: 1.1.0
+- Version: 1.2.0
 - iOS bundle identifier: com.lbkchano.musicministry
 - iOS build number: managed remotely by EAS because `appVersionSource` is `remote`
 - Android package: com.lbkchano.musicministry

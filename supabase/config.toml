@@ -6,6 +6,9 @@ verify_jwt = false
 [functions.send-fill-in-notifications]
 verify_jwt = true
 
+[functions.send-fill-in-escalations]
+verify_jwt = false
+
 [functions.send-service-comment-notifications]
 verify_jwt = true
 

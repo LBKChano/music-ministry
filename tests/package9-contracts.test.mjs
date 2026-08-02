@@ -10,6 +10,7 @@ const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf
 const churchRoute = read('app/(tabs)/church.tsx');
 const androidSchedule = read('app/(tabs)/(home)/index.tsx');
 const iosSchedule = read('app/(tabs)/(home)/index.ios.tsx');
+const sharedSchedule = read('components/schedules/schedule-screen.tsx');
 const context = read('contexts/ChurchContext.tsx');
 const types = read('lib/supabase/types.ts');
 const overview = read('components/church-admin/admin-hub-overview.tsx');
@@ -90,11 +91,12 @@ test('owner protection and destructive impact previews are enforced server-side'
 });
 
 test('both Schedule implementations guide incomplete admins to Church Setup', () => {
-  for (const schedule of [androidSchedule, iosSchedule]) {
-    assert.match(schedule, /Finish Church Setup/);
-    assert.match(schedule, /router\.push\('\/\(tabs\)\/church'\)/);
-    assert.match(schedule, /churchRoles\.length === 0 \|\| recurringServices\.length === 0/);
+  for (const route of [androidSchedule, iosSchedule]) {
+    assert.match(route, /schedule-screen/);
   }
+  assert.match(sharedSchedule, /Finish Church Setup/);
+  assert.match(sharedSchedule, /router\.push\('\/\(tabs\)\/church'\)/);
+  assert.match(sharedSchedule, /churchRoles\.length === 0 \|\| recurringServices\.length === 0/);
 });
 
 test('account Sign Out is no longer mixed into Church management', () => {
@@ -102,8 +104,10 @@ test('account Sign Out is no longer mixed into Church management', () => {
   assert.doesNotMatch(churchRoute, /Sign Out Confirmation Modal/);
 });
 
-test('Package 9 keeps existing bulk deletion and auto-assignment RPC payloads unchanged', () => {
-  assert.match(churchRoute, /rpc\('auto_assign_service_slots'/);
+test('Package 9 keeps released bulk deletion and auto-assignment RPC contracts available', () => {
+  assert.match(types, /auto_assign_service_slots:/);
+  assert.match(types, /target_service_ids\?: string\[\] \| null/);
+  assert.match(churchRoute, /rpc\('auto_assign_service_slots_v2'/);
   assert.match(churchRoute, /previewBulkServiceDeletion/);
   assert.match(churchRoute, /applyBulkServiceDeletion/);
   assert.doesNotMatch(migration, /create or replace function public\.auto_assign_service_slots/);

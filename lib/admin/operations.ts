@@ -38,6 +38,7 @@ type AutoAssignMemberFingerprint = {
 export type AutoAssignPreviewKeyInput = {
   churchId: string;
   mode: 'fill_empty' | 'reassign_all';
+  targetRoleId?: string | null;
   range: AutoAssignRangeFingerprint;
   allowMultipleRolesSameService: boolean;
   services: AutoAssignServiceFingerprint[];
@@ -94,9 +95,10 @@ export function createAutoAssignPreviewKey(
     .sort((left, right) => left.id.localeCompare(right.id));
 
   return JSON.stringify({
-    version: 1,
+    version: 2,
     churchId: input.churchId,
     mode: input.mode,
+    targetRoleId: input.targetRoleId ?? null,
     range: {
       startDate: input.range.target_start_date,
       endDate: input.range.target_end_date,
@@ -106,4 +108,30 @@ export function createAutoAssignPreviewKey(
     services,
     members,
   });
+}
+
+export function isStaleAutoAssignPreviewError(
+  error: RpcErrorLike | null | undefined,
+): boolean {
+  if (!error) return false;
+  if (
+    error.details === 'stale_preview'
+    || error.details === 'preview_apply_diverged'
+  ) return true;
+
+  const message = `${error.message ?? ''} ${error.details ?? ''}`.toLowerCase();
+  return message.includes('schedule changed')
+    || message.includes('stale_preview')
+    || message.includes('preview_apply_diverged');
+}
+
+export function isMissingAutoAssignRoleError(
+  error: RpcErrorLike | null | undefined,
+): boolean {
+  if (!error) return false;
+  if (error.details === 'role_not_found') return true;
+
+  const message = `${error.message ?? ''} ${error.details ?? ''}`.toLowerCase();
+  return message.includes('selected role is no longer available')
+    || message.includes('role_not_found');
 }

@@ -2,8 +2,6 @@ import Constants from 'expo-constants';
 import { Stack, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -13,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
+import { AppModal } from '@/components/ui/app-modal';
 import { ProfileFocusedHeader } from '@/components/profile/profile-focused-header';
 import { ProfileRow, ProfileStatus } from '@/components/profile/profile-primitives';
 import { useChurch } from '@/hooks/useChurch';
@@ -132,44 +131,26 @@ export function ProfileAccountScreen() {
         </Pressable>
       </ScrollView>
 
-      <Modal
-        animationType="fade"
-        onRequestClose={() => !signingOut && setShowSignOut(false)}
-        transparent
+      <AppModal
+        busy={signingOut}
+        onClose={() => setShowSignOut(false)}
+        primaryAction={{
+          label: 'Sign Out',
+          loading: signingOut,
+          onPress: () => void handleSignOut(),
+        }}
+        secondaryAction={{
+          label: 'Cancel',
+          onPress: () => setShowSignOut(false),
+        }}
+        title="Sign Out?"
+        variant="confirmation"
         visible={showSignOut}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text accessibilityRole="header" style={styles.modalTitle}>Sign Out?</Text>
-            <Text style={styles.modalMessage}>
-              This device will stop receiving notifications for this account. Your account and church data will remain available.
-            </Text>
-            <View style={styles.modalButtons}>
-              <Pressable
-                accessibilityRole="button"
-                disabled={signingOut}
-                onPress={() => setShowSignOut(false)}
-                style={({ pressed }) => [styles.modalButton, styles.cancelButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.cancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ busy: signingOut }}
-                disabled={signingOut}
-                onPress={() => void handleSignOut()}
-                style={({ pressed }) => [styles.modalButton, styles.confirmButton, pressed && styles.pressed]}
-              >
-                {signingOut ? (
-                  <ActivityIndicator color={colors.headerText} />
-                ) : (
-                  <Text style={styles.confirmText}>Sign Out</Text>
-                )}
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        <Text style={styles.modalMessage}>
+          This device will stop receiving notifications for this account. Your account and church data will remain available.
+        </Text>
+      </AppModal>
     </SafeAreaView>
   );
 }
@@ -212,16 +193,7 @@ const styles = StyleSheet.create({
   infoValue: { color: colors.textSecondary, fontSize: 15, fontVariant: ['tabular-nums'], fontWeight: '700' },
   signOutButton: { alignItems: 'center', alignSelf: 'stretch', backgroundColor: colors.backgroundAlt, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 9, justifyContent: 'center', minHeight: 50, paddingHorizontal: 18 },
   signOutText: { color: colors.primary, fontSize: 16, fontWeight: '800' },
-  modalOverlay: { alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.52)', flex: 1, justifyContent: 'center', padding: 24 },
-  modalContent: { backgroundColor: colors.card, borderRadius: 8, maxWidth: 420, padding: 22, width: '100%' },
-  modalTitle: { color: colors.text, fontSize: 20, fontWeight: '800', lineHeight: 26, textAlign: 'center' },
   modalMessage: { color: colors.textSecondary, fontSize: 14, lineHeight: 21, paddingVertical: 15, textAlign: 'center' },
-  modalButtons: { flexDirection: 'row', gap: 10 },
-  modalButton: { alignItems: 'center', borderRadius: 8, flex: 1, justifyContent: 'center', minHeight: 48, paddingHorizontal: 14 },
-  cancelButton: { backgroundColor: colors.backgroundAlt, borderColor: colors.border, borderWidth: 1 },
-  confirmButton: { backgroundColor: colors.primary },
-  cancelText: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  confirmText: { color: colors.headerText, fontSize: 15, fontWeight: '800' },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.55 },
 });

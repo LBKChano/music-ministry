@@ -1,9 +1,9 @@
 
-import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "@/styles/commonStyles";
 import React, { useEffect, useMemo, useRef } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, StyleSheet } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
+import { AppStateScreen } from '@/components/feedback/app-state-screen';
 import {
   ResponsiveTabHeader,
   TabHeaderIconSurface,
@@ -18,7 +18,6 @@ import { performanceBaselineEnabled } from "@/lib/performance/baseline";
 import { useMemberAvailability } from "@/hooks/useMemberAvailability";
 import { useSchedulingPreferences } from "@/hooks/useSchedulingPreferences";
 import { useNotificationPreferences } from "@/hooks/useNotificationPreferences";
-import { ChurchSwitcher } from "@/components/profile/ChurchSwitcher";
 import { shouldShowInitialLoader } from "@/lib/query/refresh-coordinator";
 import { HEADER_ACTION_LANE_WIDTHS } from "@/lib/ui/header-typography";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -56,6 +55,7 @@ export function ProfileScreen({
     sessionError,
     currentMember,
     currentChurch,
+    churches,
     recurringServices,
     isAdmin,
     refreshChurches,
@@ -155,59 +155,42 @@ export function ProfileScreen({
 
   if (user && sessionStatus === 'no-membership') {
     return (
-      <SafeAreaView style={styles.stateScreen}>
+      <>
         <Stack.Screen options={{ headerShown: false }} />
-        <IconSymbol
-          ios_icon_name="building.2.crop.circle"
-          android_material_icon_name="domain-disabled"
-          size={44}
-          color={colors.primary}
+        <AppStateScreen
+          title="No church connected"
+          message="Join or create a church before opening your church profile."
+          iosIcon="building.2.crop.circle"
+          androidIcon="domain-disabled"
+          actions={[{
+            label: 'Continue',
+            accessibilityHint: 'Opens account recovery options for joining or creating a church.',
+            onPress: () => router.replace('/no-membership'),
+          }]}
         />
-        <Text accessibilityRole="header" style={styles.stateTitle}>
-          No church connected
-        </Text>
-        <Text style={styles.stateMessage}>
-          Join or create a church before opening your church profile.
-        </Text>
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityHint="Opens account recovery options for joining or creating a church."
-          style={styles.stateButton}
-          onPress={() => router.replace('/no-membership')}
-        >
-          <Text style={styles.stateButtonText}>Continue</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
+      </>
     );
   }
 
   if (user && sessionStatus === 'error' && !currentMember) {
     return (
-      <SafeAreaView style={styles.stateScreen}>
+      <>
         <Stack.Screen options={{ headerShown: false }} />
-        <IconSymbol
-          ios_icon_name="exclamationmark.circle.fill"
-          android_material_icon_name="error"
-          size={44}
-          color={colors.error}
+        <AppStateScreen
+          title="Profile unavailable"
+          message={sessionError || 'Your church profile could not be loaded.'}
+          iosIcon="exclamationmark.circle.fill"
+          androidIcon="error"
+          iconTone="error"
+          actions={[{
+            label: 'Retry',
+            accessibilityHint: 'Retries loading your church profile.',
+            onPress: () => {
+              void retryChurchSession();
+            },
+          }]}
         />
-        <Text accessibilityRole="header" style={styles.stateTitle}>
-          Profile unavailable
-        </Text>
-        <Text accessibilityRole="alert" style={styles.stateMessage}>
-          {sessionError || 'Your church profile could not be loaded.'}
-        </Text>
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityHint="Retries loading your church profile."
-          style={styles.stateButton}
-          onPress={() => {
-            void retryChurchSession();
-          }}
-        >
-          <Text style={styles.stateButtonText}>Retry</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
+      </>
     );
   }
 
@@ -220,15 +203,18 @@ export function ProfileScreen({
   ) {
     console.log(`[ProfileScreen.${implementation}] Showing initial loading state`);
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
+      <>
         <Stack.Screen
           options={{
             headerShown: false,
           }}
         />
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 12, fontSize: 16, color: colors.textSecondary }}>Loading…</Text>
-      </SafeAreaView>
+        <AppStateScreen
+          title="Loading Profile"
+          message="Getting your church membership and preferences ready."
+          loading
+        />
+      </>
     );
   }
 
@@ -334,7 +320,17 @@ export function ProfileScreen({
                     router.push('/profile-identity');
                   }}
                 />
-                <ChurchSwitcher />
+                <ProfileRow
+                  title="Switch Church"
+                  summary={currentChurch?.name ?? 'Choose the church you want to use.'}
+                  value={`${churches.length} connected`}
+                  iosIcon="building.2"
+                  androidIcon="business"
+                  accessibilityHint="Opens your connected churches and lets you switch or join another church."
+                  onPress={() => {
+                    router.push('/profile-churches');
+                  }}
+                />
               </View>
             ),
           },
@@ -479,43 +475,6 @@ export function ProfileScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  stateScreen: {
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    flex: 1,
-    gap: 12,
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-  },
-  stateTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '800',
-    lineHeight: 28,
-    textAlign: 'center',
-  },
-  stateMessage: {
-    color: colors.textSecondary,
-    fontSize: 15,
-    lineHeight: 22,
-    maxWidth: 420,
-    textAlign: 'center',
-  },
-  stateButton: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    justifyContent: 'center',
-    marginTop: 4,
-    minHeight: 48,
-    minWidth: 144,
-    paddingHorizontal: 20,
-  },
-  stateButtonText: {
-    color: colors.headerText,
-    fontSize: 16,
-    fontWeight: '700',
   },
   sectionContent: {
     gap: 12,

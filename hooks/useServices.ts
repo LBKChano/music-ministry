@@ -40,10 +40,17 @@ import {
   clearLocalAssignmentWrite,
   markLocalAssignmentDelete,
   markLocalAssignmentUpsert,
+  upsertAssignmentInCache,
   upsertServiceInCache,
   type CachedService as ServiceWithAssignments,
 } from '@/lib/realtime/cache-updates';
 import { isMissingRpcFunctionError } from '@/lib/admin/operations';
+import {
+  applyValidatedManualAssignment,
+  fetchManualAssignmentCandidates,
+  normalizeManualAssignmentError,
+  type ManualAssignmentCandidate,
+} from '@/lib/services/manual-assignment';
 import type { TablesInsert } from '@/lib/supabase/types';
 
 export type { CachedService as ServiceWithAssignments } from '@/lib/realtime/cache-updates';
@@ -782,6 +789,47 @@ export function useServices(
     }
   }, [setServices]);
 
+  const loadManualAssignmentCandidates = useCallback(
+    (assignmentId: string) => fetchManualAssignmentCandidates(assignmentId),
+    [],
+  );
+
+  const assignMemberValidated = useCallback(async (
+    candidate: ManualAssignmentCandidate,
+  ) => {
+    if (!accountId || !churchId || candidate.churchId !== churchId) {
+      throw normalizeManualAssignmentError({ details: 'stale_assignment' });
+    }
+
+    markLocalAssignmentUpsert({
+      id: candidate.assignmentId,
+      member_id: candidate.memberId,
+      person_name: candidate.displayName,
+    });
+
+    try {
+      setError(null);
+      const assignment = await applyValidatedManualAssignment(candidate);
+
+      if (candidate.churchId !== churchId) {
+        clearLocalAssignmentWrite(candidate.assignmentId);
+        throw normalizeManualAssignmentError({ details: 'stale_assignment' });
+      }
+
+      upsertAssignmentInCache(
+        queryClient,
+        servicesQueryRoot,
+        assignment,
+      );
+      return assignment;
+    } catch (assignmentError) {
+      clearLocalAssignmentWrite(candidate.assignmentId);
+      const normalizedError = normalizeManualAssignmentError(assignmentError);
+      setError(normalizedError.message);
+      throw normalizedError;
+    }
+  }, [accountId, churchId, queryClient, servicesQueryRoot]);
+
   // Batch update assignments - NEW OPTIMIZED METHOD
   const batchUpdateAssignments = useCallback(async (updates: { id: string; member_id: string; person_name: string }[]) => {
     console.log('Batch updating assignments:', updates.length, 'assignments');
@@ -1322,6 +1370,14 @@ export function useServices(
       }),
     [runServiceMutation, updateAssignment]
   );
+  const assignMemberValidatedAction = useCallback(
+    (...args: Parameters<typeof assignMemberValidated>) =>
+      runServiceMutation({
+        operation: 'assign-member-validated',
+        run: () => assignMemberValidated(...args),
+      }),
+    [assignMemberValidated, runServiceMutation],
+  );
   const batchUpdateAssignmentsAction = useCallback(
     (...args: Parameters<typeof batchUpdateAssignments>) =>
       runServiceMutation({
@@ -1400,6 +1456,8 @@ export function useServices(
     applyBulkServiceDeletion: applyBulkServiceDeletionAction,
     addAssignment: addAssignmentAction,
     updateAssignment: updateAssignmentAction,
+    loadManualAssignmentCandidates,
+    assignMemberValidated: assignMemberValidatedAction,
     batchUpdateAssignments: batchUpdateAssignmentsAction,
     deleteAssignment: deleteAssignmentAction,
     addServiceComment: addServiceCommentAction,

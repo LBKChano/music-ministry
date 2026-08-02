@@ -1,4 +1,3 @@
-
 import React from 'react';
 import {
   View,
@@ -14,12 +13,14 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
 import Animated, {
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Href } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
+import { findActiveTabIndex } from '@/lib/ui/package16';
 
 export interface TabBarItem {
   name: string;
@@ -40,14 +41,15 @@ interface FloatingTabBarProps {
 export default function FloatingTabBar({
   tabs,
   containerWidth,
-  borderRadius = 30,
+  borderRadius = 8,
   bottomMargin,
 }: FloatingTabBarProps) {
   const { width: screenWidth } = useWindowDimensions();
+  const reduceMotion = useReducedMotion();
   const initialTabCount = tabs?.length ?? 0;
   const defaultContainerWidth = initialTabCount >= 3
-    ? Math.min(screenWidth - 32, 380)
-    : Math.min(screenWidth - 40, 304);
+    ? Math.min(screenWidth - 24, 390)
+    : Math.min(screenWidth - 32, 320);
   const resolvedContainerWidth = Math.max(1, containerWidth ?? defaultContainerWidth);
   const router = useRouter();
   const pathname = usePathname();
@@ -63,44 +65,13 @@ export default function FloatingTabBar({
   const tabCount = safeTabs.length;
 
   const activeTabIndex = React.useMemo(() => {
-    console.log('FloatingTabBar - Current pathname:', pathname);
-
     if (tabCount === 0) {
-      console.warn('FloatingTabBar - No tabs provided');
       return 0;
     }
-
-    let bestMatch = -1;
-    let bestMatchScore = 0;
-
-    safeTabs.forEach((tab, index) => {
-      if (!tab || !tab.route) {
-        console.warn('FloatingTabBar - Invalid tab at index', index, tab);
-        return;
-      }
-
-      let score = 0;
-      const routeStr = String(tab.route);
-
-      if (pathname === routeStr) {
-        score = 100;
-      } else if (pathname.startsWith(routeStr)) {
-        score = 80;
-      } else if (tab.name && pathname.includes(tab.name)) {
-        score = 60;
-      } else if (routeStr.includes('/(tabs)/') && pathname.includes(routeStr.split('/(tabs)/')[1])) {
-        score = 40;
-      }
-
-      if (score > bestMatchScore) {
-        bestMatchScore = score;
-        bestMatch = index;
-      }
-    });
-
-    const result = bestMatch >= 0 ? bestMatch : 0;
-    console.log('FloatingTabBar - Active tab index:', result);
-    return result;
+    return findActiveTabIndex(
+      pathname,
+      safeTabs.map(tab => ({ name: tab.name, route: String(tab.route) })),
+    );
   }, [pathname, safeTabs, tabCount]);
 
   // Keep shared values in sync — always run, never conditional
@@ -114,18 +85,19 @@ export default function FloatingTabBar({
 
   React.useEffect(() => {
     if (activeTabIndex >= 0) {
-      animatedValue.value = withSpring(activeTabIndex, {
-        damping: 20,
-        stiffness: 120,
-        mass: 1,
-      });
+      animatedValue.value = reduceMotion
+        ? activeTabIndex
+        : withSpring(activeTabIndex, {
+          damping: 20,
+          stiffness: 120,
+          mass: 1,
+        });
     }
-  }, [activeTabIndex, animatedValue]);
+  }, [activeTabIndex, animatedValue, reduceMotion]);
 
   const handleTabPress = React.useCallback(
     (route: Href) => {
-      console.log('FloatingTabBar - Navigating to:', route);
-      router.push(route);
+      router.navigate(route);
     },
     [router],
   );
@@ -158,7 +130,7 @@ export default function FloatingTabBar({
   const blurContainerStyle = {
     ...styles.blurContainer,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: '#CBD5E1',
     ...Platform.select({
       ios: {
         backgroundColor: 'rgba(255, 255, 255, 0.94)',
@@ -213,6 +185,10 @@ export default function FloatingTabBar({
                     style={styles.tab}
                     onPress={() => handleTabPress(tab.route)}
                     activeOpacity={0.7}
+                    accessibilityRole="tab"
+                    accessibilityLabel={tab.label}
+                    accessibilityHint={`Switches to the ${tab.label} tab`}
+                    accessibilityState={{ selected: isActive }}
                   >
                     <View style={styles.tabContent}>
                       <IconSymbol
@@ -222,6 +198,8 @@ export default function FloatingTabBar({
                         color={iconColor}
                       />
                       <Text
+                        maxFontSizeMultiplier={1.25}
+                        numberOfLines={1}
                         style={[
                           styles.tabLabel,
                           { color: labelColor, fontWeight: labelWeight },
@@ -270,12 +248,12 @@ const styles = StyleSheet.create({
     top: 6,
     left: 4,
     bottom: 6,
-    borderRadius: 24,
+    borderRadius: 6,
     width: '49%',
   },
   tabsContainer: {
     flexDirection: 'row',
-    height: 64,
+    height: 68,
     alignItems: 'center',
     paddingHorizontal: 6,
   },
@@ -283,6 +261,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 56,
     paddingVertical: 8,
   },
   tabContent: {
@@ -291,7 +270,8 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   tabLabel: {
-    fontSize: 10,
+    fontSize: 12,
+    lineHeight: 15,
     marginTop: 2,
   },
 });

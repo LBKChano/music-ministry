@@ -16,7 +16,7 @@ import {
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
-import { WordSafeHeaderText } from '@/components/navigation/word-safe-header-text';
+import { ProfileFocusedHeader } from '@/components/profile/profile-focused-header';
 import { ProfileStatus } from '@/components/profile/profile-primitives';
 import { useChurch } from '@/hooks/useChurch';
 import { useNotificationPreferences } from '@/hooks/useNotificationPreferences';
@@ -195,40 +195,12 @@ export function ProfileNotificationPreferencesScreen() {
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back to Profile"
-          disabled={isSaving}
-          hitSlop={10}
-          onPress={() => router.back()}
-          style={({ pressed }) => [
-            styles.headerButton,
-            pressed && styles.pressed,
-            isSaving && styles.disabled,
-          ]}
-        >
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow-back"
-            size={24}
-            color={colors.headerText}
-          />
-        </Pressable>
-        <View style={styles.headerCopy}>
-          <Text accessibilityRole="header" style={styles.headerTitle}>
-            Notifications
-          </Text>
-          <WordSafeHeaderText
-            accessible={false}
-            maxFontSizeMultiplier={1.35}
-            maxLines={2}
-            style={styles.headerSubtitle}
-            text={currentChurch.name}
-          />
-        </View>
-        <View style={styles.headerButtonSpacer} />
-      </View>
+      <ProfileFocusedHeader
+        disabled={isSaving}
+        onBack={() => router.back()}
+        subtitle={currentChurch.name}
+        title="Notifications"
+      />
 
       <ScrollView
         contentContainerStyle={[

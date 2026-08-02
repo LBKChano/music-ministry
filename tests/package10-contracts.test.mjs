@@ -12,6 +12,12 @@ const defaultRoute = read('app', '(tabs)', 'profile.tsx');
 const iosRoute = read('app', '(tabs)', 'profile.ios.tsx');
 const screen = read('components', 'profile', 'profile-screen.tsx');
 const primitives = read('components', 'profile', 'profile-primitives.tsx');
+const inlineStatus = read('components', 'feedback', 'inline-status.tsx');
+const churchSelector = read(
+  'components',
+  'profile',
+  'profile-churches-screen.tsx',
+);
 const availabilityEditor = read(
   'components',
   'profile',
@@ -60,7 +66,8 @@ test('Profile sections and rows expose accessible settings semantics', () => {
   assert.match(primitives, /accessibilityHint=\{accessibilityHint\}/);
   assert.match(primitives, /accessibilityValue=/);
   assert.match(primitives, /minHeight: 64/);
-  assert.match(primitives, /accessibilityLiveRegion=/);
+  assert.match(primitives, /<InlineStatus/);
+  assert.match(inlineStatus, /accessibilityLiveRegion=/);
 });
 
 test('the overview keeps the five planned sections in visual order', () => {
@@ -80,7 +87,8 @@ test('the overview keeps the five planned sections in visual order', () => {
 });
 
 test('all established Profile behavior remains connected', () => {
-  assert.match(screen, /<ChurchSwitcher \/>/);
+  assert.match(screen, /router\.push\('\/profile-churches'\)/);
+  assert.match(churchSelector, /<ChurchSwitcher \/>/);
   assert.match(screen, /router\.push\('\/profile-availability'\)/);
   assert.match(availabilityEditor, /<Calendar/);
   assert.match(availabilityEditor, /saveUnavailableDates/);

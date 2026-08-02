@@ -52,8 +52,28 @@ function parseFunctionJwtSettings(config) {
 const baseline = readJson('docs/compatibility-baseline.json');
 const appConfig = readJson('app.json').expo;
 
-test('mobile identifiers and source versions match the recorded baseline', () => {
-  assert.equal(appConfig.version, baseline.mobileSource.version);
+function semanticVersionParts(version) {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  assert.ok(match, `Expected a semantic app version, received ${version}`);
+  return match.slice(1).map(Number);
+}
+
+function compareSemanticVersions(left, right) {
+  const leftParts = semanticVersionParts(left);
+  const rightParts = semanticVersionParts(right);
+  for (let index = 0; index < leftParts.length; index += 1) {
+    if (leftParts[index] !== rightParts[index]) {
+      return leftParts[index] - rightParts[index];
+    }
+  }
+  return 0;
+}
+
+test('mobile identifiers match and source version does not regress from baseline', () => {
+  assert.ok(
+    compareSemanticVersions(appConfig.version, baseline.mobileSource.version) >= 0,
+    `App version ${appConfig.version} must not regress below released baseline ${baseline.mobileSource.version}`,
+  );
   assert.equal(
     appConfig.ios.bundleIdentifier,
     baseline.mobileSource.iosBundleIdentifier,

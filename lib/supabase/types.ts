@@ -866,6 +866,61 @@ export type Database = {
           skipped_report: Json
         }[]
       }
+      auto_assign_service_slots_v2: {
+        Args: {
+          target_church_id: string
+          assignment_mode?: string
+          dry_run?: boolean
+          target_start_date?: string | null
+          target_end_date?: string | null
+          target_service_ids?: string[] | null
+          target_role_id?: string | null
+          expected_preview_token?: string | null
+        }
+        Returns: {
+          assigned_count: number
+          open_slot_count: number
+          skipped_count: number
+          no_role_match_count: number
+          unavailable_slot_count: number
+          unavailable_candidate_count: number
+          same_service_conflict_count: number
+          cleared_count: number
+          preview: Json
+          skipped_report: Json
+          scope_role_id: string | null
+          scope_role_name: string | null
+          preview_token: string
+        }[]
+      }
+      get_manual_assignment_candidates_v1: {
+        Args: {
+          target_assignment_id: string
+        }
+        Returns: {
+          assignment_id: string
+          service_id: string
+          church_id: string
+          service_date: string
+          role_id: string
+          role_name: string
+          member_id: string
+          display_name: string
+          eligible: boolean
+          reason_code: string | null
+          unavailable_date: string | null
+        }[]
+      }
+      assign_member_to_slot_v2: {
+        Args: {
+          target_assignment_id: string
+          target_member_id: string
+          expected_service_id: string
+          expected_service_date: string
+          expected_role_id: string
+        }
+        Returns: Database["public"]["Tables"]["assignments"]["Row"]
+      }
       create_services_with_assignments_batch: {
         Args: {
           target_church_id: string

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createContext, useCallback, useContext } from "react";
-import { Platform } from "react-native";
+import { reloadScheduleWidgets } from '@/lib/widgets/schedule-widget';
 
 type WidgetContextType = {
   refreshWidget: () => void;
@@ -12,26 +12,11 @@ const WidgetContext = createContext<WidgetContextType>({
 
 export function WidgetProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
-    if (Platform.OS !== 'ios') return;
-    try {
-      // Dynamically require so Android never loads the module
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { ExtensionStorage } = require("@bacons/apple-targets");
-      ExtensionStorage.reloadWidget();
-    } catch (e) {
-      console.warn('[WidgetContext] reloadWidget failed on mount:', e);
-    }
+    reloadScheduleWidgets();
   }, []);
 
   const refreshWidget = useCallback(() => {
-    if (Platform.OS !== 'ios') return;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { ExtensionStorage } = require("@bacons/apple-targets");
-      ExtensionStorage.reloadWidget();
-    } catch (e) {
-      console.warn('[WidgetContext] reloadWidget failed:', e);
-    }
+    reloadScheduleWidgets();
   }, []);
 
   return (

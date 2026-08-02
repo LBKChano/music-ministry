@@ -2,7 +2,7 @@
   "expo": {
     "name": "Music Ministry",
     "slug": "music-ministry",
-    "version": "1.1.1",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -15,6 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.lbkchano.musicministry",
+      "appleTeamId": "22ZT5M8WQ5",
       "buildNumber": "3",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -31,7 +32,8 @@
       "entitlements": {
         "aps-environment": "production",
         "com.apple.security.application-groups": [
-          "group.com.lbkchano.musicministry.onesignal"
+          "group.com.lbkchano.musicministry.onesignal",
+          "group.com.lbkchano.musicministry.widgets"
         ]
       }
     },
@@ -85,6 +87,7 @@
           }
         }
       ],
+      "@bacons/apple-targets",
       "expo-font",
       "expo-router",
       "expo-web-browser",

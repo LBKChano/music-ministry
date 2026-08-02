@@ -68,6 +68,7 @@ import {
   deactivateCurrentNotificationDevice,
   registerCurrentNotificationDevice,
 } from '@/lib/notifications/device-registration';
+import { clearScheduleWidgetSnapshot } from '@/lib/widgets/schedule-widget';
 import {
   updateMatchingMembershipName,
   updateMatchingMembershipNameInList,
@@ -2004,6 +2005,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     label: string,
   ) => {
     clearNotificationIdentity();
+    clearScheduleWidgetSnapshot('signed_out');
 
     const cleanupResults = await Promise.allSettled([
       removeAllTrackedRealtimeChannels(label + ' Realtime cleanup'),

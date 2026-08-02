@@ -13,7 +13,7 @@ import { useNavigation, usePreventRemove } from '@react-navigation/native';
 import { Calendar, type DateData } from 'react-native-calendars';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
-import { WordSafeHeaderText } from '@/components/navigation/word-safe-header-text';
+import { ProfileFocusedHeader } from '@/components/profile/profile-focused-header';
 import { ProfileStatus } from '@/components/profile/profile-primitives';
 import { useChurch } from '@/hooks/useChurch';
 import { useMemberAvailability } from '@/hooks/useMemberAvailability';
@@ -308,40 +308,12 @@ export function ProfileAvailabilityScreen() {
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back to Profile"
-          disabled={saving}
-          hitSlop={10}
-          onPress={() => router.back()}
-          style={({ pressed }) => [
-            styles.headerButton,
-            pressed && styles.pressed,
-            saving && styles.disabled,
-          ]}
-        >
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow-back"
-            size={24}
-            color={colors.headerText}
-          />
-        </Pressable>
-        <View style={styles.headerCopy}>
-          <Text accessibilityRole="header" style={styles.headerTitle}>
-            Unavailable Dates
-          </Text>
-          <WordSafeHeaderText
-            accessible={false}
-            maxFontSizeMultiplier={1.35}
-            maxLines={2}
-            style={styles.headerSubtitle}
-            text={currentChurch.name}
-          />
-        </View>
-        <View style={styles.headerButtonSpacer} />
-      </View>
+      <ProfileFocusedHeader
+        disabled={saving}
+        onBack={() => router.back()}
+        subtitle={currentChurch.name}
+        title="Unavailable Dates"
+      />
 
       <ScrollView
         contentContainerStyle={[

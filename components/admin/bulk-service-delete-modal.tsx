@@ -6,17 +6,15 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
+import { AppModal } from '@/components/ui/app-modal';
 import type { ServiceWithAssignments } from '@/hooks/useServices';
 import {
   MAX_BULK_SERVICE_DELETE_COUNT,
@@ -94,7 +92,6 @@ export function BulkServiceDeleteModal({
   onPreview,
   onApply,
 }: BulkServiceDeleteModalProps) {
-  const { height, width } = useWindowDimensions();
   const [mode, setMode] = useState<BulkServiceDeleteMode>('date_range');
   const [startDate, setStartDate] = useState(() => startOfDay(new Date()));
   const [endDate, setEndDate] = useState(() => addDays(startOfDay(new Date()), 90));
@@ -516,52 +513,70 @@ export function BulkServiceDeleteModal({
   ) : null;
 
   return (
-    <Modal
+    <AppModal
+      bodyScroll={false}
+      busy={isApplying || isPreviewing}
+      footer={(
+        <View style={[styles.footer, { borderTopColor: colors.border }]}>
+          <TouchableOpacity
+            style={[styles.footerButton, styles.secondaryButton, { borderColor: colors.border }]}
+            onPress={preview ? editSelection : onClose}
+            disabled={isPreviewing || isApplying}
+          >
+            <Text style={[styles.secondaryButtonText, { color: colors.text }]}>
+              {preview ? 'Edit Selection' : 'Cancel'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.footerButton,
+              {
+                backgroundColor: preview ? colors.error : colors.primary,
+                opacity: (
+                  isPreviewing
+                  || isApplying
+                  || activeDateField !== null
+                  || (preview ? preview.service_count === 0 : false)
+                ) ? 0.5 : 1,
+              },
+            ]}
+            onPress={preview ? applyDeletion : generatePreview}
+            disabled={
+              isPreviewing
+              || isApplying
+              || activeDateField !== null
+              || (preview ? preview.service_count === 0 : false)
+            }
+          >
+            {isPreviewing || isApplying ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <IconSymbol
+                  ios_icon_name={preview ? 'trash' : 'doc.text.magnifyingglass'}
+                  android_material_icon_name={preview ? 'delete' : 'preview'}
+                  size={18}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.primaryButtonText}>
+                  {preview ? `Delete ${preview.service_count}` : 'Preview'}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+      maxWidth={620}
+      onClose={onClose}
+      subtitle={(
+        <Text style={[styles.churchName, { color: colors.textSecondary }]} numberOfLines={2}>
+          {churchName}
+        </Text>
+      )}
+      title="Manage Scheduled Services"
+      variant="long-content"
       visible={visible}
-      animationType="fade"
-      transparent
-      statusBarTranslucent
-      navigationBarTranslucent
-      presentationStyle="overFullScreen"
-      onRequestClose={isApplying ? undefined : onClose}
     >
-      <SafeAreaView style={styles.overlay}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={isApplying ? undefined : onClose} />
-        <View
-          style={[
-            styles.modal,
-            {
-              width: Math.min(width - 24, 620),
-              height: Math.min(720, Math.max(300, height - 24)),
-              backgroundColor: colors.cardBackground,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <View style={[styles.header, { borderBottomColor: colors.border }]}>
-            <View style={styles.headerText}>
-              <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>
-                Manage Scheduled Services
-              </Text>
-              <Text style={[styles.churchName, { color: colors.textSecondary }]} numberOfLines={1}>
-                {churchName}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={onClose}
-              disabled={isApplying}
-              accessibilityLabel="Close scheduled service manager"
-            >
-              <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
-                size={20}
-                color={colors.text}
-              />
-            </TouchableOpacity>
-          </View>
-
           {activeDateField ? (
             <View style={[styles.pickerPanel, { borderBottomColor: colors.border }]}>
               <DateTimePicker
@@ -606,57 +621,7 @@ export function BulkServiceDeleteModal({
             windowSize={7}
           />
 
-          <View style={[styles.footer, { borderTopColor: colors.border }]}>
-            <TouchableOpacity
-              style={[styles.footerButton, styles.secondaryButton, { borderColor: colors.border }]}
-              onPress={preview ? editSelection : onClose}
-              disabled={isPreviewing || isApplying}
-            >
-              <Text style={[styles.secondaryButtonText, { color: colors.text }]}>
-                {preview ? 'Edit Selection' : 'Cancel'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.footerButton,
-                {
-                  backgroundColor: preview ? colors.error : colors.primary,
-                  opacity: (
-                    isPreviewing
-                    || isApplying
-                    || activeDateField !== null
-                    || (preview ? preview.service_count === 0 : false)
-                  ) ? 0.5 : 1,
-                },
-              ]}
-              onPress={preview ? applyDeletion : generatePreview}
-              disabled={
-                isPreviewing
-                || isApplying
-                || activeDateField !== null
-                || (preview ? preview.service_count === 0 : false)
-              }
-            >
-              {isPreviewing || isApplying ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <IconSymbol
-                    ios_icon_name={preview ? 'trash' : 'doc.text.magnifyingglass'}
-                    android_material_icon_name={preview ? 'delete' : 'preview'}
-                    size={18}
-                    color="#FFFFFF"
-                  />
-                  <Text style={styles.primaryButtonText}>
-                    {preview ? `Delete ${preview.service_count}` : 'Preview'}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </SafeAreaView>
-    </Modal>
+    </AppModal>
   );
 }
 
