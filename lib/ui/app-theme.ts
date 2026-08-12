@@ -41,6 +41,7 @@ export interface AppTheme {
   };
   serviceMetadata: {
     surface: string;
+    border: string;
     foreground: string;
     mutedForeground: string;
   };
@@ -218,7 +219,8 @@ export const lightAppTheme: AppTheme = {
     mutedForeground: '#DCEAFF',
   },
   serviceMetadata: {
-    surface: lightBrand.navy,
+    surface: lightBrand.accent,
+    border: '#60A5FA',
     foreground: '#FFFFFF',
     mutedForeground: '#DCEAFF',
   },
@@ -338,7 +340,8 @@ export const futureDarkAppTheme: AppTheme = {
     mutedForeground: '#DCEAFF',
   },
   serviceMetadata: {
-    surface: darkBrand.navy,
+    surface: darkBrand.accent,
+    border: '#78B7FF',
     foreground: '#FFFFFF',
     mutedForeground: '#D5E7FF',
   },

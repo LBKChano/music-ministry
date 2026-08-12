@@ -52,6 +52,9 @@ test('snapshot identifiers and privacy boundaries match across JavaScript and Sw
   }
   assert.match(model, /SCHEDULE_WIDGET_SCHEMA_VERSION = 1/);
   assert.match(swift, /snapshotSchemaVersion = 1/);
+  assert.match(swift, /withFractionalSeconds/);
+  assert.match(swift, /fractionalFormatter\.date[\s\S]*ISO8601DateFormatter\(\)\.date/);
+  assert.match(model, /replace\(\/\\\.\\d\{3\}Z\$\/, 'Z'\)/);
   assert.match(nativeStorage, /ExtensionStorage/);
   assert.match(nativeStorage, /ExtensionStorage\.reloadWidget\(NEXT_CHURCH_SERVICE_WIDGET_KIND\)/);
   assert.match(nativeStorage, /ExtensionStorage\.reloadWidget\(MY_NEXT_ASSIGNMENT_WIDGET_KIND\)/);
@@ -80,6 +83,8 @@ test('the iOS membership lifecycle owns refreshes while Android remains untouche
   assert.match(iosSync, /buildScheduleWidgetSnapshot/);
   assert.match(iosSync, /writeScheduleWidgetSnapshot/);
   assert.match(iosSync, /AppState\.addEventListener/);
+  assert.match(iosSync, /syncScheduleWidget\(\);[\s\S]*reloadScheduleWidgets\(\);[\s\S]*refreshServices\(\)/);
+  assert.match(iosSync, /canBuildScheduleWidgetSnapshot/);
   assert.equal(defaultSync.includes('schedule-widget'), true);
   assert.equal(defaultSync.includes('buildScheduleWidgetSnapshot'), false);
   assert.match(rootLayout, /ScheduleWidgetLifecycleSync/);

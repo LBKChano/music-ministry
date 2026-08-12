@@ -41,6 +41,22 @@ export type ScheduleWidgetSourceService = {
   }[] | null;
 };
 
+export function canBuildScheduleWidgetSnapshot({
+  servicesCount,
+  servicesError,
+  servicesLoading,
+}: {
+  servicesCount: number;
+  servicesError: string | null;
+  servicesLoading: boolean;
+}): boolean {
+  return servicesCount > 0 || (!servicesLoading && !servicesError);
+}
+
+function scheduleWidgetTimestamp(now: Date): string {
+  return now.toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
 function sanitizeText(value: unknown, maxLength: number): string {
   if (typeof value !== 'string') return '';
   return value
@@ -191,7 +207,7 @@ export function buildScheduleWidgetSnapshot({
   return {
     schemaVersion: SCHEDULE_WIDGET_SCHEMA_VERSION,
     state: 'ready',
-    generatedAt: now.toISOString(),
+    generatedAt: scheduleWidgetTimestamp(now),
     scopeFingerprint,
     churchName: sanitizeText(churchName, 120) || 'Church',
     churchServices: churchServices.sort(compareServices).slice(0, safeLimit),
@@ -206,7 +222,7 @@ export function createEmptyScheduleWidgetSnapshot(
   return {
     schemaVersion: SCHEDULE_WIDGET_SCHEMA_VERSION,
     state,
-    generatedAt: now.toISOString(),
+    generatedAt: scheduleWidgetTimestamp(now),
     scopeFingerprint: null,
     churchName: null,
     churchServices: [],

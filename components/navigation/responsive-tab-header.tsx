@@ -26,6 +26,7 @@ type ResponsiveTabHeaderProps = {
   titleVariant?: HeaderTypographyVariant;
   subtitleVariant?: HeaderTypographyVariant;
   trailingWidth?: number;
+  density?: 'default' | 'compact';
 };
 
 type TabHeaderPillProps = {
@@ -53,6 +54,7 @@ export function ResponsiveTabHeader({
   titleVariant = 'primaryTitle',
   subtitleVariant = 'secondaryChurchName',
   trailingWidth,
+  density = 'default',
 }: ResponsiveTabHeaderProps) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -80,6 +82,7 @@ export function ResponsiveTabHeader({
         end={{ x: 1, y: 1 }}
         style={[
           styles.container,
+          density === 'compact' && styles.compactContainer,
           {
             borderBottomLeftRadius: theme.radii.header,
             borderBottomRightRadius: theme.radii.header,
@@ -102,7 +105,10 @@ export function ResponsiveTabHeader({
           pointerEvents="none"
         />
 
-        <View style={styles.topRow}>
+        <View style={[
+          styles.topRow,
+          density === 'compact' && styles.compactTopRow,
+        ]}>
           <View style={styles.titleLane}>
             <Text style={[styles.eyebrow, { color: theme.header.eyebrow }]}>
               {eyebrow}
@@ -140,7 +146,14 @@ export function ResponsiveTabHeader({
           ) : null}
         </View>
 
-        {children ? <View style={styles.metaRow}>{children}</View> : null}
+        {children ? (
+          <View style={[
+            styles.metaRow,
+            density === 'compact' && styles.compactMetaRow,
+          ]}>
+            {children}
+          </View>
+        ) : null}
       </LinearGradient>
     </View>
   );
@@ -292,6 +305,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 20,
   },
+  compactContainer: {
+    paddingBottom: 16,
+  },
   accentPanel: {
     position: 'absolute',
     right: -28,
@@ -314,6 +330,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
+  },
+  compactTopRow: {
+    minHeight: 66,
   },
   titleLane: {
     flex: 1,
@@ -342,6 +361,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
     marginTop: 14,
+  },
+  compactMetaRow: {
+    marginTop: 10,
   },
   pill: {
     minHeight: 38,

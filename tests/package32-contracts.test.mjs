@@ -7,28 +7,32 @@ import { fileURLToPath } from 'node:url';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = (...segments) => readFileSync(join(root, ...segments), 'utf8');
 const schedule = read('components', 'schedules', 'schedule-screen.tsx');
-const today = read('components', 'schedules', 'schedule-today-marker.tsx');
 const services = read('hooks', 'useServices.ts');
 const range = read('lib', 'schedules', 'schedule-range.ts');
 
-test('Today is compact header metadata with no standalone date tile', () => {
+test('Today is the compact header eyebrow with no duplicate metadata row', () => {
   const headerStart = schedule.indexOf('<ResponsiveTabHeader');
   const headerEnd = schedule.indexOf('</ResponsiveTabHeader>', headerStart);
-  const marker = schedule.indexOf('<ScheduleTodayMarker', headerStart);
+  const header = schedule.slice(headerStart, headerEnd);
 
-  assert.ok(marker > headerStart && marker < headerEnd);
+  assert.match(schedule, /const todayHeaderText = formatScheduleTodayText\(currentLocalDate\)/);
+  assert.match(header, /density="compact"/);
+  assert.match(header, /eyebrow=\{todayHeaderText\}/);
   assert.doesNotMatch(schedule, /todayMarkerRow/);
-  assert.match(today, /TabHeaderMetaText/);
-  assert.match(today, /accessibilityLabel=\{`Today,/);
-  assert.doesNotMatch(today, /Touchable|Pressable|onPress|height: 70/);
+  assert.doesNotMatch(header, /ScheduleTodayMarker|TabHeaderMetaText/);
 });
 
-test('header range uses authoritative summary or actual service dates only', () => {
+test('service date summary stays data-only and is not rendered as header clutter', () => {
   assert.match(services, /fetchUpcomingServiceDateSummary/);
-  assert.match(schedule, /loadedServiceDates = useMemo/);
-  assert.match(schedule, /summaryStatus: scheduleDateSummaryStatus/);
+  assert.match(services, /scheduleDateSummaryStatus/);
+  assert.doesNotMatch(schedule, /scheduleDateSummary|schedulePeriod|loadedServiceDates/);
   assert.doesNotMatch(range, /Loaded through/);
-  assert.doesNotMatch(schedule, /summaryPending:[\s\S]{0,100}loadedThrough/);
+});
+
+test('header summary follows the selected All or My Schedule view', () => {
+  assert.match(schedule, /scheduleSummaryLabel = viewMode === 'mine' \? 'My services' : 'Upcoming'/);
+  assert.match(schedule, /detail=\{upcomingText\}/);
+  assert.match(schedule, /accessibilityLabel=\{`\$\{scheduleSummaryLabel\}, \$\{upcomingText\}`\}/);
 });
 
 test('duplicate visible results heading is removed but list context remains accessible', () => {

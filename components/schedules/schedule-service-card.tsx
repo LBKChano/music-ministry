@@ -328,7 +328,7 @@ function ScheduleServiceCardComponent({
               cardStyles.dateLane,
               {
                 backgroundColor: theme.serviceMetadata.surface,
-                borderColor: theme.serviceMetadata.surface,
+                borderColor: theme.serviceMetadata.border,
               },
             ]}
           >
@@ -1101,7 +1101,7 @@ const cardStyles = StyleSheet.create({
     alignItems: 'center',
     borderColor: colors.border,
     borderRadius: 6,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     justifyContent: 'center',
     minHeight: 76,
     paddingHorizontal: 8,

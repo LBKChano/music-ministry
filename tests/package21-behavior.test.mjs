@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   buildScheduleWidgetSnapshot,
+  canBuildScheduleWidgetSnapshot,
   createEmptyScheduleWidgetSnapshot,
   createScheduleWidgetScopeFingerprint,
   isScheduleWidgetSnapshotStale,
@@ -140,6 +141,42 @@ test('snapshot text is sanitized without storing account identity', () => {
   assert.equal(serialized.includes(accountId), false);
   assert.equal(serialized.includes('church-private'), false);
   assert.equal(serialized.includes('member-private'), false);
+});
+
+test('widget timestamps remain readable by old and new native extensions', () => {
+  const snapshot = buildScheduleWidgetSnapshot({
+    churchName: 'Grace Church',
+    currentMemberId: 'member-21',
+    scopeFingerprint: 'scope-a',
+    services,
+    now: new Date('2026-08-12T22:37:39.123Z'),
+  });
+
+  assert.equal(snapshot.generatedAt, '2026-08-12T22:37:39Z');
+  assert.equal(Number.isFinite(new Date(snapshot.generatedAt).getTime()), true);
+});
+
+test('cached services can refresh a widget even when background refresh fails', () => {
+  assert.equal(canBuildScheduleWidgetSnapshot({
+    servicesCount: 2,
+    servicesError: 'Network unavailable',
+    servicesLoading: false,
+  }), true);
+  assert.equal(canBuildScheduleWidgetSnapshot({
+    servicesCount: 0,
+    servicesError: 'Network unavailable',
+    servicesLoading: false,
+  }), false);
+  assert.equal(canBuildScheduleWidgetSnapshot({
+    servicesCount: 0,
+    servicesError: null,
+    servicesLoading: true,
+  }), false);
+  assert.equal(canBuildScheduleWidgetSnapshot({
+    servicesCount: 0,
+    servicesError: null,
+    servicesLoading: false,
+  }), true);
 });
 
 test('account and church scope fingerprints isolate widget generations', () => {

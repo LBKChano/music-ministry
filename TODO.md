@@ -4147,7 +4147,7 @@ Status:
   The live read-only audit found zero public tables without RLS, all 11 baseline
   RPCs, 13 Realtime tables, both notification cron jobs active, OneSignal
   configured, and JWT protection intact on `delete-account`.
-- TypeScript, all six Edge Function Deno checks, full ESLint, all 489 tests,
+- TypeScript, all six Edge Function Deno checks, full ESLint, all 492 tests,
   `git diff --check`, and clean web, Android, and iOS production exports pass.
 - Responsive web checks passed at narrow Android, older/current iPhone, large
   phone, tablet, and landscape sizes for the signed-out and create-church paths,

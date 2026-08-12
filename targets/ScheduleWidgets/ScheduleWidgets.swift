@@ -210,7 +210,12 @@ private struct ScheduleTimelineProvider: TimelineProvider {
     }
 
     private func generatedDate(_ snapshot: StoredScheduleSnapshot) -> Date? {
-        ISO8601DateFormatter().date(from: snapshot.generatedAt)
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractionalFormatter.date(from: snapshot.generatedAt) {
+            return date
+        }
+        return ISO8601DateFormatter().date(from: snapshot.generatedAt)
     }
 
     private func isStale(_ snapshot: StoredScheduleSnapshot, at date: Date) -> Bool {

@@ -19,13 +19,11 @@ import {
 } from '@/components/notifications/NotificationPermissionOnboarding';
 import {
   ResponsiveTabHeader,
-  TabHeaderMetaText,
   TabHeaderPill,
 } from '@/components/navigation/responsive-tab-header';
 import { ScheduleServiceCard } from '@/components/schedules/schedule-service-card';
 import { ScheduleFilterModal } from '@/components/schedules/schedule-filter-modal';
 import { ScheduleViewControls } from '@/components/schedules/schedule-view-controls';
-import { ScheduleTodayMarker } from '@/components/schedules/schedule-today-marker';
 import { useAppTheme } from '@/contexts/AppThemeContext';
 import {
   ManualAssignmentModal,
@@ -51,7 +49,7 @@ import {
   resolveScheduleListState,
   type ScheduleListState,
 } from '@/lib/schedules/schedule-state';
-import { resolveSchedulePeriodText } from '@/lib/schedules/schedule-range';
+import { formatScheduleTodayText } from '@/lib/schedules/schedule-range';
 import type { ServicePaginationStatus } from '@/lib/schedules/service-pagination';
 import { useNetworkState } from 'expo-network';
 import {
@@ -776,8 +774,6 @@ export default function HomeScreen() {
     loadMoreServices,
     serviceRangeError,
     servicePaginationStatus,
-    scheduleDateSummary,
-    scheduleDateSummaryStatus,
     error: servicesError,
   } = useServices(currentChurch?.id ?? null, {
     windowed: true,
@@ -1471,16 +1467,8 @@ export default function HomeScreen() {
   const upcomingText = viewMode === 'mine'
     ? `${scheduleView.personalServiceCount} assigned`
     : `${upcomingCount} services`;
-  const loadedServiceDates = useMemo(
-    () => services.map(service => service.date),
-    [services],
-  );
-  const schedulePeriod = useMemo(() => resolveSchedulePeriodText({
-    summary: scheduleDateSummary,
-    summaryStatus: scheduleDateSummaryStatus,
-    loadedServiceDates,
-    isOffline,
-  }), [isOffline, loadedServiceDates, scheduleDateSummary, scheduleDateSummaryStatus]);
+  const scheduleSummaryLabel = viewMode === 'mine' ? 'My services' : 'Upcoming';
+  const todayHeaderText = formatScheduleTodayText(currentLocalDate);
   const themedScheduleCardStyles = useMemo(() => ({
     serviceCard: [
       styles.serviceCard,
@@ -1639,7 +1627,8 @@ export default function HomeScreen() {
       <Stack.Screen options={{ headerShown: false }} />
 
       <ResponsiveTabHeader
-        eyebrow="Schedule"
+        density="compact"
+        eyebrow={todayHeaderText}
         title={churchName}
         titleVariant="primaryTitle"
         trailingWidth={HEADER_ACTION_LANE_WIDTHS.bell}
@@ -1648,11 +1637,10 @@ export default function HomeScreen() {
       >
         <TabHeaderPill
           icon={<IconSymbol ios_icon_name="calendar.badge.clock" android_material_icon_name="event" size={16} color="#FFFFFF" />}
-          label="Upcoming"
+          accessibilityLabel={`${scheduleSummaryLabel}, ${upcomingText}`}
+          label={scheduleSummaryLabel}
           detail={upcomingText}
         />
-        <ScheduleTodayMarker today={currentLocalDate} />
-        <TabHeaderMetaText>{schedulePeriod}</TabHeaderMetaText>
       </ResponsiveTabHeader>
 
       <ScheduleViewControls

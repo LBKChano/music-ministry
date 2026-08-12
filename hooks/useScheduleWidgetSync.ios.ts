@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import type { ScheduleWidgetSyncParams } from '@/hooks/useScheduleWidgetSync';
 import {
   buildScheduleWidgetSnapshot,
+  canBuildScheduleWidgetSnapshot,
   createScheduleWidgetScopeFingerprint,
 } from '@/lib/widgets/schedule-widget-model';
 import {
@@ -28,9 +29,7 @@ export function useScheduleWidgetSync({
 }: ScheduleWidgetSyncParams): void {
   const syncScheduleWidget = useCallback(() => {
     if (
-      servicesLoading
-      || servicesError
-      || sessionStatus !== 'ready'
+      sessionStatus !== 'ready'
       || !userId
       || !churchId
       || !churchName
@@ -45,6 +44,12 @@ export function useScheduleWidgetSync({
       currentMemberId,
     );
     prepareScheduleWidgetScope(scopeFingerprint);
+    if (!canBuildScheduleWidgetSnapshot({
+      servicesCount: services.length,
+      servicesError,
+      servicesLoading,
+    })) return;
+
     writeScheduleWidgetSnapshot(buildScheduleWidgetSnapshot({
       churchName,
       currentMemberId,
@@ -85,10 +90,15 @@ export function useScheduleWidgetSync({
         return;
       }
 
+      syncScheduleWidget();
       reloadScheduleWidgets();
-      void refreshServices().catch(error => {
-        console.warn('[ScheduleWidget] Could not refresh services on resume:', error);
-      });
+      void refreshServices()
+        .then(() => {
+          syncScheduleWidget();
+        })
+        .catch(error => {
+          console.warn('[ScheduleWidget] Could not refresh services on resume:', error);
+        });
     });
     return () => subscription.remove();
   }, [refreshServices, sessionStatus, syncScheduleWidget]);

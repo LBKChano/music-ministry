@@ -98,8 +98,9 @@ test('widget loading preserves valid snapshots and resume refresh is best effort
   assert.match(iosSync, /clearScheduleWidgetSnapshot\('signed_out'\)/);
   assert.match(iosSync, /clearScheduleWidgetSnapshot\('no_church'\)/);
   assert.doesNotMatch(iosSync, /clearScheduleWidgetSnapshot\('unavailable'\)/);
-  assert.match(iosSync, /refreshServices\(\)\.catch/);
-  assert.match(iosSync, /reloadScheduleWidgets\(\)/);
+  assert.match(iosSync, /refreshServices\(\)[\s\S]*\.catch/);
+  assert.match(iosSync, /syncScheduleWidget\(\);[\s\S]*reloadScheduleWidgets\(\)/);
+  assert.match(iosSync, /refreshServices\(\)[\s\S]*\.then\(\(\) => \{[\s\S]*syncScheduleWidget\(\)/);
 });
 
 test('widget native identifiers stay v1 and reloads are verified and coalesced', () => {

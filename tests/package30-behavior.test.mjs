@@ -79,10 +79,11 @@ test('an unbreakable title uses the documented minimum and reports overflow', ()
   assert.equal(layout.lines.length, 1);
 });
 
-test('strong brand surfaces share the header navy in both theme contracts', () => {
+test('strong surfaces and service dates use coordinated header brand stops', () => {
   for (const theme of [lightAppTheme, futureDarkAppTheme]) {
     assert.equal(theme.colors.surfaceStrong, theme.header.gradient[0]);
-    assert.equal(theme.serviceMetadata.surface, theme.header.gradient[0]);
+    assert.equal(theme.serviceMetadata.surface, theme.header.gradient[1]);
+    assert.equal(theme.serviceMetadata.border, theme.header.accentLine);
     assert.equal(theme.brandMark.surface, theme.header.gradient[0]);
   }
 });

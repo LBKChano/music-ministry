@@ -20,7 +20,6 @@ const church = read('app', '(tabs)', 'church.tsx');
 const servicesHook = read('hooks', 'useServices.ts');
 const schedule = read('components', 'schedules', 'schedule-screen.tsx');
 const card = read('components', 'schedules', 'schedule-service-card.tsx');
-const todayMarker = read('components', 'schedules', 'schedule-today-marker.tsx');
 const currentDateHook = read('hooks', 'useCurrentLocalDate.ts');
 const manualAssignment = read('lib', 'services', 'manual-assignment.ts');
 const autoAssignMigration = read(
@@ -61,12 +60,12 @@ test('Church Setup uses a controlled, accessible, non-color-only role symbol pic
   assert.match(church, /Shown beside the written role name/);
 });
 
-test('Schedule defaults are permission-aware and truthful range context is separate from filters', () => {
+test('Schedule defaults are permission-aware and its compact header is truthful', () => {
   assert.match(schedule, /setViewMode\(isAdmin \? 'all' : 'mine'\)/);
-  assert.match(schedule, /<ScheduleTodayMarker today=\{currentLocalDate\}/);
-  assert.match(schedule, /resolveSchedulePeriodText/);
-  assert.match(schedule, /loadedServiceDates/);
-  assert.doesNotMatch(schedule, /summaryPending:[\s\S]{0,80}loadedThrough/);
+  assert.match(schedule, /eyebrow=\{todayHeaderText\}/);
+  assert.match(schedule, /density="compact"/);
+  assert.match(schedule, /scheduleSummaryLabel = viewMode === 'mine' \? 'My services' : 'Upcoming'/);
+  assert.doesNotMatch(schedule, /resolveSchedulePeriodText|loadedServiceDates|schedulePeriod/);
   assert.match(servicesHook, /fetchUpcomingServiceDateSummary/);
   assert.match(servicesHook, /\.gte\('date', startDate\)/);
   assert.match(servicesHook, /\.limit\(1\)/);
@@ -88,13 +87,12 @@ test('load-more owns one pending key, retries failures, and appends only after s
   assert.match(schedule, /error[\s\S]*Retry Service Range/);
 });
 
-test('Today refreshes at midnight and whenever the app resumes', () => {
+test('header Today copy refreshes at midnight and whenever the app resumes', () => {
   assert.match(currentDateHook, /AppState\.addEventListener\('change'/);
   assert.match(currentDateHook, /state === 'active'/);
   assert.match(currentDateHook, /millisecondsUntilNextLocalDay/);
-  assert.match(todayMarker, /accessibilityLabel=\{`Today,/);
-  assert.match(todayMarker, /TabHeaderMetaText/);
-  assert.doesNotMatch(todayMarker, /onPress|router|scrollTo/);
+  assert.match(schedule, /formatScheduleTodayText\(currentLocalDate\)/);
+  assert.match(schedule, /eyebrow=\{todayHeaderText\}/);
 });
 
 test('service cards retain written roles, explicit states, permissions, and song ownership', () => {

@@ -27,7 +27,9 @@ const baseline = JSON.parse(read('docs', 'compatibility-baseline.json'));
 test('Packages 30-34 compose in the shared Android and iOS Schedule implementation', () => {
   assert.equal(androidScheduleRoute, iosScheduleRoute);
   assert.match(schedule, /<ResponsiveTabHeader/);
-  assert.match(schedule, /<ScheduleTodayMarker/);
+  assert.match(schedule, /density="compact"/);
+  assert.match(schedule, /eyebrow=\{todayHeaderText\}/);
+  assert.doesNotMatch(schedule, /ScheduleTodayMarker|schedulePeriod/);
   assert.match(schedule, /<SchedulePaginationFooter/);
   assert.match(schedule, /<ManualAssignmentModal/);
   assert.match(assignmentModal, /variant="long-content"/);
