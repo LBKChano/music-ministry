@@ -6,7 +6,7 @@ import {
   shouldDisplayAdminTab,
   shouldLeaveChurchTab,
 } from '@/lib/ui/package16';
-import { colors } from '@/styles/commonStyles';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 
 const baseTabs: TabBarItem[] = [
   {
@@ -34,6 +34,7 @@ const adminTab: TabBarItem = {
 };
 
 export function AppTabs() {
+  const theme = useAppTheme();
   const { isAdmin, sessionStatus } = useChurchSession();
   const pathname = usePathname();
   const router = useRouter();
@@ -55,7 +56,8 @@ export function AppTabs() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.primary,
+        tabBarActiveTintColor: theme.colors.navigationSelectedForeground,
+        tabBarHideOnKeyboard: true,
       }}
       tabBar={() => <FloatingTabBar tabs={tabs} />}
     >

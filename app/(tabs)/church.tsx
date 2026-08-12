@@ -46,6 +46,8 @@ import {
   shouldShowInitialLoader,
 } from '@/lib/query/refresh-coordinator';
 import { HEADER_ACTION_LANE_WIDTHS } from '@/lib/ui/header-typography';
+import { resolveSelectedChurchHeaderTitle } from '@/lib/church/header-identity';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import type { ChurchAdminDestination } from '@/lib/church-admin/summary';
 import {
   LatestStateSaveQueue,
@@ -365,9 +367,11 @@ const AutoAssignVirtualRow = React.memo(function AutoAssignVirtualRow({
 });
 
 export default function ChurchScreen() {
+  const theme = useAppTheme();
   const {
     churches,
     currentChurch,
+    currentMember,
     setCurrentChurch,
     switchChurch,
     members,
@@ -1874,7 +1878,7 @@ export default function ChurchScreen() {
   ) {
     console.log('[ChurchScreen] Showing initial loading state');
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.canvas }]}>
         <Stack.Screen
           options={{
             title: 'Church Management',
@@ -1892,7 +1896,7 @@ export default function ChurchScreen() {
 
   if (error && (churches ?? []).length === 0) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.canvas }]}>
         <Stack.Screen
           options={{
             title: 'Church Management',
@@ -1927,10 +1931,15 @@ export default function ChurchScreen() {
   const createFirstChurchText = 'Create your first church to get started';
   const noMembersText = 'No members yet';
   const inviteMembersText = 'Share your invitation code with members to join';
-  const churchHeaderTitle = currentChurch?.name || 'Church Management';
+  const churchHeaderTitle = resolveSelectedChurchHeaderTitle({
+    accountId: user?.id,
+    church: currentChurch,
+    membership: currentMember,
+    sessionStatus,
+  });
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: theme.colors.canvas }]}>
       <Stack.Screen
         options={{
           headerShown: false,
@@ -2035,8 +2044,15 @@ export default function ChurchScreen() {
                     accessibilityState={{ selected: isSelected }}
                     style={[
                       styles.churchCard,
-                      { backgroundColor: colors.cardBackground },
-                      isSelected && { borderColor: colors.primary, borderWidth: 2 },
+                      {
+                        backgroundColor: theme.colors.surface,
+                        borderColor: theme.colors.borderSubtle,
+                        borderWidth: 1,
+                      },
+                      isSelected && {
+                        backgroundColor: theme.colors.accentSoft,
+                        borderColor: theme.colors.accent,
+                      },
                     ]}
                     onPress={() => {
                       console.log('User selected church:', church.name);
@@ -2047,14 +2063,14 @@ export default function ChurchScreen() {
                       ios_icon_name="building.2"
                       android_material_icon_name="home"
                       size={24}
-                      color={isSelected ? colors.primary : colors.text}
+                      color={isSelected ? theme.colors.accent : theme.colors.textPrimary}
                     />
                     <WordSafeHeaderText
                       accessible={false}
                       maxFontSizeMultiplier={1.35}
                       style={[
                         styles.churchName,
-                        { color: isSelected ? colors.primary : colors.text },
+                        { color: isSelected ? theme.colors.accent : theme.colors.textPrimary },
                       ]}
                       text={church.name}
                     />

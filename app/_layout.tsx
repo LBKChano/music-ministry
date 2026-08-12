@@ -12,9 +12,7 @@ import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useColorScheme } from 'react-native';
 import {
-  DarkTheme,
   DefaultTheme,
   Theme,
   ThemeProvider,
@@ -24,6 +22,10 @@ import { WidgetProvider } from '@/contexts/WidgetContext';
 import { NotificationProvider, useNotifications } from '@/contexts/NotificationContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ChurchProvider, useChurchSession } from '@/contexts/ChurchContext';
+import {
+  AppThemeProvider,
+  useAppTheme,
+} from '@/contexts/AppThemeContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CustomSplashScreen } from '@/components/CustomSplashScreen';
 import { MemberNotificationRealtimeSync } from '@/components/notifications/member-notification-realtime-sync';
@@ -37,6 +39,7 @@ import {
 } from '@/lib/widgets/schedule-widget';
 import { createScheduleWidgetScopeFingerprint } from '@/lib/widgets/schedule-widget-model';
 import { usePerformanceBaselineLifecycle } from '@/hooks/usePerformanceBaselineScreen';
+import { createNavigationThemeColors } from '@/lib/ui/app-theme';
 import { isPasswordRecoveryUrl } from '@/utils/passwordResetLinks';
 import { isSignupVerificationUrl } from '@/utils/signupVerificationLinks';
 
@@ -54,31 +57,6 @@ if (Platform.OS === 'android') {
   });
 }
 
-const CustomDefaultTheme: Theme = {
-  ...DefaultTheme,
-  dark: false,
-  colors: {
-    primary: 'rgb(0, 122, 255)',
-    background: 'rgb(242, 242, 247)',
-    card: 'rgb(255, 255, 255)',
-    text: 'rgb(0, 0, 0)',
-    border: 'rgb(216, 216, 220)',
-    notification: 'rgb(255, 59, 48)',
-  },
-};
-
-const CustomDarkTheme: Theme = {
-  ...DarkTheme,
-  colors: {
-    primary: 'rgb(10, 132, 255)',
-    background: 'rgb(1, 1, 1)',
-    card: 'rgb(28, 28, 30)',
-    text: 'rgb(255, 255, 255)',
-    border: 'rgb(44, 44, 46)',
-    notification: 'rgb(255, 69, 58)',
-  },
-};
-
 // Safely resolve SystemBars — react-native-edge-to-edge requires a native build.
 type SystemBarsComponent = React.ComponentType<{ style?: string }>;
 let SystemBars: SystemBarsComponent | null = null;
@@ -91,7 +69,7 @@ try {
 }
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+  const appTheme = useAppTheme();
   const router = useRouter();
   const segments = useSegments();
   const [fontsLoaded] = useFonts({
@@ -309,9 +287,11 @@ function RootLayoutNav() {
   // Fonts are loaded asynchronously but we don't block rendering on them.
   void fontsLoaded;
 
-  const activeTheme = colorScheme === 'dark'
-    ? CustomDarkTheme
-    : CustomDefaultTheme;
+  const activeTheme = React.useMemo<Theme>(() => ({
+    ...DefaultTheme,
+    dark: appTheme.mode === 'dark',
+    colors: createNavigationThemeColors(appTheme),
+  }), [appTheme]);
   const showStartupSplash = (
     !initialized
     || (
@@ -407,14 +387,16 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <NotificationProvider>
-            <ChurchProvider>
-              <StatusBar style="auto" animated />
-              <RootLayoutNav />
-            </ChurchProvider>
-          </NotificationProvider>
-        </AuthProvider>
+        <AppThemeProvider>
+          <AuthProvider>
+            <NotificationProvider>
+              <ChurchProvider>
+                <StatusBar style="auto" animated />
+                <RootLayoutNav />
+              </ChurchProvider>
+            </NotificationProvider>
+          </AuthProvider>
+        </AppThemeProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

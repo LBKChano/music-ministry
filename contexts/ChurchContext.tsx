@@ -371,6 +371,14 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
       if (activeUserIdRef.current !== userId) return [];
 
       console.log('Fetched churches:', visibleChurches.length);
+      const selectedChurchId = currentChurchIdRef.current;
+      const refreshedSelectedChurch = selectedChurchId
+        ? visibleChurches.find(church => church.id === selectedChurchId)
+        : null;
+      if (refreshedSelectedChurch && currentChurchRef.current) {
+        currentChurchRef.current = refreshedSelectedChurch;
+        setCurrentChurch(refreshedSelectedChurch);
+      }
       queryClient.setQueryData(
         queryKeys.churches(userId),
         visibleChurches,
@@ -1380,6 +1388,41 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     );
   }, [queryClient]);
 
+  const applyChurchRecordLocally = useCallback((updatedChurch: Church) => {
+    const replaceChurch = (church: Church) => (
+      church.id === updatedChurch.id ? updatedChurch : church
+    );
+    const nextChurches = churchesRef.current.map(replaceChurch);
+    churchesRef.current = nextChurches;
+    setChurches(previous => previous.map(replaceChurch));
+
+    if (currentChurchIdRef.current === updatedChurch.id) {
+      currentChurchRef.current = updatedChurch;
+      setCurrentChurch(updatedChurch);
+    }
+
+    const activeAccountId = activeUserIdRef.current;
+    if (!activeAccountId) return;
+
+    queryClient.setQueryData<Church[]>(
+      queryKeys.churches(activeAccountId),
+      previous => previous?.map(replaceChurch),
+    );
+    queryClient.setQueryData<Church>(
+      queryKeys.church(activeAccountId, updatedChurch.id),
+      updatedChurch,
+    );
+    queryClient.setQueryData<{
+      churches: Church[];
+      memberships: ChurchMember[];
+    }>(
+      queryKeys.churchDiscovery(activeAccountId),
+      previous => previous
+        ? { ...previous, churches: previous.churches.map(replaceChurch) }
+        : previous,
+    );
+  }, [queryClient]);
+
   const updateChurchSongTypes = useCallback(async (
     churchId: string,
     songTypeOptions: string[],
@@ -1455,15 +1498,14 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
 
-      setChurches(prev => prev.map(church => church.id === churchId ? data : church));
-      setCurrentChurch(prev => prev?.id === churchId ? data : prev);
+      applyChurchRecordLocally(data);
       return data;
     } catch (err) {
       console.error('Error in updateChurchName:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  }, []);
+  }, [applyChurchRecordLocally]);
 
   const updateChurchAutoAssignSettings = useCallback(async (churchId: string, allowMultipleRolesSameService: boolean): Promise<Church | null> => {
     console.log('Updating church auto-assign settings:', { churchId, allowMultipleRolesSameService });

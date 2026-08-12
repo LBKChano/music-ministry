@@ -1,5 +1,4 @@
 
-import { colors } from "@/styles/commonStyles";
 import React, { useEffect, useMemo, useRef } from "react";
 import { View, StyleSheet } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
@@ -25,9 +24,11 @@ import {
   ProfileDangerRow,
   ProfileOverviewList,
   ProfileRow,
+  ProfileRowGroup,
   ProfileStatus,
   type ProfileOverviewSection,
 } from "@/components/profile/profile-primitives";
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import {
   createAvailabilitySummary,
 } from "@/lib/profile/availability";
@@ -69,6 +70,7 @@ export function ProfileScreen({
     isWeb,
   } = useNotifications();
   const router = useRouter();
+  const theme = useAppTheme();
   const isFocused = useIsFocused();
   const currentMemberIdRef = useRef<string | null>(currentMember?.id ?? null);
   const availabilityQuery = useMemberAvailability({
@@ -244,7 +246,7 @@ export function ProfileScreen({
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: theme.colors.canvas }]}>
       <Stack.Screen
         options={{
           headerShown: false,
@@ -308,7 +310,7 @@ export function ProfileScreen({
             title: 'Church and Roles',
             description: 'Your access and ministry identity in the selected church.',
             content: (
-              <View style={styles.sectionContent}>
+              <ProfileRowGroup>
                 <ProfileRow
                   title="Church Profile"
                   summary={`${currentChurch?.name ?? 'Selected church'} | ${roleSummary}`}
@@ -331,7 +333,7 @@ export function ProfileScreen({
                     router.push('/profile-churches');
                   }}
                 />
-              </View>
+              </ProfileRowGroup>
             ),
           },
           {
@@ -339,8 +341,7 @@ export function ProfileScreen({
             title: 'My Scheduling',
             description: 'Dates and weekly-service preferences used by auto-assign.',
             content: (
-              <View style={styles.sectionContent}>
-                <View style={styles.rowGroup}>
+              <ProfileRowGroup>
                   <ProfileRow
                     title="Unavailable Dates"
                     summary={
@@ -389,8 +390,7 @@ export function ProfileScreen({
                       router.push('/profile-scheduling-preferences');
                     }}
                   />
-                </View>
-              </View>
+              </ProfileRowGroup>
             ),
           },
           {
@@ -398,7 +398,7 @@ export function ProfileScreen({
             title: 'Notifications',
             description: 'Permission for reminders, fill-in requests, and service updates.',
             content: (
-              <View style={styles.rowGroup}>
+              <ProfileRowGroup>
                 <ProfileRow
                   title="Notification Delivery"
                   summary={
@@ -423,7 +423,7 @@ export function ProfileScreen({
                     router.push('/notification-preferences');
                   }}
                 />
-              </View>
+              </ProfileRowGroup>
             ),
           },
           {
@@ -431,7 +431,7 @@ export function ProfileScreen({
             title: 'Account',
             description: 'Actions for this signed-in account and device.',
             content: (
-              <View style={styles.rowGroup}>
+              <ProfileRowGroup>
                 <ProfileRow
                   title="Account and Security"
                   summary={user.email ?? 'Password, sign-out, and app information.'}
@@ -443,7 +443,7 @@ export function ProfileScreen({
                     router.push('/profile-account');
                   }}
                 />
-              </View>
+              </ProfileRowGroup>
             ),
           },
           {
@@ -451,7 +451,7 @@ export function ProfileScreen({
             title: 'Danger Zone',
             description: 'Permanent actions that affect your account and stored data.',
             content: (
-              <View style={styles.rowGroup}>
+              <ProfileRowGroup>
                 <ProfileDangerRow
                   title="Delete Account"
                   summary="Permanently delete your account and associated data."
@@ -462,7 +462,7 @@ export function ProfileScreen({
                     router.push('/delete-account');
                   }}
                 />
-              </View>
+              </ProfileRowGroup>
             ),
           },
         ] satisfies ProfileOverviewSection[]}
@@ -475,14 +475,5 @@ export function ProfileScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  sectionContent: {
-    gap: 12,
-  },
-  rowGroup: {
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    overflow: 'hidden',
   },
 });

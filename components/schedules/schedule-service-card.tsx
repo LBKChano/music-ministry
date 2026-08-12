@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import { ResponsiveText } from '@/components/ui/responsive-text';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { useReducedMotionPreference } from '@/hooks/useReducedMotionPreference';
 import type { FillInRequestWithMemberInfo } from '@/contexts/ChurchContext';
 import type { ServiceWithAssignments } from '@/hooks/useServices';
@@ -28,6 +29,7 @@ import {
   SCHEDULE_DISCLOSURE_ANIMATION_MS,
   shouldAnimateScheduleDisclosure,
 } from '@/lib/ui/schedule-interaction';
+import { resolveSurfaceStatusTokens } from '@/lib/ui/surface-system';
 import { colors } from '@/styles/commonStyles';
 
 type ServiceComment = ServiceWithAssignments['service_comments'][number];
@@ -174,6 +176,7 @@ function ScheduleServiceCardComponent({
   onRequestFillIn,
   onAssignMember,
 }: ScheduleServiceCardProps) {
+  const theme = useAppTheme();
   const { fontScale, width } = useWindowDimensions();
   const reduceMotionEnabled = useReducedMotionPreference();
   const [cardWidth, setCardWidth] = useState(0);
@@ -206,6 +209,10 @@ function ScheduleServiceCardComponent({
     : summary.personalRoleNames.length > 0
       ? 'You are serving'
       : null;
+  const summaryStatusTokens = resolveSurfaceStatusTokens(
+    theme,
+    summary.pendingFillInCount > 0 ? 'attention' : 'personal',
+  );
   const visibleSongs = getVisibleScheduleSongs({
     songs: service.service_comments,
     showAll: showAllSongs,
@@ -326,6 +333,10 @@ function ScheduleServiceCardComponent({
             <View style={[
               cardStyles.statusPill,
               summary.pendingFillInCount > 0 && cardStyles.attentionPill,
+              {
+                backgroundColor: summaryStatusTokens.surface,
+                borderColor: summaryStatusTokens.border,
+              },
             ]}>
               <ResponsiveText
                 accessible={false}
@@ -334,6 +345,7 @@ function ScheduleServiceCardComponent({
                 textStyle={[
                   cardStyles.statusText,
                   summary.pendingFillInCount > 0 && cardStyles.attentionText,
+                  { color: summaryStatusTokens.foreground },
                 ]}
                 variant="compactLabel"
               />
@@ -384,11 +396,15 @@ function ScheduleServiceCardComponent({
             style={[
               cardStyles.fillInAttentionRow,
               stackAttentionActions && cardStyles.fillInAttentionRowStacked,
+              {
+                backgroundColor: theme.status.warning.surface,
+                borderColor: theme.status.warning.border,
+              },
             ]}
           >
             <IconSymbol
               android_material_icon_name="notification-important"
-              color={colors.secondary}
+              color={theme.status.warning.foreground}
               ios_icon_name="exclamationmark.bubble.fill"
               size={20}
             />
@@ -454,12 +470,18 @@ function ScheduleServiceCardComponent({
           accessibilityLabel={`Your assignment: ${summary.personalRoleNames.join(', ')}`}
           accessibilityRole="text"
           accessible
-          style={cardStyles.personalAssignment}
+          style={[
+            cardStyles.personalAssignment,
+            {
+              backgroundColor: theme.status.info.surface,
+              borderColor: theme.status.info.border,
+            },
+          ]}
         >
           <IconSymbol
             ios_icon_name="person.crop.circle.badge.checkmark"
             android_material_icon_name="how-to-reg"
-            color={colors.primary}
+            color={theme.status.info.foreground}
             size={19}
           />
           <View style={cardStyles.personalAssignmentText}>
@@ -505,7 +527,10 @@ function ScheduleServiceCardComponent({
       </View>
 
       {isExpanded ? (
-        <View style={cardStyles.songsSection}>
+        <View style={[
+          cardStyles.songsSection,
+          { backgroundColor: theme.colors.surfaceMuted },
+        ]}>
           <View style={cardStyles.sectionHeaderRow}>
             <Text
               accessibilityLabel={`Songs for ${service.service_type}, ${summary.songCount}`}
@@ -792,7 +817,10 @@ function ScheduleServiceCardComponent({
       </Pressable>
 
       {isExpanded ? (
-        <View style={cardStyles.teamSection}>
+        <View style={[
+          cardStyles.teamSection,
+          { backgroundColor: theme.colors.surfaceMuted },
+        ]}>
           <Text
             accessibilityLabel={`Team for ${service.service_type}, ${summary.totalAssignmentCount} roles`}
             accessibilityRole="header"

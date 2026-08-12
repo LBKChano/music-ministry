@@ -2,8 +2,9 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import { ResponsiveText } from '@/components/ui/responsive-text';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import type { ScheduleViewMode } from '@/lib/schedules/schedule-view';
-import { colors } from '@/styles/commonStyles';
+import { resolveSurfaceOpacity } from '@/lib/ui/surface-system';
 
 const OPTIONS: readonly { label: string; value: ScheduleViewMode }[] = [
   { label: 'All Services', value: 'all' },
@@ -21,13 +22,21 @@ export function ScheduleViewControls({
   activeFilterCount: number;
   onOpenFilters: () => void;
 }) {
+  const theme = useAppTheme();
+
   return (
     <View style={styles.wrapper}>
       <View style={styles.controlRow}>
         <View
           accessibilityLabel="Schedule view"
           accessibilityRole="tablist"
-          style={styles.container}
+          style={[
+            styles.container,
+            {
+              backgroundColor: theme.colors.surfaceMuted,
+              borderColor: theme.colors.borderSubtle,
+            },
+          ]}
         >
           {OPTIONS.map(option => {
             const selected = mode === option.value;
@@ -41,15 +50,26 @@ export function ScheduleViewControls({
                 onPress={() => onChange(option.value)}
                 style={({ pressed }) => [
                   styles.option,
-                  selected && styles.optionSelected,
-                  pressed && styles.optionPressed,
+                  selected && { backgroundColor: theme.colors.accent },
+                  {
+                    opacity: resolveSurfaceOpacity({
+                      disabled: false,
+                      pressed,
+                      theme,
+                    }),
+                  },
                 ]}
               >
                 <ResponsiveText
                   accessible={false}
                   style={styles.optionLabelLane}
                   text={option.label}
-                  textStyle={[styles.optionText, selected && styles.optionTextSelected]}
+                  textStyle={[
+                    styles.optionText,
+                    { color: theme.colors.textSecondary },
+                    selected && styles.optionTextSelected,
+                    selected && { color: theme.strongSurface.foreground },
+                  ]}
                   variant="compactLabel"
                 />
               </Pressable>
@@ -70,18 +90,37 @@ export function ScheduleViewControls({
           onPress={onOpenFilters}
           style={({ pressed }) => [
             styles.filterButton,
-            activeFilterCount > 0 && styles.filterButtonActive,
-            pressed && styles.optionPressed,
+            {
+              backgroundColor: activeFilterCount > 0
+                ? theme.colors.accent
+                : theme.colors.surface,
+              borderColor: activeFilterCount > 0
+                ? theme.colors.accent
+                : theme.colors.borderSubtle,
+              opacity: resolveSurfaceOpacity({
+                disabled: false,
+                pressed,
+                theme,
+              }),
+            },
           ]}
         >
           <IconSymbol
             ios_icon_name="line.3.horizontal.decrease"
             android_material_icon_name="filter-list"
-            color={activeFilterCount > 0 ? '#FFFFFF' : colors.text}
+            color={activeFilterCount > 0
+              ? theme.strongSurface.foreground
+              : theme.colors.textPrimary}
             size={22}
           />
           {activeFilterCount > 0 ? (
-            <View style={styles.filterBadge}>
+            <View style={[
+              styles.filterBadge,
+              {
+                backgroundColor: theme.status.info.foreground,
+                borderColor: theme.colors.surface,
+              },
+            ]}>
               <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
             </View>
           ) : null}
@@ -106,8 +145,6 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   container: {
-    backgroundColor: colors.inputBackground,
-    borderColor: colors.border,
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
@@ -124,14 +161,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: 12,
   },
-  optionPressed: {
-    opacity: 0.78,
-  },
-  optionSelected: {
-    backgroundColor: colors.primary,
-  },
   optionText: {
-    color: colors.textSecondary,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -139,13 +169,10 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   optionTextSelected: {
-    color: '#FFFFFF',
     fontWeight: '900',
   },
   filterButton: {
     alignItems: 'center',
-    backgroundColor: colors.cardBackground,
-    borderColor: colors.border,
     borderRadius: 8,
     borderWidth: 1,
     justifyContent: 'center',
@@ -153,14 +180,8 @@ const styles = StyleSheet.create({
     position: 'relative',
     width: 54,
   },
-  filterButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
   filterBadge: {
     alignItems: 'center',
-    backgroundColor: colors.secondary,
-    borderColor: '#FFFFFF',
     borderRadius: 9,
     borderWidth: 1,
     height: 18,

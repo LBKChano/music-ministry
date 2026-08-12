@@ -1,4 +1,4 @@
-import React, { type ComponentProps, type ReactNode } from 'react';
+import React, { Children, type ComponentProps, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -10,7 +10,15 @@ import {
 } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import { InlineStatus } from '@/components/feedback/inline-status';
-import { colors } from '@/styles/commonStyles';
+import {
+  AppGroupedSurface,
+  AppDivider,
+  AppIconTile,
+  AppSectionHeader,
+  AppValueChip,
+} from '@/components/ui/app-surface';
+import { useAppTheme } from '@/contexts/AppThemeContext';
+import { resolveSurfaceOpacity } from '@/lib/ui/surface-system';
 
 type AndroidIconName = ComponentProps<typeof IconSymbol>['android_material_icon_name'];
 
@@ -23,24 +31,21 @@ export function ProfileSection({
   title,
   description,
 }: ProfileSectionProps) {
+  return <AppSectionHeader title={title} description={description} />;
+}
+
+export function ProfileRowGroup({ children }: { children: ReactNode }) {
+  const rows = Children.toArray(children);
+
   return (
-    <View style={styles.sectionHeader}>
-      <Text
-        accessibilityRole="header"
-        maxFontSizeMultiplier={1.4}
-        style={styles.sectionTitle}
-      >
-        {title}
-      </Text>
-      {description ? (
-        <Text
-          maxFontSizeMultiplier={1.45}
-          style={styles.sectionDescription}
-        >
-          {description}
-        </Text>
-      ) : null}
-    </View>
+    <AppGroupedSurface>
+      {rows.map((row, index) => (
+        <React.Fragment key={index}>
+          {index > 0 ? <AppDivider inset={66} /> : null}
+          {row}
+        </React.Fragment>
+      ))}
+    </AppGroupedSurface>
   );
 }
 
@@ -71,10 +76,11 @@ export function ProfileRow({
   destructive = false,
   trailing,
 }: ProfileRowProps) {
-  const foreground = destructive ? colors.error : colors.text;
-  const iconBackground = destructive
-    ? colors.errorBackground
-    : colors.inputBackground;
+  const theme = useAppTheme();
+  const foreground = destructive
+    ? theme.status.error.foreground
+    : theme.colors.textPrimary;
+  const iconTone = destructive ? 'error' : undefined;
 
   return (
     <Pressable
@@ -87,19 +93,20 @@ export function ProfileRow({
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,
-        { backgroundColor: colors.card, borderColor: colors.border },
-        pressed && !disabled && styles.rowPressed,
-        disabled && styles.rowDisabled,
+        { backgroundColor: theme.colors.surface },
+        {
+          opacity: resolveSurfaceOpacity({ disabled, pressed, theme }),
+        },
       ]}
     >
-      <View style={[styles.iconFrame, { backgroundColor: iconBackground }]}>
+      <AppIconTile compact tone={iconTone}>
         <IconSymbol
           ios_icon_name={iosIcon}
           android_material_icon_name={androidIcon}
           size={22}
-          color={destructive ? colors.error : colors.primary}
+          color={destructive ? theme.status.error.foreground : theme.iconTile.foreground}
         />
-      </View>
+      </AppIconTile>
 
       <View style={styles.rowCopy}>
         <Text
@@ -113,7 +120,7 @@ export function ProfileRow({
           <Text
             maxFontSizeMultiplier={1.45}
             numberOfLines={3}
-            style={styles.rowSummary}
+            style={[styles.rowSummary, { color: theme.colors.textSecondary }]}
           >
             {summary}
           </Text>
@@ -125,7 +132,7 @@ export function ProfileRow({
           <ActivityIndicator
             accessibilityLabel={`${title} in progress`}
             size="small"
-            color={destructive ? colors.error : colors.primary}
+            color={destructive ? theme.status.error.foreground : theme.colors.accent}
           />
         </View>
       ) : trailing ? (
@@ -133,22 +140,16 @@ export function ProfileRow({
       ) : (
         <View style={styles.trailing}>
           {value ? (
-            <Text
-              maxFontSizeMultiplier={1.35}
-              numberOfLines={2}
-              style={[
-                styles.value,
-                { color: destructive ? colors.error : colors.textSecondary },
-              ]}
-            >
-              {value}
-            </Text>
+            <AppValueChip
+              label={value}
+              tone={destructive ? 'error' : 'unassigned'}
+            />
           ) : null}
           <IconSymbol
             ios_icon_name="chevron.right"
             android_material_icon_name="chevron-right"
             size={22}
-            color={colors.textTertiary}
+            color={theme.colors.textTertiary}
           />
         </View>
       )}
@@ -196,6 +197,8 @@ export function ProfileOverviewList({
   onRefresh,
   status,
 }: ProfileOverviewListProps) {
+  const theme = useAppTheme();
+
   return (
     <SectionList
       accessibilityLabel="Profile settings"
@@ -209,8 +212,8 @@ export function ProfileOverviewList({
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          tintColor={colors.primary}
-          colors={[colors.primary]}
+          tintColor={theme.colors.accent}
+          colors={[theme.colors.accent]}
         />
       )}
       renderItem={({ item }) => <>{item.content}</>}
@@ -231,44 +234,13 @@ export function ProfileOverviewList({
 }
 
 const styles = StyleSheet.create({
-  sectionHeader: {
-    gap: 3,
-    paddingBottom: 8,
-    paddingHorizontal: 4,
-    paddingTop: 20,
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 17,
-    fontWeight: '800',
-    lineHeight: 22,
-  },
-  sectionDescription: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    lineHeight: 18,
-  },
   row: {
     alignItems: 'center',
-    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: 12,
     minHeight: 64,
     paddingHorizontal: 14,
     paddingVertical: 11,
-  },
-  rowPressed: {
-    opacity: 0.72,
-  },
-  rowDisabled: {
-    opacity: 0.5,
-  },
-  iconFrame: {
-    alignItems: 'center',
-    borderRadius: 8,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
   },
   rowCopy: {
     flex: 1,
@@ -281,7 +253,6 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   rowSummary: {
-    color: colors.textSecondary,
     fontSize: 13,
     lineHeight: 18,
   },
@@ -298,18 +269,15 @@ const styles = StyleSheet.create({
     minHeight: 40,
     minWidth: 40,
   },
-  value: {
-    fontSize: 13,
-    fontWeight: '600',
-    lineHeight: 18,
-    textAlign: 'right',
-  },
   list: {
     flex: 1,
   },
   listContent: {
+    alignSelf: 'center',
+    maxWidth: 760,
     paddingBottom: 144,
     paddingHorizontal: 16,
+    width: '100%',
   },
   listStatus: {
     paddingTop: 12,

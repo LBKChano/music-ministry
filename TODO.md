@@ -3044,11 +3044,16 @@ Done when:
 
 Status:
 
-- Planned. Do not begin screen-by-screen recoloring until this package is
-  complete.
-- Client-only. It must not change Supabase, Auth, notifications, routes,
-  permissions, scheduling behavior, persisted settings, or released-client
-  contracts.
+- Implemented locally on 2026-08-11. The active app remains deliberately light;
+  future-dark tokens are defined and contrast-tested but are not selectable or
+  activated automatically.
+- Client-only. No Supabase migration, Edge Function, Auth contract,
+  notification behavior, route, permission, scheduling behavior, or persisted
+  setting changed. Released app versions continue using their existing bundled
+  code and backend contracts.
+- The legacy `colors` export remains as a compatibility bridge for unmigrated
+  screens and is backed by the new semantic source. It will be retired only
+  after Packages 24-28 migrate all remaining consumers.
 
 Goal:
 
@@ -3126,12 +3131,29 @@ Compatibility and verification:
   objects without changing business behavior and the approved header remains
   visually unchanged on all supported sizes.
 
+Completed verification:
+
+- Added typed light and future-dark themes, an active light-only provider,
+  React Navigation token derivation, and semantic header tokens without adding
+  stored theme state.
+- Preserved header geometry, safe-area handling, word-safe title behavior, and
+  action lanes while moving its palette and elevation to semantic tokens.
+- Synchronized selected Church records across context state, refs, list/detail
+  caches, discovery cache, rename responses, refreshes, and Realtime-driven
+  refetches. The header now accepts only the ready account-matched membership.
+- Passed TypeScript, all six Edge Function checks, ESLint, 373 tests, token
+  completeness/contrast checks, `git diff --check`, and iOS/Android production
+  exports on 2026-08-11.
+
 #### Package 24: Futuristic Floating Navigation Dock
 
 Status:
 
-- Planned after Package 23. Client-only and isolated from tab authorization and
-  route behavior.
+- Implemented locally on 2026-08-11. Client-only and isolated from tab
+  authorization, route behavior, and persisted state.
+- No Supabase migration, Edge Function, Auth contract, notification behavior,
+  scheduling behavior, or released-client contract changed. Older installed
+  versions continue using their existing bundled navigation implementation.
 
 Goal:
 
@@ -3176,11 +3198,31 @@ Verification:
   differently. The Android fallback must look intentionally designed rather
   than like a disabled gray control.
 
+Completed verification:
+
+- Replaced the heavy gray bar with a stable 64px, 22px-corner floating shell,
+  pale-blue selected capsule, navy selected content, slate inactive content,
+  thin cool border, short blue under-accent, and semantic shadow.
+- Added controlled iOS material blur and an opaque cool Android fallback. Both
+  branches use Package 23 semantic tokens and compile independently.
+- Preserved Schedule, Church, Profile order, `router.navigate`, active-route
+  resolution, selected accessibility state, and ready-admin-only Church
+  visibility. The shell width remains stable when changing between two and
+  three tabs.
+- Added deterministic phone/tablet geometry, safe-area clearance, keyboard
+  hiding, 56px tab targets, Larger Text bounds, Reduced Motion behavior, and
+  verified existing 140/144px main-list bottom clearance.
+- Visually checked real rendered three-tab 390x844 and two-tab 320x700 layouts.
+  The temporary preview route and bypass were removed afterward.
+- Passed TypeScript, all six Edge Function checks, ESLint, 383 tests,
+  `git diff --check`, and iOS/Android production exports on 2026-08-11.
+
 #### Package 25: Cross-App Surface Hierarchy
 
 Status:
 
-- Planned after the new dock. Client-only.
+- Completed on 2026-08-11. Client-only; no Supabase migration or backend
+  deployment was required.
 
 Goal:
 
@@ -3231,6 +3273,30 @@ Verification:
   and tablet. Verify normal and Larger Text, sufficient contrast, no overlap,
   and no lost actions.
 - No Supabase migration or backend deployment belongs to Package 25.
+
+Completed implementation:
+
+- Added one shared semantic surface system for the cool canvas, white grouped
+  rows, quiet secondary bands, icon tiles, value/metadata chips, dividers,
+  pressed states, and labeled status badges. The status resolver covers success,
+  attention, error, informational, personal, assigned, unassigned, and disabled
+  states without relying on color alone.
+- Applied the system to the main Schedule, Church, and Profile views while
+  preserving every route, callback, query, mutation, role check, and released
+  data contract. Existing responsive name handling and tablet width limits stay
+  in place.
+- Added Package 25 behavior and contract coverage for contrast, future dark-mode
+  token compatibility, semantic mappings, shared primitive reuse, tab adoption,
+  and the client-only boundary.
+
+Completed verification:
+
+- Visually checked rendered Schedule, Church, and Profile states at 320x700,
+  390x844, and 768x1024. Grouped surfaces, status labels, long content, expanded
+  details, and the floating dock remained readable without overlap or lost
+  actions.
+- Passed TypeScript, all six Edge Function checks, ESLint, 391 tests,
+  `git diff --check`, and iOS/Android production exports on 2026-08-11.
 
 #### Package 26: Schedule Comprehension and Role Symbols
 

@@ -1,26 +1,30 @@
 import React from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
+  Keyboard,
+  Pressable,
   StyleSheet,
-  Platform,
+  Text,
+  View,
   useWindowDimensions,
 } from 'react-native';
-import { useRouter, usePathname } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
+import { Href, usePathname, useRouter } from 'expo-router';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { Href } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { IconSymbol } from '@/components/IconSymbol';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { findActiveTabIndex } from '@/lib/ui/package16';
+import {
+  FLOATING_DOCK_HORIZONTAL_INSET,
+  FLOATING_DOCK_MIN_TARGET,
+  getFloatingDockLayout,
+} from '@/lib/ui/floating-navigation';
 
 export interface TabBarItem {
   name: string;
@@ -41,237 +45,281 @@ interface FloatingTabBarProps {
 export default function FloatingTabBar({
   tabs,
   containerWidth,
-  borderRadius = 8,
+  borderRadius,
   bottomMargin,
 }: FloatingTabBarProps) {
-  const { width: screenWidth } = useWindowDimensions();
+  const theme = useAppTheme();
+  const { width: viewportWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
-  const initialTabCount = tabs?.length ?? 0;
-  const defaultContainerWidth = initialTabCount >= 3
-    ? Math.min(screenWidth - 24, 390)
-    : Math.min(screenWidth - 32, 320);
-  const resolvedContainerWidth = Math.max(1, containerWidth ?? defaultContainerWidth);
   const router = useRouter();
   const pathname = usePathname();
-
-  // ALL shared values must be declared unconditionally at the top — never inside
-  // conditionals, loops, or after early returns. Reanimated crashes if hook order changes.
-  const animatedValue = useSharedValue(0);
-  const tabCountSV = useSharedValue(tabs?.length ?? 0);
-  const containerWidthSV = useSharedValue(resolvedContainerWidth);
-
-  // Memoize safeTabs so it has a stable reference for useMemo deps below
+  const [keyboardVisible, setKeyboardVisible] = React.useState(false);
   const safeTabs = React.useMemo(() => tabs ?? [], [tabs]);
   const tabCount = safeTabs.length;
-
   const activeTabIndex = React.useMemo(() => {
-    if (tabCount === 0) {
-      return 0;
-    }
+    if (tabCount === 0) return 0;
     return findActiveTabIndex(
       pathname,
       safeTabs.map(tab => ({ name: tab.name, route: String(tab.route) })),
     );
   }, [pathname, safeTabs, tabCount]);
+  const layout = React.useMemo(() => getFloatingDockLayout({
+    requestedBottomGap: bottomMargin,
+    requestedWidth: containerWidth,
+    safeAreaBottom: insets.bottom,
+    tabCount,
+    viewportWidth,
+  }), [bottomMargin, containerWidth, insets.bottom, tabCount, viewportWidth]);
+  const resolvedBorderRadius = borderRadius ?? theme.radii.header - 2;
 
-  // Keep shared values in sync — always run, never conditional
+  // Shared values remain unconditional so permission-driven tab-count changes
+  // cannot alter hook order.
+  const animatedIndex = useSharedValue(activeTabIndex);
+  const tabCountValue = useSharedValue(tabCount);
+  const tabWidthValue = useSharedValue(layout.tabWidth);
+
   React.useEffect(() => {
-    tabCountSV.value = tabCount;
-  }, [tabCount, tabCountSV]);
+    const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+    });
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+    });
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   React.useEffect(() => {
-    containerWidthSV.value = resolvedContainerWidth;
-  }, [resolvedContainerWidth, containerWidthSV]);
+    tabCountValue.value = tabCount;
+    tabWidthValue.value = layout.tabWidth;
+  }, [layout.tabWidth, tabCount, tabCountValue, tabWidthValue]);
 
   React.useEffect(() => {
-    if (activeTabIndex >= 0) {
-      animatedValue.value = reduceMotion
-        ? activeTabIndex
-        : withSpring(activeTabIndex, {
-          damping: 20,
-          stiffness: 120,
-          mass: 1,
-        });
-    }
-  }, [activeTabIndex, animatedValue, reduceMotion]);
+    animatedIndex.value = reduceMotion
+      ? activeTabIndex
+      : withSpring(activeTabIndex, {
+        damping: 24,
+        mass: 0.65,
+        overshootClamping: true,
+        stiffness: 220,
+      });
+  }, [activeTabIndex, animatedIndex, reduceMotion]);
 
-  const handleTabPress = React.useCallback(
-    (route: Href) => {
-      router.navigate(route);
-    },
-    [router],
-  );
-
-  const tabWidthPercent = React.useMemo(() => {
-    if (tabCount === 0) return 50;
-    return (100 / tabCount) - 1;
-  }, [tabCount]);
-
-  // useAnimatedStyle — Reanimated v4 automatically treats this as a worklet.
-  // Do NOT add the 'worklet' directive — v4 crashes if it is present.
   const indicatorStyle = useAnimatedStyle(() => {
-    const tc = tabCountSV.value;
-    const cw = containerWidthSV.value;
-    if (tc <= 1 || cw <= 0) {
-      return { transform: [{ translateX: 0 }] };
-    }
-    const tabWidth = (cw - 8) / tc;
-    const clampedValue = Math.max(0, Math.min(animatedValue.value, tc - 1));
+    const safeTabCount = Math.max(0, tabCountValue.value);
+    const clampedIndex = safeTabCount > 0
+      ? Math.max(0, Math.min(animatedIndex.value, safeTabCount - 1))
+      : 0;
     return {
-      transform: [{ translateX: clampedValue * tabWidth }],
+      transform: [{ translateX: clampedIndex * tabWidthValue.value }],
     };
   });
+
+  const handleTabPress = React.useCallback((route: Href) => {
+    router.navigate(route);
+  }, [router]);
 
   if (tabCount === 0) {
     console.error('FloatingTabBar - No valid tabs to render');
     return null;
   }
 
-  const blurContainerStyle = {
-    ...styles.blurContainer,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    ...Platform.select({
-      ios: {
-        backgroundColor: 'rgba(255, 255, 255, 0.94)',
-      },
-      android: {
-        backgroundColor: 'rgba(255, 255, 255, 0.96)',
-      },
-      web: {
-        backgroundColor: 'rgba(255, 255, 255, 0.96)',
-        backdropFilter: 'blur(10px)',
-      },
-    }),
-  };
+  if (keyboardVisible) return null;
 
-  const indicatorBaseStyle = {
-    ...styles.indicator,
-    backgroundColor: colors.primary,
-    width: `${tabWidthPercent}%` as `${number}%`,
-  };
+  const dockContents = (
+    <>
+      <Animated.View
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={[
+          styles.indicator,
+          {
+            backgroundColor: theme.colors.navigationSelected,
+            borderColor: theme.colors.navigationBorder,
+            borderRadius: Math.max(14, resolvedBorderRadius - 4),
+            width: layout.tabWidth,
+          },
+          indicatorStyle,
+        ]}
+      >
+        <View
+          style={[
+            styles.indicatorAccent,
+            {
+              backgroundColor: theme.colors.navigationAccent,
+              boxShadow: `0 0 7px ${theme.colors.navigationAccent}`,
+            },
+          ]}
+        />
+      </Animated.View>
+
+      <View style={styles.tabsContainer}>
+        {safeTabs.map((tab, index) => {
+          const isActive = activeTabIndex === index;
+          const foreground = isActive
+            ? theme.colors.navigationSelectedForeground
+            : theme.colors.navigationInactive;
+
+          return (
+            <Pressable
+              accessibilityHint={`Switches to the ${tab.label} tab`}
+              accessibilityLabel={tab.label}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: isActive }}
+              hitSlop={2}
+              key={tab.name}
+              onPress={() => handleTabPress(tab.route)}
+              style={({ pressed }) => [
+                styles.tab,
+                pressed && styles.tabPressed,
+              ]}
+            >
+              <View style={styles.tabContent}>
+                <IconSymbol
+                  android_material_icon_name={tab.icon}
+                  color={foreground}
+                  ios_icon_name={tab.iosIcon ?? tab.icon}
+                  size={22}
+                />
+                <Text
+                  maxFontSizeMultiplier={1.3}
+                  numberOfLines={1}
+                  style={[
+                    styles.tabLabel,
+                    {
+                      color: foreground,
+                      fontWeight: isActive ? '800' : '700',
+                    },
+                  ]}
+                >
+                  {tab.label}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </>
+  );
+
+  const surfaceStyle = [
+    styles.surface,
+    {
+      borderColor: theme.colors.navigationBorder,
+      borderRadius: resolvedBorderRadius,
+    },
+  ];
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+    <View
+      style={[
+        styles.safeArea,
+        { bottom: layout.bottomOffset },
+      ]}
+    >
       <View
         style={[
           styles.container,
           {
-            width: resolvedContainerWidth,
-            marginBottom: bottomMargin ?? 20,
+            borderRadius: resolvedBorderRadius,
+            boxShadow: theme.elevation.medium,
+            height: layout.shellHeight,
+            width: layout.shellWidth,
           },
         ]}
       >
-        <BlurView intensity={55} style={[blurContainerStyle, { borderRadius }]}>
-          <View style={styles.background} />
-          <Animated.View style={[indicatorBaseStyle, indicatorStyle]} />
-          <View style={styles.tabsContainer}>
-            {safeTabs.map((tab, index) => {
-              if (!tab) {
-                console.warn('FloatingTabBar - Skipping invalid tab at index', index);
-                return null;
-              }
-
-              const isActive = activeTabIndex === index;
-              const iconColor = isActive
-                ? '#FFFFFF'
-                : '#334155';
-              const labelColor = isActive ? '#FFFFFF' : '#334155';
-              const labelWeight = isActive ? ('800' as const) : ('700' as const);
-
-              return (
-                <React.Fragment key={tab.name}>
-                  <TouchableOpacity
-                    style={styles.tab}
-                    onPress={() => handleTabPress(tab.route)}
-                    activeOpacity={0.7}
-                    accessibilityRole="tab"
-                    accessibilityLabel={tab.label}
-                    accessibilityHint={`Switches to the ${tab.label} tab`}
-                    accessibilityState={{ selected: isActive }}
-                  >
-                    <View style={styles.tabContent}>
-                      <IconSymbol
-                        android_material_icon_name={tab.icon}
-                        ios_icon_name={tab.iosIcon ?? tab.icon}
-                        size={24}
-                        color={iconColor}
-                      />
-                      <Text
-                        maxFontSizeMultiplier={1.25}
-                        numberOfLines={1}
-                        style={[
-                          styles.tabLabel,
-                          { color: labelColor, fontWeight: labelWeight },
-                        ]}
-                      >
-                        {tab.label}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                </React.Fragment>
-              );
-            })}
+        {process.env.EXPO_OS === 'ios' ? (
+          <BlurView
+            intensity={72}
+            style={[
+              surfaceStyle,
+              { backgroundColor: theme.colors.navigationSurface },
+            ]}
+            tint={theme.mode === 'dark' ? 'systemMaterialDark' : 'systemMaterialLight'}
+          >
+            {dockContents}
+          </BlurView>
+        ) : (
+          <View
+            style={[
+              surfaceStyle,
+              { backgroundColor: theme.colors.navigationOpaqueSurface },
+            ]}
+          >
+            {dockContents}
           </View>
-        </BlurView>
+        )}
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
-    position: 'absolute',
-    bottom: 0,
+    alignItems: 'center',
     left: 0,
+    pointerEvents: 'box-none',
+    position: 'absolute',
     right: 0,
     zIndex: 1000,
-    alignItems: 'center',
   },
   container: {
-    marginHorizontal: 20,
     alignSelf: 'center',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    elevation: 12,
   },
-  blurContainer: {
+  surface: {
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    flex: 1,
     overflow: 'hidden',
   },
-  background: {
-    ...StyleSheet.absoluteFillObject,
-  },
   indicator: {
+    borderCurve: 'continuous',
+    borderWidth: StyleSheet.hairlineWidth,
+    bottom: FLOATING_DOCK_HORIZONTAL_INSET,
+    left: FLOATING_DOCK_HORIZONTAL_INSET,
+    pointerEvents: 'none',
     position: 'absolute',
-    top: 6,
-    left: 4,
-    bottom: 6,
-    borderRadius: 6,
-    width: '49%',
+    top: FLOATING_DOCK_HORIZONTAL_INSET,
+  },
+  indicatorAccent: {
+    alignSelf: 'center',
+    borderRadius: 2,
+    bottom: 3,
+    height: 2,
+    position: 'absolute',
+    width: 28,
   },
   tabsContainer: {
+    alignItems: 'stretch',
+    flex: 1,
     flexDirection: 'row',
-    height: 68,
-    alignItems: 'center',
-    paddingHorizontal: 6,
+    paddingHorizontal: FLOATING_DOCK_HORIZONTAL_INSET,
   },
   tab: {
-    flex: 1,
     alignItems: 'center',
+    flex: 1,
     justifyContent: 'center',
     minHeight: 56,
-    paddingVertical: 8,
+    minWidth: FLOATING_DOCK_MIN_TARGET,
+    paddingHorizontal: 4,
+  },
+  tabPressed: {
+    opacity: 0.72,
+    transform: [{ scale: 0.98 }],
   },
   tabContent: {
     alignItems: 'center',
+    gap: 2,
     justifyContent: 'center',
-    gap: 3,
+    minWidth: 0,
   },
   tabLabel: {
     fontSize: 12,
+    letterSpacing: 0,
     lineHeight: 15,
-    marginTop: 2,
+    textAlign: 'center',
   },
 });

@@ -25,6 +25,7 @@ import {
 import { ScheduleServiceCard } from '@/components/schedules/schedule-service-card';
 import { ScheduleFilterModal } from '@/components/schedules/schedule-filter-modal';
 import { ScheduleViewControls } from '@/components/schedules/schedule-view-controls';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import {
   ManualAssignmentModal,
   type ManualAssignmentTarget,
@@ -630,6 +631,7 @@ const styles = StyleSheet.create({
 
 export default function HomeScreen() {
   const router = useRouter();
+  const theme = useAppTheme();
   // ── ALL hooks must be called unconditionally at the top ──────────────────
   const {
     currentChurch,
@@ -1384,6 +1386,23 @@ export default function HomeScreen() {
       { month: 'short', day: 'numeric', year: 'numeric' }
     )}`;
   }, [loadedThrough]);
+  const themedScheduleCardStyles = useMemo(() => ({
+    serviceCard: [
+      styles.serviceCard,
+      {
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.borderSubtle,
+        boxShadow: theme.elevation.low,
+      },
+    ],
+    serviceNotes: [
+      styles.serviceNotes,
+      {
+        borderLeftColor: theme.colors.accent,
+        color: theme.colors.textSecondary,
+      },
+    ],
+  }), [theme]);
 
   const renderScheduleService = useCallback(
     ({ item: service }: { item: ServiceWithAssignments }) => (
@@ -1402,7 +1421,7 @@ export default function HomeScreen() {
         isCreatingFillInRequest={isCreatingFillInRequest}
         busyFillInRequestIds={busyFillInRequestIds}
         isReorderingSongs={reorderingServiceIds.has(service.id)}
-        styles={styles}
+        styles={themedScheduleCardStyles}
         onOpenServiceActions={openServiceActions}
         onAddSong={openCommentModal}
         onEditSong={openEditCommentModal}
@@ -1434,6 +1453,7 @@ export default function HomeScreen() {
       pendingFillInRequestsByService,
       reorderingServiceIds,
       sortedRoles,
+      themedScheduleCardStyles,
     ]
   );
 
@@ -1520,7 +1540,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.canvas }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
       <ResponsiveTabHeader
@@ -1561,7 +1581,7 @@ export default function HomeScreen() {
       <NotificationPermissionOnboarding scheduleReady />
 
       <SectionList
-        style={styles.container}
+        style={[styles.container, { backgroundColor: theme.colors.canvas }]}
         contentContainerStyle={styles.scrollContent}
         contentInsetAdjustmentBehavior="automatic"
         sections={scheduleSections}
@@ -1576,8 +1596,8 @@ export default function HomeScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
+            tintColor={theme.colors.accent}
+            colors={[theme.colors.accent]}
           />
         }
         ListHeaderComponent={(
@@ -1591,10 +1611,10 @@ export default function HomeScreen() {
               accessible={false}
               style={styles.resultsTitleLane}
               text={viewMode === 'mine' ? 'My Upcoming Services' : 'All Upcoming Services'}
-              textStyle={styles.resultsTitle}
+              textStyle={[styles.resultsTitle, { color: theme.colors.textPrimary }]}
               variant="monthLabel"
             />
-            <Text accessible={false} style={styles.resultsCount}>
+            <Text accessible={false} style={[styles.resultsCount, { color: theme.colors.textSecondary }]}>
               {scheduleView.attentionServices.length + scheduleView.regularServices.length}
             </Text>
           </View>
@@ -1606,7 +1626,7 @@ export default function HomeScreen() {
               : `${section.title}. ${section.data.length} ${section.data.length === 1 ? 'service' : 'services'}`}
             accessibilityRole="header"
             accessible
-            style={styles.sectionHeader}
+            style={[styles.sectionHeader, { backgroundColor: theme.colors.canvas }]}
           >
             {section.kind === 'attention' ? (
               <>
@@ -1615,17 +1635,17 @@ export default function HomeScreen() {
                     ios_icon_name="exclamationmark.bubble.fill"
                     android_material_icon_name="notification-important"
                     size={20}
-                    color={colors.secondary}
+                    color={theme.status.warning.foreground}
                   />
                   <ResponsiveText
                     accessible={false}
                     style={styles.attentionTitleLane}
                     text={section.title}
-                    textStyle={styles.attentionTitle}
+                    textStyle={[styles.attentionTitle, { color: theme.colors.textPrimary }]}
                     variant="monthLabel"
                   />
                 </View>
-                <Text accessible={false} style={styles.attentionSummary}>
+                <Text accessible={false} style={[styles.attentionSummary, { color: theme.colors.textSecondary }]}>
                   Fill-in requests you can act on or need to track.
                 </Text>
               </>
@@ -1635,10 +1655,10 @@ export default function HomeScreen() {
                   accessible={false}
                   style={styles.monthTitleLane}
                   text={section.title}
-                  textStyle={styles.monthTitle}
+                  textStyle={[styles.monthTitle, { color: theme.colors.textPrimary }]}
                   variant="monthLabel"
                 />
-                <Text accessible={false} style={styles.monthCount}>
+                <Text accessible={false} style={[styles.monthCount, { color: theme.colors.textSecondary }]}>
                   {section.data.length} {section.data.length === 1 ? 'service' : 'services'}
                 </Text>
               </View>

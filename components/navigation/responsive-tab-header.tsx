@@ -10,6 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AdaptiveHeaderText } from '@/components/navigation/adaptive-header-text';
 import { ResponsiveText } from '@/components/ui/responsive-text';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import {
   calculateHeaderTitleLaneWidth,
   type HeaderTypographyVariant,
@@ -53,6 +54,7 @@ export function ResponsiveTabHeader({
   subtitleVariant = 'secondaryChurchName',
   trailingWidth,
 }: ResponsiveTabHeaderProps) {
+  const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const { width: windowWidth, fontScale } = useWindowDimensions();
   const reservedTrailingWidth = trailing ? trailingWidth ?? 54 : 0;
@@ -62,24 +64,54 @@ export function ResponsiveTabHeader({
   });
 
   return (
-    <View style={styles.shadowContainer}>
+    <View
+      style={[
+        styles.shadowContainer,
+        {
+          borderBottomLeftRadius: theme.radii.header,
+          borderBottomRightRadius: theme.radii.header,
+          boxShadow: theme.header.shadow,
+        },
+      ]}
+    >
       <LinearGradient
-        colors={['#0F172A', '#1E3A8A', '#2563EB']}
+        colors={theme.header.gradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.container, { paddingTop: insets.top + 14 }]}
+        style={[
+          styles.container,
+          {
+            borderBottomLeftRadius: theme.radii.header,
+            borderBottomRightRadius: theme.radii.header,
+            paddingTop: insets.top + 14,
+          },
+        ]}
       >
-        <View style={styles.accentPanel} pointerEvents="none" />
-        <View style={styles.accentLine} pointerEvents="none" />
+        <View
+          style={[
+            styles.accentPanel,
+            { backgroundColor: theme.header.accentPanel },
+          ]}
+          pointerEvents="none"
+        />
+        <View
+          style={[
+            styles.accentLine,
+            { backgroundColor: theme.header.accentLine },
+          ]}
+          pointerEvents="none"
+        />
 
         <View style={styles.topRow}>
           <View style={styles.titleLane}>
-            <Text style={styles.eyebrow}>{eyebrow}</Text>
+            <Text style={[styles.eyebrow, { color: theme.header.eyebrow }]}>
+              {eyebrow}
+            </Text>
             <AdaptiveHeaderText
               accessibilityLabel={accessibilityTitle ?? title}
               accessibilityRole="header"
               availableWidth={titleLaneWidth}
-              color="#FFFFFF"
+              color={theme.header.title}
               fontScale={fontScale}
               text={title}
               variant={titleVariant}
@@ -87,7 +119,7 @@ export function ResponsiveTabHeader({
             {subtitle ? (
               <AdaptiveHeaderText
                 availableWidth={titleLaneWidth}
-                color="#DBEAFE"
+                color={theme.header.subtitle}
                 fontScale={fontScale}
                 style={styles.subtitle}
                 text={subtitle}
@@ -122,17 +154,25 @@ export function TabHeaderPill({
   accessibilityLabel,
   onPress,
 }: TabHeaderPillProps) {
+  const theme = useAppTheme();
   const content = (
     <>
       {icon}
       <View style={styles.pillText}>
-        {detail ? <Text style={styles.pillLabel}>{label}</Text> : null}
+        {detail ? (
+          <Text style={[styles.pillLabel, { color: theme.header.eyebrow }]}>
+            {label}
+          </Text>
+        ) : null}
         <ResponsiveText
           accessible={!onPress}
           numberOfLines={1}
           selectable={!onPress}
           text={detail ?? label}
-          textStyle={detail ? styles.pillDetail : styles.pillSingleLine}
+          textStyle={[
+            detail ? styles.pillDetail : styles.pillSingleLine,
+            { color: theme.header.title },
+          ]}
           variant="compactLabel"
         />
       </View>
@@ -147,7 +187,14 @@ export function TabHeaderPill({
         accessibilityRole="button"
         activeOpacity={0.78}
         onPress={onPress}
-        style={styles.pill}
+        style={[
+          styles.pill,
+          {
+            backgroundColor: theme.header.controlSurface,
+            borderColor: theme.header.controlBorder,
+            borderRadius: theme.radii.control,
+          },
+        ]}
       >
         {content}
       </TouchableOpacity>
@@ -157,7 +204,14 @@ export function TabHeaderPill({
   return (
     <View
       accessibilityLabel={accessibilityLabel}
-      style={styles.pill}
+      style={[
+        styles.pill,
+        {
+          backgroundColor: theme.header.controlSurface,
+          borderColor: theme.header.controlBorder,
+          borderRadius: theme.radii.control,
+        },
+      ]}
     >
       {content}
     </View>
@@ -165,13 +219,14 @@ export function TabHeaderPill({
 }
 
 export function TabHeaderMetaText({ children }: { children: string }) {
+  const theme = useAppTheme();
   return (
     <ResponsiveText
       numberOfLines={1}
       selectable
       style={styles.metaTextLane}
       text={children}
-      textStyle={styles.metaText}
+      textStyle={[styles.metaText, { color: theme.header.subtitle }]}
       variant="supportingCopy"
     />
   );
@@ -182,13 +237,21 @@ export function TabHeaderIconButton({
   children,
   onPress,
 }: TabHeaderIconButtonProps) {
+  const theme = useAppTheme();
   return (
     <TouchableOpacity
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
       activeOpacity={0.78}
       onPress={onPress}
-      style={styles.iconButton}
+      style={[
+        styles.iconButton,
+        {
+          backgroundColor: theme.header.controlSurface,
+          borderColor: theme.header.controlBorder,
+          borderRadius: theme.radii.control,
+        },
+      ]}
     >
       {children}
     </TouchableOpacity>
@@ -196,22 +259,31 @@ export function TabHeaderIconButton({
 }
 
 export function TabHeaderIconSurface({ children }: { children: ReactNode }) {
-  return <View style={styles.iconSurface}>{children}</View>;
+  const theme = useAppTheme();
+  return (
+    <View
+      style={[
+        styles.iconSurface,
+        {
+          backgroundColor: theme.header.controlSurface,
+          borderColor: theme.header.controlBorder,
+          borderRadius: theme.radii.control,
+        },
+      ]}
+    >
+      {children}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
   shadowContainer: {
     marginBottom: 16,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    boxShadow: '0 8px 14px rgba(15, 23, 42, 0.18)',
   },
   container: {
     overflow: 'hidden',
     paddingHorizontal: 20,
     paddingBottom: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
   },
   accentPanel: {
     position: 'absolute',
@@ -220,7 +292,6 @@ const styles = StyleSheet.create({
     width: 132,
     height: 72,
     borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.09)',
     transform: [{ rotate: '-12deg' }],
   },
   accentLine: {
@@ -230,7 +301,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     height: 3,
     borderRadius: 3,
-    backgroundColor: '#60A5FA',
   },
   topRow: {
     minHeight: 74,
@@ -251,7 +321,6 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     marginBottom: 5,
-    color: '#BFDBFE',
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0,
@@ -276,9 +345,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
     paddingVertical: 7,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.24)',
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
   },
   pillText: {
     minWidth: 0,
@@ -286,27 +352,23 @@ const styles = StyleSheet.create({
   },
   pillLabel: {
     marginBottom: 1,
-    color: '#BFDBFE',
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0,
     textTransform: 'uppercase',
   },
   pillDetail: {
-    color: '#FFFFFF',
     fontSize: 16,
     lineHeight: 20,
     fontWeight: '900',
     letterSpacing: 0,
   },
   pillSingleLine: {
-    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0,
   },
   metaText: {
-    color: '#DBEAFE',
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0,
@@ -321,9 +383,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.28)',
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
   },
   iconSurface: {
     width: 54,
@@ -331,8 +390,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.28)',
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
   },
 });

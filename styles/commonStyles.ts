@@ -1,51 +1,58 @@
 
 import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import {
+  futureDarkAppTheme,
+  lightAppTheme,
+} from '@/lib/ui/app-theme';
 
+// Compatibility bridge for screens migrating during Packages 24-28. The
+// semantic themes above are the authoritative color source.
 export const colors = {
-  primary: '#1E3A8A',    // Navy Blue - spiritual/worship theme
-  secondary: '#2563EB',  // Bright Blue - also exported as a named key for badge/role use
-  accent: '#60A5FA',     // Light Blue
-  background: '#FFFFFF', // Clean white background
-  backgroundAlt: '#F0F9FF', // Very light blue background
-  text: '#1A202C',       // Dark text
-  textSecondary: '#64748B', // Gray text
-  textTertiary: '#94A3B8', // Lighter gray text
-  card: '#FFFFFF',       // White cards
-  cardBackground: '#FFFFFF', // Card background
-  border: '#DBEAFE',     // Light blue border
-  highlight: '#3B82F6',  // Medium blue for highlights
-  inputBackground: '#F0F9FF', // Input background
-  error: '#DC2626',      // Error red
+  primary: lightAppTheme.colors.accent,
+  secondary: lightAppTheme.header.gradient[2],
+  accent: lightAppTheme.header.accentLine,
+  // Legacy screens stay white until Package 25 deliberately adopts canvas.
+  background: lightAppTheme.colors.surface,
+  backgroundAlt: '#F0F9FF',
+  text: lightAppTheme.colors.textPrimary,
+  textSecondary: '#64748B',
+  textTertiary: '#94A3B8',
+  card: lightAppTheme.colors.surface,
+  cardBackground: lightAppTheme.colors.surface,
+  border: '#DBEAFE',
+  highlight: '#3B82F6',
+  inputBackground: '#F0F9FF',
+  error: '#DC2626',
   errorBackground: '#FEF2F2',
   errorBorder: '#FECACA',
-  navyDark: '#0F172A',   // Dark navy for accents
-  navyLight: '#BFDBFE',  // Light navy for subtle backgrounds
-  headerBackground: '#1E3A8A', // Navy blue header
-  headerText: '#FFFFFF', // White header text
+  navyDark: lightAppTheme.header.gradient[0],
+  navyLight: '#BFDBFE',
+  headerBackground: lightAppTheme.header.gradient[1],
+  headerText: lightAppTheme.header.title,
 };
 
 export const darkColors = {
-  background: '#1C1C1E',
-  card: '#2C2C2E',
-  text: '#FFFFFF',
-  subText: '#8E8E93',
-  border: '#3A3A3C',
-  primary: colors.primary,
-  secondary: colors.secondary,
-  accent: colors.accent,
-  backgroundAlt: '#2C2C2E',
-  textSecondary: '#8E8E93',
-  textTertiary: '#636366',
-  cardBackground: '#2C2C2E',
-  highlight: colors.highlight,
-  inputBackground: '#3A3A3C',
-  error: colors.error,
-  errorBackground: '#3B1D1D',
-  errorBorder: '#7F1D1D',
-  navyDark: colors.navyDark,
-  navyLight: '#1C3A6E',
-  headerBackground: colors.headerBackground,
-  headerText: colors.headerText,
+  background: futureDarkAppTheme.colors.canvas,
+  card: futureDarkAppTheme.colors.surface,
+  text: futureDarkAppTheme.colors.textPrimary,
+  subText: futureDarkAppTheme.colors.textSecondary,
+  border: futureDarkAppTheme.colors.borderSubtle,
+  primary: futureDarkAppTheme.colors.accent,
+  secondary: futureDarkAppTheme.header.gradient[2],
+  accent: futureDarkAppTheme.header.accentLine,
+  backgroundAlt: futureDarkAppTheme.colors.surfaceMuted,
+  textSecondary: futureDarkAppTheme.colors.textSecondary,
+  textTertiary: futureDarkAppTheme.colors.textTertiary,
+  cardBackground: futureDarkAppTheme.colors.surface,
+  highlight: futureDarkAppTheme.inputHighlight.border,
+  inputBackground: futureDarkAppTheme.colors.surfaceMuted,
+  error: futureDarkAppTheme.status.error.foreground,
+  errorBackground: futureDarkAppTheme.status.error.surface,
+  errorBorder: futureDarkAppTheme.status.error.border,
+  navyDark: futureDarkAppTheme.header.gradient[0],
+  navyLight: futureDarkAppTheme.colors.accentSoft,
+  headerBackground: futureDarkAppTheme.header.gradient[1],
+  headerText: futureDarkAppTheme.header.title,
 };
 
 export const buttonStyles = StyleSheet.create({
