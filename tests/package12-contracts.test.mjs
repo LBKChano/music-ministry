@@ -29,10 +29,10 @@ test('Profile replaces the inline calendar with one availability summary row', (
   assert.doesNotMatch(overview, /<Calendar|markedDates|pendingDates/);
 });
 
-test('the focused editor uses local dates and the shared scheduling horizon', () => {
-  assert.match(availability, /DEFAULT_SERVICE_WINDOW_DAYS/);
+test('the focused editor uses local dates and a six-calendar-month horizon', () => {
+  assert.match(availability, /AVAILABILITY_HORIZON_MONTHS = 6/);
   assert.match(availability, /formatLocalDate\(now\)/);
-  assert.match(availability, /addDaysToDate/);
+  assert.match(availability, /lastDayOfTargetMonth/);
   assert.doesNotMatch(availability, /toISOString/);
   assert.match(editor, /minDate=\{range\.startDate\}/);
   assert.match(editor, /maxDate=\{range\.endDate\}/);

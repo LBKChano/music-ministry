@@ -50,6 +50,27 @@ export interface AppTheme {
     mutedForeground: string;
     accent: string;
   };
+  modal: {
+    backdrop: string;
+    surface: string;
+    footerSurface: string;
+    border: string;
+  };
+  input: {
+    surface: string;
+    foreground: string;
+    placeholder: string;
+    border: string;
+  };
+  button: {
+    primarySurface: string;
+    primaryForeground: string;
+    secondarySurface: string;
+    secondaryForeground: string;
+    secondaryBorder: string;
+    destructiveSurface: string;
+    destructiveForeground: string;
+  };
   inputHighlight: {
     surface: string;
     foreground: string;
@@ -195,6 +216,27 @@ export const lightAppTheme: AppTheme = {
     mutedForeground: '#526B8C',
     accent: '#2D63C8',
   },
+  modal: {
+    backdrop: 'rgba(15, 23, 42, 0.62)',
+    surface: '#FFFFFF',
+    footerSurface: '#F8FBFF',
+    border: '#B7C6D8',
+  },
+  input: {
+    surface: '#FFFFFF',
+    foreground: '#1A202C',
+    placeholder: '#66758C',
+    border: '#B7C6D8',
+  },
+  button: {
+    primarySurface: '#1E3A8A',
+    primaryForeground: '#FFFFFF',
+    secondarySurface: '#F0F5FA',
+    secondaryForeground: '#1A202C',
+    secondaryBorder: '#B7C6D8',
+    destructiveSurface: '#A92828',
+    destructiveForeground: '#FFFFFF',
+  },
   inputHighlight: {
     surface: '#EEF5FF',
     foreground: '#17345D',
@@ -293,6 +335,27 @@ export const futureDarkAppTheme: AppTheme = {
     foreground: '#F3F7FC',
     mutedForeground: '#B7C6D8',
     accent: '#8FB8FF',
+  },
+  modal: {
+    backdrop: 'rgba(0, 0, 0, 0.72)',
+    surface: '#131C29',
+    footerSurface: '#182536',
+    border: '#43556D',
+  },
+  input: {
+    surface: '#182536',
+    foreground: '#F7FAFC',
+    placeholder: '#98A8BC',
+    border: '#43556D',
+  },
+  button: {
+    primarySurface: '#8FB8FF',
+    primaryForeground: '#091426',
+    secondarySurface: '#182536',
+    secondaryForeground: '#F7FAFC',
+    secondaryBorder: '#43556D',
+    destructiveSurface: '#FFB3BE',
+    destructiveForeground: '#3A1D25',
   },
   inputHighlight: {
     surface: '#1A2C44',

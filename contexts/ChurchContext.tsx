@@ -75,6 +75,8 @@ import {
   validateChurchDisplayName,
 } from '@/lib/profile/identity';
 import type { Json, Tables, TablesInsert } from '@/lib/supabase/types';
+import type { RoleSymbolKey } from '@/lib/roles/role-symbols';
+import { isMissingRpcFunctionError } from '@/lib/admin/operations';
 
 type Church = Tables<'churches'>;
 type ChurchMember = Tables<'church_members'>;
@@ -138,8 +140,8 @@ interface ChurchContextValue {
   addRecurringService: (churchId: string, name: string, dayOfWeek: number, time: string, notes?: string, roles?: string[]) => Promise<RecurringService | null>;
   updateRecurringService: (serviceId: string, churchId: string, updates: { name: string; day_of_week: number; time: string; notes?: string | null }, roles?: string[]) => Promise<RecurringService | null>;
   deleteRecurringService: (serviceId: string, churchId: string) => Promise<boolean>;
-  addChurchRole: (churchId: string, name: string, description?: string) => Promise<ChurchRole | null>;
-  updateChurchRole: (roleId: string, churchId: string, name: string, description?: string) => Promise<ChurchRole | null>;
+  addChurchRole: (churchId: string, name: string, description?: string, iconKey?: RoleSymbolKey | null) => Promise<ChurchRole | null>;
+  updateChurchRole: (roleId: string, churchId: string, name: string, description?: string, iconKey?: RoleSymbolKey | null) => Promise<ChurchRole | null>;
   deleteChurchRole: (roleId: string, churchId: string) => Promise<boolean>;
   updateRoleOrder: (churchId: string, roleIds: string[]) => Promise<boolean>;
   addMemberRole: (memberId: string, roleId: string, churchId: string) => Promise<boolean>;
@@ -1097,7 +1099,12 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchRecurringServices]);
 
-  const addChurchRole = useCallback(async (churchId: string, name: string, description?: string) => {
+  const addChurchRole = useCallback(async (
+    churchId: string,
+    name: string,
+    description?: string,
+    iconKey?: RoleSymbolKey | null,
+  ) => {
     console.log('Adding church role:', { churchId, name });
     try {
       setError(null);
@@ -1109,7 +1116,11 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
         .limit(1);
       const maxOrder = existingRoles && existingRoles.length > 0 ? existingRoles[0].display_order : -1;
       const newRole: TablesInsert<'church_roles'> = {
-        church_id: churchId, name, description: description ?? null, display_order: maxOrder + 1,
+        church_id: churchId,
+        name,
+        description: description ?? null,
+        display_order: maxOrder + 1,
+        icon_key: iconKey ?? null,
       };
       const { data, error: insertError } = await supabase.from('church_roles').insert(newRole).select().single();
       if (insertError) {
@@ -1131,6 +1142,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     churchId: string,
     name: string,
     description?: string,
+    iconKey?: RoleSymbolKey | null,
   ) => {
     console.log('Updating church role:', { roleId, churchId });
     try {
@@ -1141,15 +1153,31 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
 
-      const { data, error: updateError } = await supabase.rpc(
-        'save_church_role_admin',
+      let { data, error: updateError } = await supabase.rpc(
+        'save_church_role_admin_v2',
         {
           target_church_id: churchId,
           target_role_id: roleId,
           role_name: normalizedName,
           role_description: description?.trim() ?? '',
+          role_icon_key: iconKey ?? '',
         },
       );
+
+      if (isMissingRpcFunctionError(updateError)) {
+        console.warn('Role symbol RPC is unavailable; saving through the compatible legacy path');
+        const legacyResult = await supabase.rpc(
+          'save_church_role_admin',
+          {
+            target_church_id: churchId,
+            target_role_id: roleId,
+            role_name: normalizedName,
+            role_description: description?.trim() ?? '',
+          },
+        );
+        data = legacyResult.data;
+        updateError = legacyResult.error;
+      }
 
       if (updateError) {
         console.error('Error updating church role:', updateError);
@@ -2279,6 +2307,9 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
         servicesQueryRoot,
         typedPayload
       );
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.serviceDateSummaryRoot(accountId, currentChurchId),
+      });
     };
 
     const handleAssignmentPayload = (payload: unknown) => {

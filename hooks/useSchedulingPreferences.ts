@@ -10,7 +10,7 @@ import {
   removeRealtimeChannel,
 } from '@/lib/realtime/channels';
 import {
-  applySchedulingPreferenceToggle,
+  applySchedulingAvailabilityChange,
   schedulingPreferenceKey,
   type SchedulingPreferenceIdentity,
   type SchedulingPreferenceRecord,
@@ -26,8 +26,8 @@ interface UseSchedulingPreferencesOptions {
 
 export interface FailedSchedulingPreferenceChange
   extends SchedulingPreferenceIdentity {
+  isAvailable: boolean;
   message: string;
-  shouldAvoid: boolean;
 }
 
 export function useSchedulingPreferences({
@@ -125,10 +125,10 @@ export function useSchedulingPreferences({
     };
   }, [accountId, active, churchId, memberId, queryClient]);
 
-  const setPreference = useCallback(async (
+  const setAvailability = useCallback(async (
     recurringServiceId: string,
     roleId: string,
-    shouldAvoid: boolean
+    isAvailable: boolean
   ): Promise<boolean> => {
     if (!active || !accountId || !churchId || !memberId) return false;
 
@@ -159,14 +159,15 @@ export function useSchedulingPreferences({
     setFailedPreference(null);
     queryClient.setQueryData<SchedulingPreferenceRecord[]>(
       concreteQueryKey,
-      current => applySchedulingPreferenceToggle(
+      current => applySchedulingAvailabilityChange(
         current ?? [],
         identity,
-        shouldAvoid
+        isAvailable
       )
     );
 
     try {
+      const shouldAvoid = !isAvailable;
       if (shouldAvoid) {
         const { data, error } = await supabase
           .from('member_scheduling_preferences')
@@ -178,10 +179,10 @@ export function useSchedulingPreferences({
 
         queryClient.setQueryData<SchedulingPreferenceRecord[]>(
           concreteQueryKey,
-          current => applySchedulingPreferenceToggle(
+          current => applySchedulingAvailabilityChange(
             current ?? [],
             identity,
-            true,
+            false,
             data as Tables<'member_scheduling_preferences'>
           )
         );
@@ -212,8 +213,8 @@ export function useSchedulingPreferences({
         setSaveError(message);
         setFailedPreference({
           ...identity,
+          isAvailable,
           message,
-          shouldAvoid,
         });
       }
       return false;
@@ -233,14 +234,20 @@ export function useSchedulingPreferences({
     queryClient,
   ]);
 
+  const setPreference = useCallback((
+    recurringServiceId: string,
+    roleId: string,
+    shouldAvoid: boolean,
+  ) => setAvailability(recurringServiceId, roleId, !shouldAvoid), [setAvailability]);
+
   const retryFailedPreference = useCallback(async (): Promise<boolean> => {
     if (!failedPreference) return false;
-    return setPreference(
+    return setAvailability(
       failedPreference.recurring_service_id,
       failedPreference.role_id,
-      failedPreference.shouldAvoid
+      failedPreference.isAvailable
     );
-  }, [failedPreference, setPreference]);
+  }, [failedPreference, setAvailability]);
 
   return {
     preferences: preferenceQuery.data ?? [],
@@ -251,6 +258,7 @@ export function useSchedulingPreferences({
     saveError,
     failedPreference,
     pendingKeys,
+    setAvailability,
     setPreference,
     retryFailedPreference,
     retry: preferenceQuery.refetch,

@@ -12,6 +12,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
+import { RoleSymbol } from '@/components/roles/role-symbol';
+import { AppIconTile, AppStatusBadge } from '@/components/ui/app-surface';
 import { ResponsiveText } from '@/components/ui/responsive-text';
 import { useAppTheme } from '@/contexts/AppThemeContext';
 import { useReducedMotionPreference } from '@/hooks/useReducedMotionPreference';
@@ -30,6 +32,7 @@ import {
   shouldAnimateScheduleDisclosure,
 } from '@/lib/ui/schedule-interaction';
 import { resolveSurfaceStatusTokens } from '@/lib/ui/surface-system';
+import { resolveRoleSymbolForName } from '@/lib/roles/role-symbols';
 import { colors } from '@/styles/commonStyles';
 
 type ServiceComment = ServiceWithAssignments['service_comments'][number];
@@ -47,6 +50,7 @@ export type ScheduleServiceCardStyles =
 export interface ScheduleServiceRole {
   id: string;
   name: string;
+  icon_key?: string | null;
 }
 
 interface ScheduleServiceCardProps {
@@ -207,7 +211,7 @@ function ScheduleServiceCardComponent({
   const statusLabel = summary.pendingFillInCount > 0
     ? `${summary.pendingFillInCount} fill-in${summary.pendingFillInCount === 1 ? '' : 's'}`
     : summary.personalRoleNames.length > 0
-      ? 'You are serving'
+      ? "You're serving"
       : null;
   const summaryStatusTokens = resolveSurfaceStatusTokens(
     theme,
@@ -218,6 +222,10 @@ function ScheduleServiceCardComponent({
     showAll: showAllSongs,
     reordering: isSongReorderMode,
   });
+  const personalRoles = summary.personalRoleNames.map(roleName => ({
+    name: roleName,
+    symbol: resolveRoleSymbolForName(sortedRoles, roleName),
+  }));
   const serviceSummaryAccessibilityLabel = [
     service.service_type,
     `${dateParts.weekday}, ${dateParts.month} ${dateParts.day}`,
@@ -297,7 +305,16 @@ function ScheduleServiceCardComponent({
   };
 
   return (
-    <View onLayout={handleCardLayout} style={styles.serviceCard}>
+    <View
+      onLayout={handleCardLayout}
+      style={[
+        styles.serviceCard,
+        personalRoles.length > 0 && {
+          borderLeftColor: theme.colors.accent,
+          borderLeftWidth: 3,
+        },
+      ]}
+    >
       <View style={cardStyles.summaryRow}>
         <View
           accessibilityLabel={serviceSummaryAccessibilityLabel}
@@ -305,26 +322,35 @@ function ScheduleServiceCardComponent({
           accessible
           style={cardStyles.summaryPrimary}
         >
-          <View accessible={false} style={cardStyles.dateLane}>
-            <Text accessible={false} style={cardStyles.weekday}>{dateParts.weekday}</Text>
-            <Text accessible={false} style={cardStyles.day}>{dateParts.day}</Text>
-            <Text accessible={false} style={cardStyles.month}>{dateParts.month}</Text>
+          <View
+            accessible={false}
+            style={[
+              cardStyles.dateLane,
+              {
+                backgroundColor: theme.serviceMetadata.surface,
+                borderColor: theme.serviceMetadata.surface,
+              },
+            ]}
+          >
+            <Text accessible={false} style={[cardStyles.weekday, { color: theme.serviceMetadata.mutedForeground }]}>{dateParts.weekday}</Text>
+            <Text accessible={false} style={[cardStyles.day, { color: theme.serviceMetadata.foreground }]}>{dateParts.day}</Text>
+            <Text accessible={false} style={[cardStyles.month, { color: theme.serviceMetadata.mutedForeground }]}>{dateParts.month}</Text>
           </View>
           <View style={cardStyles.summaryCenter}>
             <ResponsiveText
               accessible={false}
               text={service.service_type}
-              textStyle={cardStyles.serviceType}
+              textStyle={[cardStyles.serviceType, { color: theme.colors.accent }]}
               variant="serviceType"
             />
             <View accessible={false} style={cardStyles.timeRow}>
               <IconSymbol
                 ios_icon_name="clock"
                 android_material_icon_name="schedule"
-                color={colors.textSecondary}
+                color={theme.colors.accent}
                 size={15}
               />
-              <Text accessible={false} style={cardStyles.timeText}>{timeDisplay || 'Time not set'}</Text>
+              <Text accessible={false} style={[cardStyles.timeText, { color: theme.colors.accent }]}>{timeDisplay || 'Time not set'}</Text>
             </View>
           </View>
         </View>
@@ -465,9 +491,9 @@ function ScheduleServiceCardComponent({
         );
       })}
 
-      {summary.personalRoleNames.length > 0 ? (
+      {personalRoles.length > 0 ? (
         <View
-          accessibilityLabel={`Your assignment: ${summary.personalRoleNames.join(', ')}`}
+          accessibilityLabel={`Your Assignment: ${summary.personalRoleNames.join(', ')}`}
           accessibilityRole="text"
           accessible
           style={[
@@ -478,23 +504,44 @@ function ScheduleServiceCardComponent({
             },
           ]}
         >
-          <IconSymbol
-            ios_icon_name="person.crop.circle.badge.checkmark"
-            android_material_icon_name="how-to-reg"
-            color={theme.status.info.foreground}
-            size={19}
-          />
           <View style={cardStyles.personalAssignmentText}>
-            <Text accessible={false} style={cardStyles.personalAssignmentLabel}>Your Assignment</Text>
-            <ResponsiveText
-              accessible={false}
-              text={summary.personalRoleNames.join(', ')}
-              textStyle={cardStyles.personalAssignmentRoles}
-              variant="roleName"
-            />
+            <Text accessible={false} style={[cardStyles.personalAssignmentLabel, { color: theme.status.info.foreground }]}>You&apos;re serving</Text>
+            <View style={cardStyles.personalRoleList}>
+              {personalRoles.map(role => (
+                <View key={role.name} style={cardStyles.personalRoleChip}>
+                  <RoleSymbol
+                    color={theme.status.info.foreground}
+                    iconKey={role.symbol.key}
+                    size={18}
+                  />
+                  <ResponsiveText
+                    accessible={false}
+                    style={cardStyles.personalRoleTextLane}
+                    text={role.name}
+                    textStyle={[cardStyles.personalAssignmentRoles, { color: theme.status.info.foreground }]}
+                    variant="roleName"
+                  />
+                </View>
+              ))}
+            </View>
           </View>
         </View>
-      ) : null}
+      ) : (
+        <View
+          accessibilityLabel="Not assigned to this service"
+          accessibilityRole="text"
+          accessible
+          style={cardStyles.notAssignedRow}
+        >
+          <IconSymbol
+            android_material_icon_name="person-outline"
+            color={theme.colors.textTertiary}
+            ios_icon_name="person"
+            size={17}
+          />
+          <Text accessible={false} style={[cardStyles.notAssignedText, { color: theme.colors.textTertiary }]}>Not assigned</Text>
+        </View>
+      )}
 
       {service.notes ? (
         <ResponsiveText
@@ -526,11 +573,242 @@ function ScheduleServiceCardComponent({
         ) : null}
       </View>
 
+      <Pressable
+        accessibilityHint={isExpanded
+          ? 'Collapses the team and song details'
+          : 'Show Details for the full team and song list'}
+        accessibilityRole="button"
+        accessibilityLabel={isExpanded ? 'Hide service details' : 'Show service details'}
+        accessibilityState={{ expanded: isExpanded }}
+        onPress={() => {
+          animateDisclosure();
+          setIsExpanded(current => !current);
+          if (isExpanded) setIsSongReorderMode(false);
+        }}
+        style={({ pressed }) => [
+          cardStyles.detailsToggle,
+          pressed && cardStyles.pressed,
+        ]}
+      >
+        <ResponsiveText
+          accessible={false}
+          style={cardStyles.disclosureLabelLane}
+          text={isExpanded ? 'Hide team and songs' : 'View team and songs'}
+          textStyle={cardStyles.detailsToggleText}
+          variant="compactLabel"
+        />
+        <IconSymbol
+          ios_icon_name={isExpanded ? 'chevron.up' : 'chevron.down'}
+          android_material_icon_name={isExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+          color={colors.primary}
+          size={22}
+        />
+      </Pressable>
+
       {isExpanded ? (
-        <View style={[
-          cardStyles.songsSection,
-          { backgroundColor: theme.colors.surfaceMuted },
-        ]}>
+        <View
+          style={[
+            cardStyles.expandedDetailsSurface,
+            { backgroundColor: theme.colors.surfaceMuted },
+          ]}
+        >
+          <View style={cardStyles.teamSection}>
+          <Text
+            accessibilityLabel={`Team for ${service.service_type}, ${summary.totalAssignmentCount} roles`}
+            accessibilityRole="header"
+            style={cardStyles.sectionTitle}
+          >
+            Team
+          </Text>
+          {sortedRoles.map(role => {
+            const assignment = service.assignments.find(item => item.role === role.name);
+            if (!assignment) return null;
+
+            const assignedMemberName = assignment.member_id
+              ? getMemberDisplayName(assignment.member_id, assignment.person_name)
+              : null;
+            const isMyAssignment = currentMemberId === assignment.member_id;
+            const hasFillInRequest = pendingFillInRequests.some(
+              request => request.assignment_id === assignment.id
+            );
+            const roleSymbol = resolveRoleSymbolForName(sortedRoles, assignment.role);
+            const assignmentState = isMyAssignment
+              ? 'You'
+              : hasFillInRequest
+                ? 'Fill-in requested'
+                : assignedMemberName
+                  ? 'Assigned'
+                  : 'Open';
+            const rowContent = (
+              <>
+                <AppIconTile compact>
+                  <RoleSymbol
+                    color={theme.iconTile.foreground}
+                    iconKey={roleSymbol.key}
+                    size={21}
+                  />
+                </AppIconTile>
+                <View style={cardStyles.teamRoleCopy}>
+                  <ResponsiveText
+                    accessible={false}
+                    text={assignment.role}
+                    textStyle={cardStyles.teamRole}
+                    variant="roleName"
+                  />
+                  {stackTeamRows ? (
+                    <ResponsiveText
+                      accessible={false}
+                      text={assignedMemberName || 'Unassigned'}
+                      textStyle={[
+                        cardStyles.teamMember,
+                        !assignedMemberName && cardStyles.unassigned,
+                      ]}
+                      variant="memberName"
+                    />
+                  ) : null}
+                </View>
+                {!stackTeamRows ? (
+                  <ResponsiveText
+                    accessible={false}
+                    style={cardStyles.teamMemberLane}
+                    text={assignedMemberName || 'Unassigned'}
+                    textStyle={[
+                      cardStyles.teamMember,
+                      !assignedMemberName && cardStyles.unassigned,
+                    ]}
+                    variant="memberName"
+                  />
+                ) : null}
+                <AppStatusBadge
+                  label={assignmentState}
+                  tone={isMyAssignment
+                    ? 'personal'
+                    : hasFillInRequest
+                      ? 'attention'
+                      : assignedMemberName
+                        ? 'assigned'
+                        : 'unassigned'}
+                />
+                {isAdmin ? (
+                  <IconSymbol
+                    android_material_icon_name="chevron-right"
+                    color={colors.textSecondary}
+                    ios_icon_name="chevron.right"
+                    size={20}
+                  />
+                ) : null}
+              </>
+            );
+
+            return (
+              <View
+                key={assignment.id}
+                style={[
+                  cardStyles.teamRowGroup,
+                  isMyAssignment && {
+                    backgroundColor: theme.status.info.surface,
+                    borderColor: theme.status.info.border,
+                  },
+                ]}
+              >
+                {isAdmin ? (
+                  <Pressable
+                    accessibilityHint="Opens availability-checked assignment options"
+                    accessibilityLabel={`${assignment.role}, ${assignedMemberName || 'Unassigned'}`}
+                    accessibilityRole="button"
+                    onPress={() => onAssignMember(
+                      assignment.id,
+                      service.id,
+                      assignment.role,
+                      assignment.member_id,
+                      assignedMemberName,
+                    )}
+                    style={({ pressed }) => [
+                      cardStyles.teamRow,
+                      stackTeamRows && cardStyles.teamRowStacked,
+                      pressed && cardStyles.pressed,
+                    ]}
+                  >
+                    {rowContent}
+                  </Pressable>
+                ) : (
+                  <View
+                    accessibilityLabel={`${assignment.role}, ${assignedMemberName || 'Unassigned'}`}
+                    accessibilityRole="text"
+                    accessible
+                    style={[
+                      cardStyles.teamRow,
+                      stackTeamRows && cardStyles.teamRowStacked,
+                    ]}
+                  >
+                    {rowContent}
+                  </View>
+                )}
+
+                {isMyAssignment ? (
+                  hasFillInRequest ? (
+                    <View
+                      accessibilityLabel={`Fill-in requested for ${assignment.role}`}
+                      accessibilityRole="text"
+                      accessible
+                      style={cardStyles.fillInPending}
+                    >
+                      <IconSymbol
+                        android_material_icon_name="schedule-send"
+                        color={colors.secondary}
+                        ios_icon_name="clock.badge.checkmark"
+                        size={17}
+                      />
+                      <ResponsiveText
+                        accessible={false}
+                        style={cardStyles.actionLabelLane}
+                        text="Fill-in requested"
+                        textStyle={cardStyles.fillInPendingText}
+                        variant="compactLabel"
+                      />
+                    </View>
+                  ) : (
+                    <Pressable
+                      accessibilityHint={`Opens a fill-in request for your ${assignment.role} assignment`}
+                      accessibilityLabel={`Request fill-in for ${assignment.role}`}
+                      accessibilityRole="button"
+                      accessibilityState={{
+                        busy: isCreatingFillInRequest,
+                        disabled: isCreatingFillInRequest,
+                      }}
+                      disabled={isCreatingFillInRequest}
+                      onPress={() => onRequestFillIn(
+                        assignment.id,
+                        service.id,
+                        assignment.role,
+                      )}
+                      style={({ pressed }) => [
+                        cardStyles.fillInAction,
+                        pressed && cardStyles.pressed,
+                        isCreatingFillInRequest && cardStyles.disabled,
+                      ]}
+                    >
+                      <IconSymbol
+                        android_material_icon_name="person-search"
+                        color={colors.secondary}
+                        ios_icon_name="person.2.badge.gearshape"
+                        size={18}
+                      />
+                      <ResponsiveText
+                        accessible={false}
+                        style={cardStyles.actionLabelLane}
+                        text="Request Fill-In"
+                        textStyle={cardStyles.fillInActionText}
+                        variant="compactLabel"
+                      />
+                    </Pressable>
+                  )
+                ) : null}
+              </View>
+            );
+          })}
+          </View>
+          <View style={cardStyles.songsSection}>
           <View style={cardStyles.sectionHeaderRow}>
             <Text
               accessibilityLabel={`Songs for ${service.service_type}, ${summary.songCount}`}
@@ -623,18 +901,37 @@ function ScheduleServiceCardComponent({
               });
             const meta = [
               comment.song_type || 'Song',
-              comment.song_number ? `#${comment.song_number}` : null,
               `Added by ${authorName}`,
               createdAtText || null,
             ].filter(Boolean).join(' - ');
+            const songNumberLabel = comment.song_number ? `#${comment.song_number}` : null;
             const songCopy = (
               <View style={cardStyles.songCopy}>
-                <ResponsiveText
-                  accessible={false}
-                  text={comment.comment_text}
-                  textStyle={cardStyles.songTitle}
-                  variant="songTitle"
-                />
+                <View style={cardStyles.songTitleRow}>
+                  {songNumberLabel ? (
+                    <View
+                      accessibilityLabel={`Song number ${comment.song_number}`}
+                      style={[
+                        cardStyles.songNumberChip,
+                        {
+                          backgroundColor: theme.status.info.surface,
+                          borderColor: theme.status.info.border,
+                        },
+                      ]}
+                    >
+                      <Text style={[cardStyles.songNumberChipText, { color: theme.status.info.foreground }]}>
+                        {songNumberLabel}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <ResponsiveText
+                    accessible={false}
+                    style={cardStyles.songTitleLane}
+                    text={comment.comment_text}
+                    textStyle={cardStyles.songTitle}
+                    variant="songTitle"
+                  />
+                </View>
                 <ResponsiveText
                   accessible={false}
                   text={meta}
@@ -649,7 +946,7 @@ function ScheduleServiceCardComponent({
                 <Text style={cardStyles.songPosition}>{commentIndex + 1}</Text>
                 {canEditSong && !isSongReorderMode ? (
                   <Pressable
-                    accessibilityLabel={`Song ${commentIndex + 1}, ${comment.comment_text}. ${meta}`}
+                    accessibilityLabel={`Song ${commentIndex + 1}, ${songNumberLabel ? `${songNumberLabel}, ` : ''}${comment.comment_text}. ${meta}`}
                     accessibilityHint="Opens this song for editing"
                     accessibilityRole="button"
                     onPress={() => onEditSong(service, comment)}
@@ -662,7 +959,7 @@ function ScheduleServiceCardComponent({
                   </Pressable>
                 ) : (
                   <View
-                    accessibilityLabel={`Song ${commentIndex + 1}, ${comment.comment_text}. ${meta}`}
+                    accessibilityLabel={`Song ${commentIndex + 1}, ${songNumberLabel ? `${songNumberLabel}, ` : ''}${comment.comment_text}. ${meta}`}
                     accessibilityRole="text"
                     accessible
                     style={cardStyles.songPressable}
@@ -781,206 +1078,7 @@ function ScheduleServiceCardComponent({
               />
             </Pressable>
           ) : null}
-        </View>
-      ) : null}
-
-      <Pressable
-        accessibilityHint={isExpanded
-          ? 'Collapses the team and song details'
-          : 'Shows the full team and song details'}
-        accessibilityRole="button"
-        accessibilityLabel={isExpanded ? 'Hide service details' : 'Show service details'}
-        accessibilityState={{ expanded: isExpanded }}
-        onPress={() => {
-          animateDisclosure();
-          setIsExpanded(current => !current);
-          if (isExpanded) setIsSongReorderMode(false);
-        }}
-        style={({ pressed }) => [
-          cardStyles.detailsToggle,
-          pressed && cardStyles.pressed,
-        ]}
-      >
-        <ResponsiveText
-          accessible={false}
-          style={cardStyles.disclosureLabelLane}
-          text={isExpanded ? 'Hide Details' : 'Show Details'}
-          textStyle={cardStyles.detailsToggleText}
-          variant="compactLabel"
-        />
-        <IconSymbol
-          ios_icon_name={isExpanded ? 'chevron.up' : 'chevron.down'}
-          android_material_icon_name={isExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
-          color={colors.primary}
-          size={22}
-        />
-      </Pressable>
-
-      {isExpanded ? (
-        <View style={[
-          cardStyles.teamSection,
-          { backgroundColor: theme.colors.surfaceMuted },
-        ]}>
-          <Text
-            accessibilityLabel={`Team for ${service.service_type}, ${summary.totalAssignmentCount} roles`}
-            accessibilityRole="header"
-            style={cardStyles.sectionTitle}
-          >
-            Team
-          </Text>
-          {sortedRoles.map(role => {
-            const assignment = service.assignments.find(item => item.role === role.name);
-            if (!assignment) return null;
-
-            const assignedMemberName = assignment.member_id
-              ? getMemberDisplayName(assignment.member_id, assignment.person_name)
-              : null;
-            const isMyAssignment = currentMemberId === assignment.member_id;
-            const hasFillInRequest = pendingFillInRequests.some(
-              request => request.assignment_id === assignment.id
-            );
-            const rowContent = (
-              <>
-                <View style={cardStyles.teamRoleCopy}>
-                  <ResponsiveText
-                    accessible={false}
-                    text={assignment.role}
-                    textStyle={cardStyles.teamRole}
-                    variant="roleName"
-                  />
-                  {stackTeamRows ? (
-                    <ResponsiveText
-                      accessible={false}
-                      text={assignedMemberName || 'Unassigned'}
-                      textStyle={[
-                        cardStyles.teamMember,
-                        !assignedMemberName && cardStyles.unassigned,
-                      ]}
-                      variant="memberName"
-                    />
-                  ) : null}
-                </View>
-                {!stackTeamRows ? (
-                  <ResponsiveText
-                    accessible={false}
-                    style={cardStyles.teamMemberLane}
-                    text={assignedMemberName || 'Unassigned'}
-                    textStyle={[
-                      cardStyles.teamMember,
-                      !assignedMemberName && cardStyles.unassigned,
-                    ]}
-                    variant="memberName"
-                  />
-                ) : null}
-                {isAdmin ? (
-                  <IconSymbol
-                    android_material_icon_name="chevron-right"
-                    color={colors.textSecondary}
-                    ios_icon_name="chevron.right"
-                    size={20}
-                  />
-                ) : null}
-              </>
-            );
-
-            return (
-              <View key={assignment.id} style={cardStyles.teamRowGroup}>
-                {isAdmin ? (
-                  <Pressable
-                    accessibilityHint="Opens availability-checked assignment options"
-                    accessibilityLabel={`${assignment.role}, ${assignedMemberName || 'Unassigned'}`}
-                    accessibilityRole="button"
-                    onPress={() => onAssignMember(
-                      assignment.id,
-                      service.id,
-                      assignment.role,
-                      assignment.member_id,
-                      assignedMemberName,
-                    )}
-                    style={({ pressed }) => [
-                      cardStyles.teamRow,
-                      stackTeamRows && cardStyles.teamRowStacked,
-                      pressed && cardStyles.pressed,
-                    ]}
-                  >
-                    {rowContent}
-                  </Pressable>
-                ) : (
-                  <View
-                    accessibilityLabel={`${assignment.role}, ${assignedMemberName || 'Unassigned'}`}
-                    accessibilityRole="text"
-                    accessible
-                    style={[
-                      cardStyles.teamRow,
-                      stackTeamRows && cardStyles.teamRowStacked,
-                    ]}
-                  >
-                    {rowContent}
-                  </View>
-                )}
-
-                {isMyAssignment ? (
-                  hasFillInRequest ? (
-                    <View
-                      accessibilityLabel={`Fill-in requested for ${assignment.role}`}
-                      accessibilityRole="text"
-                      accessible
-                      style={cardStyles.fillInPending}
-                    >
-                      <IconSymbol
-                        android_material_icon_name="schedule-send"
-                        color={colors.secondary}
-                        ios_icon_name="clock.badge.checkmark"
-                        size={17}
-                      />
-                      <ResponsiveText
-                        accessible={false}
-                        style={cardStyles.actionLabelLane}
-                        text="Fill-in requested"
-                        textStyle={cardStyles.fillInPendingText}
-                        variant="compactLabel"
-                      />
-                    </View>
-                  ) : (
-                    <Pressable
-                      accessibilityHint={`Opens a fill-in request for your ${assignment.role} assignment`}
-                      accessibilityLabel={`Request fill-in for ${assignment.role}`}
-                      accessibilityRole="button"
-                      accessibilityState={{
-                        busy: isCreatingFillInRequest,
-                        disabled: isCreatingFillInRequest,
-                      }}
-                      disabled={isCreatingFillInRequest}
-                      onPress={() => onRequestFillIn(
-                        assignment.id,
-                        service.id,
-                        assignment.role,
-                      )}
-                      style={({ pressed }) => [
-                        cardStyles.fillInAction,
-                        pressed && cardStyles.pressed,
-                        isCreatingFillInRequest && cardStyles.disabled,
-                      ]}
-                    >
-                      <IconSymbol
-                        android_material_icon_name="person-search"
-                        color={colors.secondary}
-                        ios_icon_name="person.2.badge.gearshape"
-                        size={18}
-                      />
-                      <ResponsiveText
-                        accessible={false}
-                        style={cardStyles.actionLabelLane}
-                        text="Request Fill-In"
-                        textStyle={cardStyles.fillInActionText}
-                        variant="compactLabel"
-                      />
-                    </Pressable>
-                  )
-                ) : null}
-              </View>
-            );
-          })}
+          </View>
         </View>
       ) : null}
     </View>
@@ -1173,6 +1271,33 @@ const cardStyles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 19,
   },
+  personalRoleList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  personalRoleChip: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    minHeight: 28,
+    minWidth: 0,
+  },
+  personalRoleTextLane: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  notAssignedRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 7,
+    minHeight: 36,
+    paddingTop: 10,
+  },
+  notAssignedText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
   metricsRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -1210,6 +1335,12 @@ const cardStyles = StyleSheet.create({
     color: colors.primary,
     fontSize: 13,
     fontWeight: '800',
+  },
+  expandedDetailsSurface: {
+    borderRadius: 6,
+    marginTop: 2,
+    overflow: 'hidden',
+    paddingHorizontal: 10,
   },
   songsSection: {
     borderTopColor: colors.border,
@@ -1283,6 +1414,30 @@ const cardStyles = StyleSheet.create({
   songCopy: {
     gap: 3,
   },
+  songTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    minWidth: 0,
+  },
+  songTitleLane: {
+    flex: 1,
+    minWidth: 0,
+  },
+  songNumberChip: {
+    alignItems: 'center',
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
+    minHeight: 26,
+    minWidth: 36,
+    paddingHorizontal: 7,
+  },
+  songNumberChipText: {
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '900',
+  },
   songTitle: {
     color: colors.text,
     fontSize: 14,
@@ -1352,6 +1507,7 @@ const cardStyles = StyleSheet.create({
   },
   teamRowStacked: {
     alignItems: 'flex-start',
+    flexWrap: 'wrap',
   },
   teamRoleCopy: {
     flex: 1,

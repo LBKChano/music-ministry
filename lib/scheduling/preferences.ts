@@ -127,7 +127,7 @@ export function findSchedulingPreferenceOption(
     : null;
 }
 
-export function hasSchedulingPreference(
+export function hasSchedulingAvoidance(
   preferences: SchedulingPreferenceRecord[],
   recurringServiceId: string,
   roleId: string
@@ -136,6 +136,23 @@ export function hasSchedulingPreference(
     preference.recurring_service_id === recurringServiceId
     && preference.role_id === roleId
   ));
+}
+
+// Kept for released client contracts. A stored preference row means "avoid".
+export function hasSchedulingPreference(
+  preferences: SchedulingPreferenceRecord[],
+  recurringServiceId: string,
+  roleId: string
+): boolean {
+  return hasSchedulingAvoidance(preferences, recurringServiceId, roleId);
+}
+
+export function isSchedulingOptionAvailable(
+  preferences: SchedulingPreferenceRecord[],
+  recurringServiceId: string,
+  roleId: string
+): boolean {
+  return !hasSchedulingAvoidance(preferences, recurringServiceId, roleId);
 }
 
 export function createSchedulingPreferenceSummary(
@@ -148,7 +165,7 @@ export function createSchedulingPreferenceSummary(
       service,
     }))
   ));
-  const selected = options.filter(option => hasSchedulingPreference(
+  const avoided = options.filter(option => hasSchedulingAvoidance(
     preferences,
     option.service.id,
     option.role.role_id
@@ -163,42 +180,42 @@ export function createSchedulingPreferenceSummary(
     };
   }
 
-  if (selected.length === 0) {
+  if (avoided.length === 0) {
     return {
       count: 0,
-      description: 'No weekly-service preferences selected.',
+      description: 'Available for every matching weekly service.',
       totalOptions: options.length,
-      value: 'None',
+      value: 'All on',
     };
   }
 
-  if (selected.length === 1) {
-    const [selection] = selected;
+  if (avoided.length === 1) {
+    const [selection] = avoided;
     return {
       count: 1,
       description: `Avoid ${selection.service.name} for ${selection.role.role_name} when possible.`,
       totalOptions: options.length,
-      value: '1 selected',
+      value: '1 off',
     };
   }
 
-  const selectedRoleCount = new Set(
-    selected.map(selection => selection.role.role_id)
+  const avoidedRoleCount = new Set(
+    avoided.map(selection => selection.role.role_id)
   ).size;
   return {
-    count: selected.length,
-    description: `${selected.length} preferences across ${selectedRoleCount} ${
-      selectedRoleCount === 1 ? 'role' : 'roles'
+    count: avoided.length,
+    description: `${avoided.length} service preferences are off across ${avoidedRoleCount} ${
+      avoidedRoleCount === 1 ? 'role' : 'roles'
     }.`,
     totalOptions: options.length,
-    value: `${selected.length} selected`,
+    value: `${avoided.length} off`,
   };
 }
 
-export function applySchedulingPreferenceToggle(
+export function applySchedulingAvoidanceChange(
   preferences: SchedulingPreferenceRecord[],
   identity: SchedulingPreferenceIdentity,
-  enabled: boolean,
+  shouldAvoid: boolean,
   persisted?: SchedulingPreferenceRecord
 ): SchedulingPreferenceRecord[] {
   const remaining = preferences.filter(preference => !(
@@ -207,7 +224,7 @@ export function applySchedulingPreferenceToggle(
     && preference.member_id === identity.member_id
   ));
 
-  if (!enabled) return remaining;
+  if (!shouldAvoid) return remaining;
 
   const now = new Date().toISOString();
   return [
@@ -222,4 +239,33 @@ export function applySchedulingPreferenceToggle(
       updated_at: now,
     },
   ];
+}
+
+export function applySchedulingAvailabilityChange(
+  preferences: SchedulingPreferenceRecord[],
+  identity: SchedulingPreferenceIdentity,
+  isAvailable: boolean,
+  persisted?: SchedulingPreferenceRecord
+): SchedulingPreferenceRecord[] {
+  return applySchedulingAvoidanceChange(
+    preferences,
+    identity,
+    !isAvailable,
+    persisted,
+  );
+}
+
+// Kept for existing callers and tests; true still means persist an avoidance row.
+export function applySchedulingPreferenceToggle(
+  preferences: SchedulingPreferenceRecord[],
+  identity: SchedulingPreferenceIdentity,
+  enabled: boolean,
+  persisted?: SchedulingPreferenceRecord
+): SchedulingPreferenceRecord[] {
+  return applySchedulingAvoidanceChange(
+    preferences,
+    identity,
+    enabled,
+    persisted,
+  );
 }

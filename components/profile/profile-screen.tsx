@@ -5,7 +5,6 @@ import { IconSymbol } from "@/components/IconSymbol";
 import { AppStateScreen } from '@/components/feedback/app-state-screen';
 import {
   ResponsiveTabHeader,
-  TabHeaderIconSurface,
   TabHeaderMetaText,
   TabHeaderPill,
 } from "@/components/navigation/responsive-tab-header";
@@ -261,14 +260,18 @@ export function ProfileScreen({
         trailingWidth={HEADER_ACTION_LANE_WIDTHS.profile}
         accessibilityTitle={`Profile for ${displayName}`}
         trailing={(
-          <TabHeaderIconSurface>
+          <View
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={styles.identityMark}
+          >
             <IconSymbol
-              ios_icon_name="person.fill"
-              android_material_icon_name="person"
-              size={30}
+              ios_icon_name="person.crop.circle.fill"
+              android_material_icon_name="account-circle"
+              size={50}
               color="#FFFFFF"
             />
-          </TabHeaderIconSurface>
+          </View>
         )}
       >
         <TabHeaderPill
@@ -315,6 +318,7 @@ export function ProfileScreen({
                   title="Church Profile"
                   summary={`${currentChurch?.name ?? 'Selected church'} | ${roleSummary}`}
                   value={userRole}
+                  valueTone={userRole === 'Member' ? 'info' : 'success'}
                   iosIcon="person.text.rectangle"
                   androidIcon="badge"
                   accessibilityHint="Shows your church-scoped name, access, assigned roles, and account email."
@@ -326,6 +330,7 @@ export function ProfileScreen({
                   title="Switch Church"
                   summary={currentChurch?.name ?? 'Choose the church you want to use.'}
                   value={`${churches.length} connected`}
+                  valueTone="info"
                   iosIcon="building.2"
                   androidIcon="business"
                   accessibilityHint="Opens your connected churches and lets you switch or join another church."
@@ -360,6 +365,7 @@ export function ProfileScreen({
                     }
                     iosIcon="calendar.badge.exclamationmark"
                     androidIcon="event-busy"
+                    valueTone={availabilityLoadFailed ? 'error' : availabilitySummary.count > 0 ? 'attention' : 'success'}
                     accessibilityHint="Opens the unavailable-date calendar editor."
                     busy={availabilityQuery.isLoading}
                     onPress={() => {
@@ -384,6 +390,7 @@ export function ProfileScreen({
                     }
                     iosIcon="slider.horizontal.3"
                     androidIcon="tune"
+                    valueTone={schedulingPreferencesLoadFailed ? 'error' : schedulingPreferenceSummary.count > 0 ? 'attention' : 'success'}
                     accessibilityHint="Opens weekly-service scheduling preferences."
                     busy={schedulingPreferencesQuery.isLoading}
                     onPress={() => {
@@ -417,6 +424,7 @@ export function ProfileScreen({
                   }
                   iosIcon={hasPermission ? 'bell.badge.fill' : 'bell.slash.fill'}
                   androidIcon={hasPermission ? 'notifications-active' : 'notifications-off'}
+                  valueTone={notificationPreferencesLoadFailed ? 'error' : hasPermission ? 'success' : 'attention'}
                   accessibilityHint="Opens device permission and church notification delivery settings."
                   busy={notificationPreferencesQuery.isLoading}
                   onPress={() => {
@@ -436,6 +444,7 @@ export function ProfileScreen({
                   title="Account and Security"
                   summary={user.email ?? 'Password, sign-out, and app information.'}
                   value="Open"
+                  valueTone="info"
                   iosIcon="person.crop.circle.badge.checkmark"
                   androidIcon="manage-accounts"
                   accessibilityHint="Opens account identity, password, app information, and sign-out controls."
@@ -475,5 +484,11 @@ export function ProfileScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  identityMark: {
+    alignItems: 'center',
+    height: 58,
+    justifyContent: 'center',
+    width: 58,
   },
 });

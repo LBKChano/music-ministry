@@ -25,9 +25,9 @@ const VARIANT_WIDTHS: Record<AppModalVariant, number> = {
 };
 
 const VARIANT_HEIGHT_RATIOS: Record<AppModalVariant, number> = {
-  confirmation: 0.62,
-  form: 0.82,
-  'long-content': 0.92,
+  confirmation: 0.58,
+  form: 0.88,
+  'long-content': 0.94,
 };
 
 export function getModalLayout(input: ModalLayoutInput): ModalLayout {
@@ -50,7 +50,7 @@ export function getModalLayout(input: ModalLayoutInput): ModalLayout {
     maxHeight: resolvedMaxHeight,
     minHeight: input.variant === 'confirmation'
       ? undefined
-      : Math.min(input.variant === 'form' ? 280 : 360, resolvedMaxHeight),
+      : Math.min(input.variant === 'form' ? 360 : 400, resolvedMaxHeight),
     stackActions: input.width < 360 || input.fontScale > 1.35,
   };
 }
@@ -63,4 +63,12 @@ export function getModalDismissAction(input: {
   if (input.keyboardVisible) return 'dismiss-keyboard';
   if (input.busy || !input.dismissAllowed) return 'ignore';
   return 'close';
+}
+
+export function shouldResetModalList(input: {
+  visible: boolean;
+  previousTargetKey: string | null;
+  nextTargetKey: string;
+}): boolean {
+  return input.visible && input.previousTargetKey !== input.nextTargetKey;
 }

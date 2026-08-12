@@ -15,7 +15,7 @@ import type {
 import { useSchedulingPreferences } from '@/hooks/useSchedulingPreferences';
 import {
   buildSchedulingPreferenceGroups,
-  hasSchedulingPreference,
+  isSchedulingOptionAvailable,
   schedulingPreferenceKey,
 } from '@/lib/scheduling/preferences';
 import { colors } from '@/styles/commonStyles';
@@ -65,7 +65,7 @@ export function SchedulingPreferencesCard({
     loadError,
     saveError,
     pendingKeys,
-    setPreference,
+    setAvailability,
     retry,
   } = useSchedulingPreferences({
     accountId,
@@ -107,8 +107,9 @@ export function SchedulingPreferencesCard({
       </View>
 
       <Text style={[styles.description, { color: colors.textSecondary }]}>
-        These choices are considered when possible. Unavailable dates always
-        remain a hard block.
+        Keep a switch on to be scheduled when needed. Turn it off to ask
+        auto-assign to avoid that service and role when possible. Unavailable
+        dates always remain a hard block.
       </Text>
 
       {isLoading ? (
@@ -159,7 +160,7 @@ export function SchedulingPreferencesCard({
                     service.id,
                     group.role.role_id
                   );
-                  const enabled = hasSchedulingPreference(
+                  const isAvailable = isSchedulingOptionAvailable(
                     preferences,
                     service.id,
                     group.role.role_id
@@ -200,7 +201,9 @@ export function SchedulingPreferencesCard({
                             { color: colors.textSecondary },
                           ]}
                         >
-                          Prefer not to be scheduled
+                          {isAvailable
+                            ? 'Schedule me here when needed'
+                            : 'Prefer not to be scheduled'}
                         </Text>
                       </View>
                       {isSaving ? (
@@ -212,14 +215,14 @@ export function SchedulingPreferencesCard({
                         </View>
                       ) : (
                         <Switch
-                          accessibilityLabel={`Prefer not to be scheduled for ${group.role.role_name} at ${service.name}`}
-                          accessibilityHint="This is a preference, not a guaranteed block."
-                          value={enabled}
-                          onValueChange={nextValue => {
-                            void setPreference(
+                          accessibilityLabel={`Schedule me for ${group.role.role_name} at ${service.name}`}
+                          accessibilityHint="On means you can be scheduled when needed. Off asks auto-assign to avoid this combination when possible."
+                          value={isAvailable}
+                          onValueChange={nextIsAvailable => {
+                            void setAvailability(
                               service.id,
                               group.role.role_id,
-                              nextValue
+                              nextIsAvailable
                             );
                           }}
                           trackColor={{

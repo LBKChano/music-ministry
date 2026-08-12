@@ -14,12 +14,14 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '@/styles/commonStyles';
 import { AuthTextInput } from '@/components/auth/AuthTextInput';
+import { IconSymbol } from '@/components/IconSymbol';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { supabase } from '@/lib/supabase/client';
 import { establishPasswordRecoverySession } from '@/utils/passwordResetLinks';
 
 export default function ResetPasswordScreen() {
+  const theme = useAppTheme();
   const router = useRouter();
   const params = useLocalSearchParams<{ recoveryUrl?: string }>();
   const [newPassword, setNewPassword] = useState('');
@@ -239,7 +241,7 @@ export default function ResetPasswordScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.canvas }]}>
       <Stack.Screen options={{ headerShown: false }} />
       <KeyboardAvoidingView
         style={styles.keyboardView}
@@ -251,17 +253,42 @@ export default function ResetPasswordScreen() {
           keyboardDismissMode="on-drag"
         >
           <View style={styles.stepContainer}>
-            <Text style={[styles.title, { color: colors.text }]}>Set New Password</Text>
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            <View
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={[styles.contextIcon, { backgroundColor: theme.colors.accentSoft }]}
+            >
+              <IconSymbol
+                android_material_icon_name="password"
+                color={theme.colors.accent}
+                ios_icon_name="key.fill"
+                size={28}
+              />
+            </View>
+            <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Set New Password</Text>
+            <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
               Choose a new password for your Music Ministry account.
             </Text>
 
-            <View style={styles.formContainer}>
+            <View style={[
+              styles.formContainer,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.borderSubtle,
+              },
+            ]}>
               <AuthTextInput
                 credentialType="new-password"
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: theme.input.surface,
+                    borderColor: theme.input.border,
+                    color: theme.input.foreground,
+                  },
+                ]}
                 placeholder="New Password"
-                placeholderTextColor={colors.textSecondary}
+                placeholderTextColor={theme.input.placeholder}
                 value={newPassword}
                 onChangeText={setNewPassword}
                 secureTextEntry
@@ -276,9 +303,16 @@ export default function ResetPasswordScreen() {
               <AuthTextInput
                 ref={confirmPasswordInputRef}
                 credentialType="new-password"
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: theme.input.surface,
+                    borderColor: theme.input.border,
+                    color: theme.input.foreground,
+                  },
+                ]}
                 placeholder="Confirm New Password"
-                placeholderTextColor={colors.textSecondary}
+                placeholderTextColor={theme.input.placeholder}
                 value={confirmNewPassword}
                 onChangeText={setConfirmNewPassword}
                 secureTextEntry
@@ -291,49 +325,72 @@ export default function ResetPasswordScreen() {
               />
 
               {message && (
-                <View style={styles.messageContainer}>
-                  <Text style={styles.messageText}>{message}</Text>
+                <View style={[styles.messageContainer, {
+                  backgroundColor: theme.status.info.surface,
+                  borderColor: theme.status.info.border,
+                }]}>
+                  <Text style={[styles.messageText, { color: theme.status.info.foreground }]}>{message}</Text>
                 </View>
               )}
 
               {error && (
-                <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{error}</Text>
+                <View style={[styles.errorContainer, {
+                  backgroundColor: theme.status.error.surface,
+                  borderColor: theme.status.error.border,
+                }]}>
+                  <Text style={[styles.errorText, { color: theme.status.error.foreground }]}>{error}</Text>
                 </View>
               )}
 
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityState={{
+                  busy: loading || saving,
+                  disabled: loading || saving || !canResetPassword,
+                }}
                 style={[
                   styles.primaryButton,
-                  { backgroundColor: canResetPassword ? colors.primary : colors.textSecondary },
+                  {
+                    backgroundColor: theme.button.primarySurface,
+                    opacity: canResetPassword ? 1 : theme.interaction.disabledOpacity,
+                  },
                 ]}
                 onPress={handleUpdatePassword}
                 disabled={loading || saving || !canResetPassword}
               >
                 {loading || saving ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color={theme.button.primaryForeground} />
                 ) : (
-                  <Text style={styles.primaryButtonText}>Update Password</Text>
+                  <Text style={[styles.primaryButtonText, { color: theme.button.primaryForeground }]}>Update Password</Text>
                 )}
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.secondaryButton, { borderColor: colors.border }]}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: saving }}
+                style={[
+                  styles.secondaryButton,
+                  {
+                    backgroundColor: theme.button.secondarySurface,
+                    borderColor: theme.button.secondaryBorder,
+                  },
+                ]}
                 onPress={() => leaveRecovery(false)}
                 disabled={saving}
               >
-                <Text style={[styles.secondaryButtonText, { color: colors.text }]}>
+                <Text style={[styles.secondaryButtonText, { color: theme.button.secondaryForeground }]}>
                   Back to Login
                 </Text>
               </TouchableOpacity>
 
               {!canResetPassword && !loading ? (
                 <TouchableOpacity
+                  accessibilityRole="button"
                   style={styles.requestLinkButton}
                   onPress={() => leaveRecovery(true)}
                   disabled={saving}
                 >
-                  <Text style={[styles.requestLinkButtonText, { color: colors.primary }]}>
+                  <Text style={[styles.requestLinkButtonText, { color: theme.colors.accent }]}>
                     Request New Reset Link
                   </Text>
                 </TouchableOpacity>
@@ -361,6 +418,14 @@ const styles = StyleSheet.create({
   stepContainer: {
     alignItems: 'center',
   },
+  contextIcon: {
+    alignItems: 'center',
+    borderRadius: 8,
+    height: 58,
+    justifyContent: 'center',
+    marginBottom: 14,
+    width: 58,
+  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
@@ -370,35 +435,37 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     textAlign: 'center',
-    marginBottom: 40,
+    marginBottom: 24,
     lineHeight: 24,
     paddingHorizontal: 8,
   },
   formContainer: {
+    borderRadius: 8,
+    borderWidth: 1,
     width: '100%',
     maxWidth: 400,
+    padding: 18,
   },
   input: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 16,
     fontSize: 16,
     marginBottom: 16,
   },
   primaryButton: {
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 8,
     alignItems: 'center',
     marginTop: 8,
   },
   primaryButtonText: {
-    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
   secondaryButton: {
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 8,
     alignItems: 'center',
     borderWidth: 1,
     marginTop: 12,
@@ -418,24 +485,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   messageContainer: {
+    borderWidth: 1,
     padding: 12,
-    backgroundColor: '#E6F7FF',
     borderRadius: 8,
     marginBottom: 16,
   },
   messageText: {
-    color: '#007AFF',
     textAlign: 'center',
     fontSize: 14,
   },
   errorContainer: {
+    borderWidth: 1,
     padding: 12,
-    backgroundColor: '#FFE5E5',
     borderRadius: 8,
     marginBottom: 16,
   },
   errorText: {
-    color: '#FF3B30',
     textAlign: 'center',
     fontSize: 14,
   },

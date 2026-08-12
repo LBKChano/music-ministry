@@ -12,14 +12,15 @@ type AdminFormModalProps = {
   onClose: () => void;
   primaryAction: AppModalAction;
   secondaryAction?: AppModalAction;
-  backgroundColor: string;
-  textColor: string;
-  borderColor: string;
-  primaryColor: string;
+  backgroundColor?: string;
+  textColor?: string;
+  borderColor?: string;
+  primaryColor?: string;
   maxWidth?: number;
   maxRestingHeight?: number;
   variant?: AppModalVariant;
   bodyScroll?: boolean;
+  headerIcon?: ReactNode;
 };
 
 export function AdminFormModal({
@@ -29,27 +30,21 @@ export function AdminFormModal({
   onClose,
   primaryAction,
   secondaryAction,
-  backgroundColor,
-  textColor,
-  borderColor,
-  primaryColor,
   maxWidth,
   maxRestingHeight,
   variant = 'form',
   bodyScroll = true,
+  headerIcon,
 }: AdminFormModalProps) {
   return (
     <AppModal
-      backgroundColor={backgroundColor}
       bodyScroll={bodyScroll}
-      borderColor={borderColor}
+      headerIcon={headerIcon}
       maxHeight={maxRestingHeight}
       maxWidth={maxWidth}
       onClose={onClose}
       primaryAction={primaryAction}
-      primaryColor={primaryColor}
       secondaryAction={secondaryAction}
-      textColor={textColor}
       title={title}
       variant={variant}
       visible={visible}

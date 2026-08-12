@@ -25,6 +25,7 @@ import {
 import { ScheduleServiceCard } from '@/components/schedules/schedule-service-card';
 import { ScheduleFilterModal } from '@/components/schedules/schedule-filter-modal';
 import { ScheduleViewControls } from '@/components/schedules/schedule-view-controls';
+import { ScheduleTodayMarker } from '@/components/schedules/schedule-today-marker';
 import { useAppTheme } from '@/contexts/AppThemeContext';
 import {
   ManualAssignmentModal,
@@ -32,7 +33,7 @@ import {
 } from '@/components/schedules/manual-assignment-modal';
 import { RefreshErrorNotice } from '@/components/RefreshErrorNotice';
 import { useRefreshController } from '@/hooks/useRefreshController';
-import { useScheduleWidgetSync } from '@/hooks/useScheduleWidgetSync';
+import { useCurrentLocalDate } from '@/hooks/useCurrentLocalDate';
 import {
   runRefreshBatch,
   shouldShowInitialLoader,
@@ -50,6 +51,7 @@ import {
   resolveScheduleListState,
   type ScheduleListState,
 } from '@/lib/schedules/schedule-state';
+import { resolveSchedulePeriodText } from '@/lib/schedules/schedule-range';
 import { useNetworkState } from 'expo-network';
 import {
   AccessibilityInfo,
@@ -262,6 +264,13 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minWidth: 0,
   },
+  todayMarkerRow: {
+    alignSelf: 'center',
+    maxWidth: 520,
+    paddingBottom: 4,
+    paddingHorizontal: 16,
+    width: '100%',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -315,6 +324,11 @@ const styles = StyleSheet.create({
     color: colors.text,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  songNumberInput: {
+    borderLeftColor: colors.primary,
+    borderLeftWidth: 4,
+    fontWeight: '700',
   },
   textArea: {
     height: 80,
@@ -422,7 +436,28 @@ const styles = StyleSheet.create({
   pendingSongMeta: {
     color: colors.textSecondary,
     fontSize: 12,
-    marginTop: 2,
+  },
+  pendingSongMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 7,
+    marginTop: 4,
+    minWidth: 0,
+  },
+  pendingSongMetaLane: {
+    flex: 1,
+    minWidth: 0,
+  },
+  pendingSongNumberChip: {
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  pendingSongNumberText: {
+    fontSize: 11,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '900',
   },
   pendingSongRemoveButton: {
     alignItems: 'center',
@@ -632,6 +667,7 @@ const styles = StyleSheet.create({
 export default function HomeScreen() {
   const router = useRouter();
   const theme = useAppTheme();
+  const currentLocalDate = useCurrentLocalDate();
   // ── ALL hooks must be called unconditionally at the top ──────────────────
   const {
     currentChurch,
@@ -674,9 +710,13 @@ export default function HomeScreen() {
     loadingMoreServices,
     serviceRangeError,
     loadedThrough,
-    serviceWindowDays,
+    scheduleDateSummary,
+    scheduleDateSummaryPending,
     error: servicesError,
-  } = useServices(currentChurch?.id ?? null, { windowed: true });
+  } = useServices(currentChurch?.id ?? null, {
+    windowed: true,
+    startDate: currentLocalDate.dateKey,
+  });
 
   usePerformanceBaselineScreen(
     'Schedules',
@@ -726,6 +766,7 @@ export default function HomeScreen() {
   const [serviceSongType, setServiceSongType] = useState('Opening');
   const [serviceSongOtherType, setServiceSongOtherType] = useState('');
   const [serviceSongNumber, setServiceSongNumber] = useState('');
+  const [songNumberFocused, setSongNumberFocused] = useState(false);
   const [editingServiceCommentId, setEditingServiceCommentId] = useState<string | null>(null);
   const [notifyCommentMemberIds, setNotifyCommentMemberIds] = useState<string[]>([]);
   const [pendingServiceSongs, setPendingServiceSongs] = useState<PendingServiceSong[]>([]);
@@ -734,17 +775,6 @@ export default function HomeScreen() {
     () => normalizeSongTypeOptions(currentChurch?.song_type_options),
     [currentChurch?.song_type_options]
   );
-
-  useScheduleWidgetSync({
-    churchId: currentChurch?.id ?? null,
-    churchName: currentChurch?.name ?? null,
-    currentMemberAccountId: currentMember?.member_id ?? null,
-    currentMemberChurchId: currentMember?.church_id ?? null,
-    currentMemberId: currentMember?.id ?? null,
-    services,
-    servicesLoading,
-    userId: user?.id ?? null,
-  });
 
   // ── useEffect hooks (after all useState/useRef/other hooks) ──────────────
 
@@ -756,10 +786,11 @@ export default function HomeScreen() {
   }, [commentModalVisible, enabledSongTypeOptions, serviceSongType]);
 
   useEffect(() => {
-    setViewMode('all');
+    if (sessionStatus !== 'ready' || !currentChurch?.id) return;
+    setViewMode(isAdmin ? 'all' : 'mine');
     setScheduleFilters({ ...EMPTY_SCHEDULE_VIEW_FILTERS });
     setFilterModalVisible(false);
-  }, [currentChurch?.id]);
+  }, [currentChurch?.id, isAdmin, sessionStatus]);
 
   const filteredServices = useMemo(() => {
     const today = new Date();
@@ -1374,18 +1405,11 @@ export default function HomeScreen() {
   const upcomingText = viewMode === 'mine'
     ? `${scheduleView.personalServiceCount} assigned`
     : `${upcomingCount} services`;
-  const schedulePeriod = useMemo(() => {
-    if (!loadedThrough) {
-      return new Date().toLocaleDateString(undefined, {
-        month: 'long',
-        year: 'numeric',
-      });
-    }
-    return `Through ${createLocalDate(loadedThrough).toLocaleDateString(
-      undefined,
-      { month: 'short', day: 'numeric', year: 'numeric' }
-    )}`;
-  }, [loadedThrough]);
+  const schedulePeriod = useMemo(() => resolveSchedulePeriodText({
+    summary: scheduleDateSummary,
+    summaryPending: scheduleDateSummaryPending,
+    loadedThrough,
+  }), [loadedThrough, scheduleDateSummary, scheduleDateSummaryPending]);
   const themedScheduleCardStyles = useMemo(() => ({
     serviceCard: [
       styles.serviceCard,
@@ -1566,6 +1590,10 @@ export default function HomeScreen() {
         onOpenFilters={() => setFilterModalVisible(true)}
       />
 
+      <View style={styles.todayMarkerRow}>
+        <ScheduleTodayMarker today={currentLocalDate} />
+      </View>
+
       <RefreshErrorNotice message={refreshError} />
 
       {isOffline && services.length > 0 ? (
@@ -1683,7 +1711,7 @@ export default function HomeScreen() {
               ? 'Loading more services'
               : serviceRangeError
                 ? 'Retry service range'
-                : `Load next ${serviceWindowDays ?? 90} days`}
+                : 'Load more scheduled services'}
             accessibilityRole="button"
             accessibilityState={{
               busy: loadingMoreServices,
@@ -1710,7 +1738,7 @@ export default function HomeScreen() {
                 ? 'Loading services...'
                 : serviceRangeError
                   ? 'Retry Service Range'
-                  : `Load Next ${serviceWindowDays ?? 90} Days`}
+                  : 'Load More Services'}
               textStyle={styles.loadMoreButtonText}
               variant="actionLabel"
             />
@@ -1736,10 +1764,7 @@ export default function HomeScreen() {
           onClose={closeCommentModal}
           variant="long-content"
           maxWidth={520}
-          backgroundColor={colors.cardBackground}
-          textColor={colors.text}
-          borderColor={colors.border}
-          primaryColor={colors.primary}
+          headerIcon={<IconSymbol ios_icon_name="music.note.list" android_material_icon_name="queue-music" size={22} color={theme.modalHeader.accent} />}
           busy={isSavingServiceComment}
           secondaryAction={{
             label: 'Cancel',
@@ -1796,11 +1821,21 @@ export default function HomeScreen() {
                   ) : null}
                   <TextInput
                     accessibilityLabel="Song number, optional"
-                    style={styles.input}
+                    style={[
+                      styles.input,
+                      styles.songNumberInput,
+                      songNumberFocused && {
+                        backgroundColor: theme.inputHighlight.surface,
+                        borderColor: theme.inputHighlight.border,
+                        color: theme.inputHighlight.foreground,
+                      },
+                    ]}
                     placeholder="Song number (optional)"
                     placeholderTextColor={colors.textSecondary}
                     value={serviceSongNumber}
                     onChangeText={setServiceSongNumber}
+                    onBlur={() => setSongNumberFocused(false)}
+                    onFocus={() => setSongNumberFocused(true)}
                     keyboardType="default"
                     returnKeyType="done"
                     onSubmitEditing={Keyboard.dismiss}
@@ -1839,11 +1874,29 @@ export default function HomeScreen() {
                                 textStyle={styles.pendingSongTitle}
                                 variant="songTitle"
                               />
-                              <ResponsiveText
-                                text={[song.songType, song.songNumber ? `#${song.songNumber}` : null].filter(Boolean).join(' ')}
-                                textStyle={styles.pendingSongMeta}
-                                variant="supportingCopy"
-                              />
+                              <View style={styles.pendingSongMetaRow}>
+                                {song.songNumber ? (
+                                  <View
+                                    style={[
+                                      styles.pendingSongNumberChip,
+                                      {
+                                        backgroundColor: theme.status.info.surface,
+                                        borderColor: theme.status.info.border,
+                                      },
+                                    ]}
+                                  >
+                                    <Text style={[styles.pendingSongNumberText, { color: theme.status.info.foreground }]}>
+                                      #{song.songNumber}
+                                    </Text>
+                                  </View>
+                                ) : null}
+                                <ResponsiveText
+                                  style={styles.pendingSongMetaLane}
+                                  text={song.songType}
+                                  textStyle={styles.pendingSongMeta}
+                                  variant="supportingCopy"
+                                />
+                              </View>
                             </View>
                             <View style={styles.pendingSongMoveControls}>
                               <TouchableOpacity
@@ -1957,17 +2010,14 @@ export default function HomeScreen() {
         subtitle={(
           <ResponsiveText
             text={`Role: ${fillInRoleName}`}
-            textStyle={{ color: colors.textSecondary, textAlign: 'center' }}
+            textStyle={{ color: theme.modalHeader.mutedForeground, textAlign: 'left' }}
             variant="roleName"
           />
         )}
         onClose={() => setFillInRequestModalVisible(false)}
         variant="form"
         maxWidth={460}
-        backgroundColor={colors.cardBackground}
-        textColor={colors.text}
-        borderColor={colors.border}
-        primaryColor={colors.primary}
+        headerIcon={<IconSymbol ios_icon_name="person.crop.circle.badge.questionmark" android_material_icon_name="person-search" size={22} color={theme.modalHeader.accent} />}
         busy={isCreatingFillInRequest}
         secondaryAction={{
           label: 'Cancel',
@@ -2129,10 +2179,7 @@ export default function HomeScreen() {
         onClose={() => setDeleteServiceModalVisible(false)}
         variant="confirmation"
         maxWidth={440}
-        backgroundColor={colors.cardBackground}
-        textColor={colors.text}
-        borderColor={colors.border}
-        primaryColor={colors.primary}
+        headerIcon={<IconSymbol ios_icon_name="trash.fill" android_material_icon_name="delete" size={22} color={theme.status.error.foreground} />}
         secondaryAction={{
           label: 'Cancel',
           onPress: () => {
@@ -2157,10 +2204,7 @@ export default function HomeScreen() {
         onClose={() => setDeleteAssignmentModalVisible(false)}
         variant="confirmation"
         maxWidth={440}
-        backgroundColor={colors.cardBackground}
-        textColor={colors.text}
-        borderColor={colors.border}
-        primaryColor={colors.primary}
+        headerIcon={<IconSymbol ios_icon_name="person.crop.circle.badge.minus" android_material_icon_name="person-remove" size={22} color={theme.status.error.foreground} />}
         secondaryAction={{
           label: 'Cancel',
           onPress: () => {

@@ -17,6 +17,7 @@ import { Stack, Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import { RoleSymbol } from '@/components/roles/role-symbol';
 import { AppModal } from '@/components/ui/app-modal';
 import { AdminFormModal } from '@/components/admin/admin-form-modal';
 import { BulkServiceDeleteModal } from '@/components/admin/bulk-service-delete-modal';
@@ -35,6 +36,7 @@ import { useServices } from '@/hooks/useServices';
 import { usePerformanceBaselineScreen } from '@/hooks/usePerformanceBaselineScreen';
 import { useRefreshController } from '@/hooks/useRefreshController';
 import { useChurchAdminSummary } from '@/hooks/useChurchAdminSummary';
+import { useCurrentLocalDate } from '@/hooks/useCurrentLocalDate';
 import { supabase } from '@/lib/supabase/client';
 import {
   createAutoAssignPreviewKey,
@@ -54,6 +56,16 @@ import {
   type LatestStateSaveStatus,
 } from '@/lib/admin/latest-state-save-queue';
 import type { Json } from '@/lib/supabase/types';
+import {
+  ELAPSED_QUARTER_MESSAGE,
+  getQuarterDateRange,
+  isQuarterElapsed,
+} from '@/lib/services/quarter';
+import {
+  ROLE_SYMBOL_OPTIONS,
+  normalizeRoleSymbolKey,
+  type RoleSymbolKey,
+} from '@/lib/roles/role-symbols';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Clipboard from 'expo-clipboard';
 
@@ -368,6 +380,7 @@ const AutoAssignVirtualRow = React.memo(function AutoAssignVirtualRow({
 
 export default function ChurchScreen() {
   const theme = useAppTheme();
+  const currentLocalDate = useCurrentLocalDate();
   const {
     churches,
     currentChurch,
@@ -467,6 +480,7 @@ export default function ChurchScreen() {
   const [showServiceRolePicker, setShowServiceRolePicker] = useState(false);
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleDescription, setNewRoleDescription] = useState('');
+  const [newRoleIconKey, setNewRoleIconKey] = useState<RoleSymbolKey | null>(null);
 
   // Notification settings states
   const [notificationsEnabled, setNotificationsEnabled] = useState(notificationSettings?.enabled ?? true);
@@ -1110,17 +1124,20 @@ export default function ChurchScreen() {
         currentChurch.id,
         newRoleName.trim(),
         newRoleDescription.trim() || undefined,
+        newRoleIconKey,
       )
       : await addChurchRole(
         currentChurch.id,
         newRoleName.trim(),
         newRoleDescription.trim() || undefined,
+        newRoleIconKey,
       );
 
     if (result) {
       setRoleToEdit(null);
       setNewRoleName('');
       setNewRoleDescription('');
+      setNewRoleIconKey(null);
       setAddRoleModalVisible(false);
     }
   };
@@ -1129,6 +1146,7 @@ export default function ChurchScreen() {
     setRoleToEdit(null);
     setNewRoleName('');
     setNewRoleDescription('');
+    setNewRoleIconKey(null);
     setAddRoleModalVisible(true);
   };
 
@@ -1139,6 +1157,7 @@ export default function ChurchScreen() {
     setRoleToEdit(role.id);
     setNewRoleName(role.name);
     setNewRoleDescription(role.description ?? '');
+    setNewRoleIconKey(normalizeRoleSymbolKey(role.icon_key));
     setAddRoleModalVisible(true);
   };
 
@@ -1297,15 +1316,8 @@ export default function ChurchScreen() {
     return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   };
 
-  const getQuarterDates = (quarter: number, year: number) => {
-    const startMonth = (quarter - 1) * 3;
-    const startDate = new Date(year, startMonth, 1);
-    const endDate = new Date(year, startMonth + 3, 0);
-    return { startDate, endDate };
-  };
-
   const generateQuarterServices = () => {
-    const { startDate, endDate } = getQuarterDates(selectedQuarter, selectedYear);
+    const { startDate, endDate } = getQuarterDateRange(selectedQuarter, selectedYear);
     const generatedServices: { date: Date; template: any }[] = [];
 
     const currentDate = new Date(startDate);
@@ -1330,12 +1342,28 @@ export default function ChurchScreen() {
     return generatedServices;
   };
 
+  const selectedQuarterElapsed = isQuarterElapsed(
+    selectedQuarter,
+    selectedYear,
+    currentLocalDate.dateKey,
+  );
+
+  const guardElapsedQuarter = () => {
+    if (!isQuarterElapsed(selectedQuarter, selectedYear, new Date())) {
+      return false;
+    }
+    Alert.alert('Quarter Ended', ELAPSED_QUARTER_MESSAGE);
+    return true;
+  };
+
   const handleSaveBlockedDates = () => {
+    if (guardElapsedQuarter()) return;
     console.log('User saved blocked dates, moving to special services step');
     setPrepareQuarterStep('special');
   };
 
   const handlePrepareQuarter = async () => {
+    if (guardElapsedQuarter()) return;
     if (!currentChurch?.id) {
       Alert.alert('Error', 'No church selected. Please ensure your account is linked to a church.');
       return;
@@ -1748,6 +1776,7 @@ export default function ChurchScreen() {
   };
 
   const handleAddSpecialService = () => {
+    if (guardElapsedQuarter()) return;
     if (!specialServiceName.trim()) {
       Alert.alert('Error', 'Please enter a service name');
       return;
@@ -2794,12 +2823,19 @@ export default function ChurchScreen() {
                                 />
                               </TouchableOpacity>
                             </View>
-                            <IconSymbol
-                              ios_icon_name="person.badge.shield.checkmark"
-                              android_material_icon_name="person"
-                              size={40}
-                              color={colors.primary}
-                            />
+                            <View
+                              accessibilityLabel={`${role.name} symbol`}
+                              style={[
+                                styles.roleSymbolTile,
+                                { backgroundColor: theme.iconTile.surface },
+                              ]}
+                            >
+                              <RoleSymbol
+                                color={theme.iconTile.foreground}
+                                iconKey={role.icon_key}
+                                size={24}
+                              />
+                            </View>
                             <View style={styles.roleDetails}>
                               <Text style={[styles.roleName, { color: colors.text }]}>
                                 {role.name}
@@ -3064,10 +3100,6 @@ export default function ChurchScreen() {
         onClose={() => {
           if (!isCreatingChurch) setCreateChurchModalVisible(false);
         }}
-        backgroundColor={colors.cardBackground || '#FFFFFF'}
-        textColor={colors.text}
-        borderColor={colors.border}
-        primaryColor={colors.primary}
         maxWidth={440}
         secondaryAction={{
           label: 'Cancel',
@@ -3102,10 +3134,6 @@ export default function ChurchScreen() {
         visible={isEditChurchNameModalVisible}
         title="Edit Church Name"
         onClose={closeEditChurchNameModal}
-        backgroundColor={colors.cardBackground || '#FFFFFF'}
-        textColor={colors.text}
-        borderColor={colors.border}
-        primaryColor={colors.primary}
         maxWidth={440}
         secondaryAction={{
           label: 'Cancel',
@@ -3136,10 +3164,6 @@ export default function ChurchScreen() {
         visible={isEditMemberModalVisible}
         title="Edit Member"
         onClose={() => setEditMemberModalVisible(false)}
-        backgroundColor={colors.cardBackground || '#FFFFFF'}
-        textColor={colors.text}
-        borderColor={colors.border}
-        primaryColor={colors.primary}
         maxWidth={500}
         variant="long-content"
         secondaryAction={{
@@ -3238,10 +3262,6 @@ export default function ChurchScreen() {
         title="Delete Member"
         variant="confirmation"
         onClose={() => setDeleteModalVisible(false)}
-        backgroundColor={colors.cardBackground || '#FFFFFF'}
-        textColor={colors.text}
-        borderColor={colors.border}
-        primaryColor={colors.primary}
         maxWidth={440}
         secondaryAction={{
           label: 'Cancel',
@@ -3269,10 +3289,6 @@ export default function ChurchScreen() {
         visible={isAddServiceModalVisible}
         title={serviceToEdit ? 'Edit Weekly Service' : 'Add Weekly Service'}
         onClose={closeServiceModal}
-        backgroundColor={colors.cardBackground || '#FFFFFF'}
-        textColor={colors.text}
-        borderColor={colors.border}
-        primaryColor={colors.primary}
         maxWidth={440}
         maxRestingHeight={600}
         secondaryAction={{
@@ -3401,11 +3417,8 @@ export default function ChurchScreen() {
       <AdminFormModal
         visible={isAddRoleModalVisible}
         title={roleToEdit ? 'Edit Church Role' : 'Add Church Role'}
+        variant="long-content"
         onClose={() => setAddRoleModalVisible(false)}
-        backgroundColor={colors.cardBackground || '#FFFFFF'}
-        textColor={colors.text}
-        borderColor={colors.border}
-        primaryColor={colors.primary}
         maxWidth={440}
         secondaryAction={{
           label: 'Cancel',
@@ -3414,6 +3427,7 @@ export default function ChurchScreen() {
             setRoleToEdit(null);
             setNewRoleName('');
             setNewRoleDescription('');
+            setNewRoleIconKey(null);
           },
         }}
         primaryAction={{
@@ -3438,6 +3452,68 @@ export default function ChurchScreen() {
           multiline
           numberOfLines={3}
         />
+        <View style={styles.roleSymbolPickerSection}>
+          <Text style={[styles.label, { color: colors.text }]}>Role symbol</Text>
+          <Text style={[styles.helperText, { color: colors.textSecondary }]}>Shown beside the written role name.</Text>
+          <View
+            accessibilityLabel="Role symbol"
+            accessibilityRole="radiogroup"
+            style={styles.roleSymbolGrid}
+          >
+            {ROLE_SYMBOL_OPTIONS.map(option => {
+              const selected = newRoleIconKey === option.key;
+              return (
+                <TouchableOpacity
+                  accessibilityLabel={`${option.label} symbol`}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: selected }}
+                  key={option.key ?? 'general'}
+                  onPress={() => setNewRoleIconKey(option.key)}
+                  style={[
+                    styles.roleSymbolOption,
+                    {
+                      backgroundColor: selected
+                        ? theme.status.info.surface
+                        : theme.colors.surface,
+                      borderColor: selected
+                        ? theme.status.info.foreground
+                        : theme.colors.borderSubtle,
+                    },
+                  ]}
+                >
+                  <RoleSymbol
+                    color={selected
+                      ? theme.status.info.foreground
+                      : theme.colors.textSecondary}
+                    iconKey={option.key}
+                    size={22}
+                  />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.roleSymbolOptionText,
+                      {
+                        color: selected
+                          ? theme.status.info.foreground
+                          : theme.colors.textPrimary,
+                      },
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                  {selected ? (
+                    <IconSymbol
+                      android_material_icon_name="check-circle"
+                      color={theme.status.info.foreground}
+                      ios_icon_name="checkmark.circle.fill"
+                      size={16}
+                    />
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
       </AdminFormModal>
 
       <AdminFormModal
@@ -3445,10 +3521,6 @@ export default function ChurchScreen() {
         title="Delete Service"
         variant="confirmation"
         onClose={() => setDeleteServiceModalVisible(false)}
-        backgroundColor={colors.cardBackground || '#FFFFFF'}
-        textColor={colors.text}
-        borderColor={colors.border}
-        primaryColor={colors.primary}
         maxWidth={440}
         secondaryAction={{
           label: 'Cancel',
@@ -3473,10 +3545,6 @@ export default function ChurchScreen() {
         title="Delete Role"
         variant="confirmation"
         onClose={() => setDeleteRoleModalVisible(false)}
-        backgroundColor={colors.cardBackground || '#FFFFFF'}
-        textColor={colors.text}
-        borderColor={colors.border}
-        primaryColor={colors.primary}
         maxWidth={440}
         secondaryAction={{
           label: 'Cancel',
@@ -3518,10 +3586,7 @@ export default function ChurchScreen() {
         variant="long-content"
         bodyScroll={false}
         maxWidth={720}
-        backgroundColor={colors.cardBackground || '#FFFFFF'}
-        textColor={colors.text}
-        borderColor={colors.border}
-        primaryColor={colors.primary}
+        headerIcon={<IconSymbol ios_icon_name="person.2.badge.gearshape" android_material_icon_name="group-add" size={22} color={theme.modalHeader.accent} />}
         busy={isApplyingAutoAssign}
         onClose={() => {
           if (!isApplyingAutoAssign) {
@@ -3884,10 +3949,7 @@ export default function ChurchScreen() {
             : 'Step 2: Add Special Services'}
         variant="long-content"
         maxWidth={520}
-        backgroundColor={colors.cardBackground || '#FFFFFF'}
-        textColor={colors.text}
-        borderColor={colors.border}
-        primaryColor={colors.primary}
+        headerIcon={<IconSymbol ios_icon_name="calendar.badge.plus" android_material_icon_name="event" size={22} color={theme.modalHeader.accent} />}
         busy={isPreparing}
         onClose={() => {
           if (isPreparing) return;
@@ -3932,7 +3994,9 @@ export default function ChurchScreen() {
             : showAddSpecialService
               ? handleAddSpecialService
               : handlePrepareQuarter,
-          disabled: isPreparing || (showAddSpecialService && !specialServiceName.trim()),
+          disabled: isPreparing
+            || selectedQuarterElapsed
+            || (showAddSpecialService && !specialServiceName.trim()),
           loading: isPreparing,
         }}
         testID="prepare-quarter-modal"
@@ -3944,14 +4008,27 @@ export default function ChurchScreen() {
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
                     {[1, 2, 3, 4].map(q => {
                       const isSelected = selectedQuarter === q;
+                      const quarterElapsed = isQuarterElapsed(
+                        q,
+                        selectedYear,
+                        currentLocalDate.dateKey,
+                      );
                       const quarterText = `Q${q}`;
                       return (
                         <TouchableOpacity
+                          accessibilityLabel={`${quarterText}${quarterElapsed ? `, ${ELAPSED_QUARTER_MESSAGE}` : ''}`}
+                          accessibilityRole="button"
+                          accessibilityState={{
+                            disabled: quarterElapsed,
+                            selected: isSelected,
+                          }}
+                          disabled={quarterElapsed}
                           key={q}
                           style={[
                             styles.quarterButton,
                             { flex: 1, marginHorizontal: 4, backgroundColor: colors.inputBackground, paddingVertical: 12, borderRadius: 8 },
                             isSelected && { backgroundColor: colors.primary },
+                            quarterElapsed && styles.quarterButtonDisabled,
                           ]}
                           onPress={() => setSelectedQuarter(q)}
                         >
@@ -3961,10 +4038,35 @@ export default function ChurchScreen() {
                           ]}>
                             {quarterText}
                           </Text>
+                          {quarterElapsed ? (
+                            <Text style={[
+                              styles.quarterEndedText,
+                              { color: isSelected ? '#FFFFFF' : colors.textSecondary },
+                            ]}>
+                              Ended
+                            </Text>
+                          ) : null}
                         </TouchableOpacity>
                       );
                     })}
                   </View>
+
+                  {selectedQuarterElapsed ? (
+                    <View
+                      accessibilityLiveRegion="polite"
+                      style={styles.quarterEndedNotice}
+                    >
+                      <IconSymbol
+                        ios_icon_name="calendar.badge.exclamationmark"
+                        android_material_icon_name="event-busy"
+                        size={18}
+                        color="#9A3412"
+                      />
+                      <Text selectable style={styles.quarterEndedNoticeText}>
+                        {ELAPSED_QUARTER_MESSAGE}
+                      </Text>
+                    </View>
+                  ) : null}
 
                   <Text style={[styles.sectionTitle, { color: colors.text }]}>Year</Text>
                   <TextInput
@@ -3982,7 +4084,7 @@ export default function ChurchScreen() {
                   </Text>
                   <View>
                     {(recurringServices ?? []).map(template => {
-                      const { startDate, endDate } = getQuarterDates(selectedQuarter, selectedYear);
+                      const { startDate, endDate } = getQuarterDateRange(selectedQuarter, selectedYear);
                       const currentDate = new Date(startDate);
                       const serviceDates: Date[] = [];
 
@@ -4220,10 +4322,6 @@ export default function ChurchScreen() {
         visible={showAdHocServiceModal}
         title="Add Single Service"
         onClose={closeAdHocServiceModal}
-        backgroundColor={colors.cardBackground || '#FFFFFF'}
-        textColor={colors.text}
-        borderColor={colors.border}
-        primaryColor={colors.primary}
         maxWidth={460}
         maxRestingHeight={620}
         secondaryAction={{
@@ -4860,6 +4958,36 @@ const styles = StyleSheet.create({
   roleDetails: {
     flex: 1,
   },
+  roleSymbolTile: {
+    alignItems: 'center',
+    borderRadius: 8,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  roleSymbolPickerSection: {
+    gap: 8,
+  },
+  roleSymbolGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  roleSymbolOption: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    minHeight: 48,
+    paddingHorizontal: 10,
+    width: '48%',
+  },
+  roleSymbolOptionText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   roleName: {
     fontSize: 16,
     fontWeight: '600',
@@ -5360,6 +5488,33 @@ const styles = StyleSheet.create({
   quarterButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  quarterButtonDisabled: {
+    opacity: 0.48,
+  },
+  quarterEndedText: {
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 13,
+  },
+  quarterEndedNotice: {
+    alignItems: 'center',
+    backgroundColor: '#FFF7ED',
+    borderColor: '#FED7AA',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  quarterEndedNoticeText: {
+    color: '#9A3412',
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
   },
   blockServiceItem: {
     flexDirection: 'row',

@@ -1,6 +1,8 @@
 import { ExtensionStorage } from '@bacons/apple-targets';
 import {
   createEmptyScheduleWidgetSnapshot,
+  MY_NEXT_ASSIGNMENT_WIDGET_KIND,
+  NEXT_CHURCH_SERVICE_WIDGET_KIND,
   parseScheduleWidgetSnapshot,
   SCHEDULE_WIDGET_APP_GROUP,
   SCHEDULE_WIDGET_SNAPSHOT_KEY,
@@ -10,11 +12,31 @@ import {
 
 const storage = new ExtensionStorage(SCHEDULE_WIDGET_APP_GROUP);
 let activeScopeFingerprint: string | null = null;
+let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleTimelineReload(): void {
+  if (reloadTimer) return;
+  reloadTimer = setTimeout(() => {
+    reloadTimer = null;
+    try {
+      ExtensionStorage.reloadWidget(NEXT_CHURCH_SERVICE_WIDGET_KIND);
+      ExtensionStorage.reloadWidget(MY_NEXT_ASSIGNMENT_WIDGET_KIND);
+    } catch (error) {
+      console.warn('[ScheduleWidget] Could not reload widgets:', error);
+    }
+  }, 200);
+}
 
 function persist(snapshot: ScheduleWidgetSnapshot): boolean {
   try {
-    storage.set(SCHEDULE_WIDGET_SNAPSHOT_KEY, JSON.stringify(snapshot));
-    ExtensionStorage.reloadWidget();
+    const serialized = JSON.stringify(snapshot);
+    if (storage.get(SCHEDULE_WIDGET_SNAPSHOT_KEY) === serialized) return true;
+    storage.set(SCHEDULE_WIDGET_SNAPSHOT_KEY, serialized);
+    if (storage.get(SCHEDULE_WIDGET_SNAPSHOT_KEY) !== serialized) {
+      console.warn('[ScheduleWidget] App Group snapshot verification failed');
+      return false;
+    }
+    scheduleTimelineReload();
     return true;
   } catch (error) {
     console.warn('[ScheduleWidget] Could not update widget data:', error);
@@ -58,9 +80,5 @@ export function clearScheduleWidgetSnapshot(
 }
 
 export function reloadScheduleWidgets(): void {
-  try {
-    ExtensionStorage.reloadWidget();
-  } catch (error) {
-    console.warn('[ScheduleWidget] Could not reload widgets:', error);
-  }
+  scheduleTimelineReload();
 }

@@ -53,16 +53,19 @@ test('snapshot identifiers and privacy boundaries match across JavaScript and Sw
   assert.match(model, /SCHEDULE_WIDGET_SCHEMA_VERSION = 1/);
   assert.match(swift, /snapshotSchemaVersion = 1/);
   assert.match(nativeStorage, /ExtensionStorage/);
-  assert.match(nativeStorage, /ExtensionStorage\.reloadWidget\(\)/);
+  assert.match(nativeStorage, /ExtensionStorage\.reloadWidget\(NEXT_CHURCH_SERVICE_WIDGET_KIND\)/);
+  assert.match(nativeStorage, /ExtensionStorage\.reloadWidget\(MY_NEXT_ASSIGNMENT_WIDGET_KIND\)/);
   assert.equal(swift.includes('access_token'), false);
   assert.equal(swift.includes('refresh_token'), false);
   assert.equal(swift.includes('invitation_code'), false);
 });
 
-test('the iOS schedule owns refreshes while Android remains untouched', () => {
+test('the iOS membership lifecycle owns refreshes while Android remains untouched', () => {
   const iosSchedule = read('app/(tabs)/(home)/index.ios.tsx');
   const androidSchedule = read('app/(tabs)/(home)/index.tsx');
   const sharedSchedule = read('components/schedules/schedule-screen.tsx');
+  const lifecycle = read('components/widgets/schedule-widget-lifecycle-sync.ios.tsx');
+  const defaultLifecycle = read('components/widgets/schedule-widget-lifecycle-sync.tsx');
   const iosSync = read('hooks/useScheduleWidgetSync.ios.ts');
   const defaultSync = read('hooks/useScheduleWidgetSync.ts');
   const rootLayout = read('app/_layout.tsx');
@@ -70,14 +73,17 @@ test('the iOS schedule owns refreshes while Android remains untouched', () => {
 
   assert.match(iosSchedule, /schedule-screen/);
   assert.match(androidSchedule, /schedule-screen/);
-  assert.match(sharedSchedule, /useScheduleWidgetSync/);
+  assert.doesNotMatch(sharedSchedule, /useScheduleWidgetSync/);
+  assert.match(lifecycle, /useScheduleWidgetSync/);
+  assert.match(lifecycle, /useServices/);
+  assert.doesNotMatch(defaultLifecycle, /useServices|ExtensionStorage/);
   assert.match(iosSync, /buildScheduleWidgetSnapshot/);
   assert.match(iosSync, /writeScheduleWidgetSnapshot/);
   assert.match(iosSync, /AppState\.addEventListener/);
   assert.equal(defaultSync.includes('schedule-widget'), true);
   assert.equal(defaultSync.includes('buildScheduleWidgetSnapshot'), false);
-  assert.match(rootLayout, /prepareScheduleWidgetScope/);
-  assert.match(rootLayout, /clearScheduleWidgetSnapshot/);
+  assert.match(rootLayout, /ScheduleWidgetLifecycleSync/);
+  assert.doesNotMatch(rootLayout, /prepareScheduleWidgetScope|clearScheduleWidgetSnapshot/);
   assert.match(churchContext, /clearScheduleWidgetSnapshot\('signed_out'\)/);
 });
 

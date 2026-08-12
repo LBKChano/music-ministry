@@ -49,12 +49,12 @@ function preference({
   };
 }
 
-test('summary reports no selected preference without hiding available options', () => {
+test('summary reports every matching option on when no avoidance is stored', () => {
   assert.deepEqual(createSchedulingPreferenceSummary([], groups), {
     count: 0,
-    description: 'No weekly-service preferences selected.',
+    description: 'Available for every matching weekly service.',
     totalOptions: 3,
-    value: 'None',
+    value: 'All on',
   });
 });
 
@@ -68,7 +68,7 @@ test('summary names a single weekly-service and role preference', () => {
   ], groups);
 
   assert.equal(summary.count, 1);
-  assert.equal(summary.value, '1 selected');
+  assert.equal(summary.value, '1 off');
   assert.equal(
     summary.description,
     'Avoid Sunday Service for Piano when possible.',
@@ -90,7 +90,8 @@ test('summary aggregates several selections across distinct roles', () => {
   ], groups);
 
   assert.equal(summary.count, 2);
-  assert.equal(summary.description, '2 preferences across 2 roles.');
+  assert.equal(summary.description, '2 service preferences are off across 2 roles.');
+  assert.equal(summary.value, '2 off');
   assert.equal(summary.totalOptions, 3);
 });
 

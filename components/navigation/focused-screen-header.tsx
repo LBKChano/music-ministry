@@ -2,7 +2,7 @@ import React, { type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import { WordSafeHeaderText } from '@/components/navigation/word-safe-header-text';
-import { colors } from '@/styles/commonStyles';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 
 type FocusedScreenHeaderTone = 'brand' | 'surface';
 
@@ -14,6 +14,8 @@ export function FocusedScreenHeader({
   backAccessibilityLabel,
   onBack,
   trailing,
+  iosIcon = 'slider.horizontal.3',
+  androidIcon = 'tune',
 }: {
   title: string;
   subtitle?: string;
@@ -22,16 +24,30 @@ export function FocusedScreenHeader({
   backAccessibilityLabel: string;
   onBack: () => void;
   trailing?: ReactNode;
+  iosIcon?: string;
+  androidIcon?: React.ComponentProps<typeof IconSymbol>['android_material_icon_name'];
 }) {
+  const theme = useAppTheme();
   const isBrand = tone === 'brand';
-  const foreground = isBrand ? colors.headerText : colors.text;
-  const secondary = isBrand ? '#DBEAFE' : colors.textSecondary;
+  const foreground = isBrand
+    ? theme.strongSurface.foreground
+    : theme.modalHeader.foreground;
+  const secondary = isBrand
+    ? theme.strongSurface.mutedForeground
+    : theme.modalHeader.mutedForeground;
+  const surface = isBrand
+    ? theme.colors.surfaceStrong
+    : theme.modalHeader.surface;
 
   return (
     <View
       style={[
         styles.header,
-        isBrand ? styles.brandHeader : styles.surfaceHeader,
+        {
+          backgroundColor: surface,
+          borderBottomColor: theme.modalHeader.accent,
+          boxShadow: theme.elevation.low,
+        },
       ]}
     >
       <Pressable
@@ -44,6 +60,14 @@ export function FocusedScreenHeader({
         onPress={onBack}
         style={({ pressed }) => [
           styles.headerButton,
+          {
+            backgroundColor: isBrand
+              ? theme.header.controlSurface
+              : theme.colors.surface,
+            borderColor: isBrand
+              ? theme.header.controlBorder
+              : theme.colors.borderStrong,
+          },
           pressed && styles.pressed,
           disabled && styles.disabled,
         ]}
@@ -55,6 +79,29 @@ export function FocusedScreenHeader({
           color={foreground}
         />
       </Pressable>
+
+      <View
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={[
+          styles.contextIcon,
+          {
+            backgroundColor: isBrand
+              ? theme.header.accentPanel
+              : theme.colors.accentSoft,
+            borderColor: isBrand
+              ? theme.header.controlBorder
+              : theme.modalHeader.accent,
+          },
+        ]}
+      >
+        <IconSymbol
+          ios_icon_name={iosIcon}
+          android_material_icon_name={androidIcon}
+          size={23}
+          color={isBrand ? foreground : theme.modalHeader.accent}
+        />
+      </View>
 
       <View style={styles.copy}>
         <Text
@@ -88,41 +135,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     minHeight: 76,
+    borderBottomWidth: 3,
+    gap: 10,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  brandHeader: {
-    backgroundColor: colors.headerBackground,
-  },
-  surfaceHeader: {
-    backgroundColor: colors.card,
-    borderBottomColor: colors.border,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 11,
   },
   headerButton: {
     alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  contextIcon: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
     height: 44,
     justifyContent: 'center',
     width: 44,
   },
   copy: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flex: 1,
     minWidth: 0,
-    paddingHorizontal: 8,
   },
   title: {
     fontSize: 19,
     fontWeight: '800',
     lineHeight: 24,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   subtitle: {
     fontSize: 13,
     fontWeight: '600',
     lineHeight: 18,
     paddingTop: 1,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   pressed: {
     opacity: 0.68,

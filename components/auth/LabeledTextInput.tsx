@@ -7,6 +7,7 @@ import {
   type TextInputProps,
 } from 'react-native';
 import { AuthTextInput, type AuthCredentialType } from '@/components/auth/AuthTextInput';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 
 interface LabeledTextInputProps extends TextInputProps {
   label: string;
@@ -32,6 +33,7 @@ export const LabeledTextInput = forwardRef<TextInput, LabeledTextInputProps>(
     },
     ref,
   ) {
+    const theme = useAppTheme();
     const inputProps: TextInputProps = {
       accessibilityLabel: label,
       accessibilityHint: error,
@@ -40,7 +42,8 @@ export const LabeledTextInput = forwardRef<TextInput, LabeledTextInputProps>(
         styles.input,
         {
           color: colors.text,
-          borderColor: error ? '#c62828' : colors.border,
+          backgroundColor: theme.input.surface,
+          borderColor: error ? theme.status.error.border : theme.input.border,
         },
         style,
       ],
@@ -64,7 +67,7 @@ export const LabeledTextInput = forwardRef<TextInput, LabeledTextInputProps>(
         {error ? (
           <Text
             accessibilityLiveRegion="polite"
-            style={styles.error}
+            style={[styles.error, { color: theme.status.error.foreground }]}
           >
             {error}
           </Text>
@@ -92,7 +95,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   error: {
-    color: '#c62828',
     fontSize: 13,
     lineHeight: 18,
   },

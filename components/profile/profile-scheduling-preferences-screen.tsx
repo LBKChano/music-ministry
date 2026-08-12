@@ -19,21 +19,28 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { IconSymbol } from '@/components/IconSymbol';
 import { ProfileFocusedHeader } from '@/components/profile/profile-focused-header';
 import { ProfileStatus } from '@/components/profile/profile-primitives';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { useChurch } from '@/hooks/useChurch';
 import { useSchedulingPreferences } from '@/hooks/useSchedulingPreferences';
 import {
   buildSchedulingPreferenceGroups,
   findSchedulingPreferenceOption,
   formatSchedulingPreferenceTime,
-  hasSchedulingPreference,
+  isSchedulingOptionAvailable,
   SCHEDULING_WEEKDAY_NAMES,
   schedulingPreferenceKey,
 } from '@/lib/scheduling/preferences';
-import { colors } from '@/styles/commonStyles';
+import {
+  createLegacyThemeColors,
+  type LegacyThemeColors,
+} from '@/lib/ui/legacy-theme-colors';
 
 type StatusTone = 'success' | 'error' | 'info';
 
 export function ProfileSchedulingPreferencesScreen() {
+  const theme = useAppTheme();
+  const colors = useMemo(() => createLegacyThemeColors(theme), [theme]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const navigation = useNavigation();
   const isFocused = useIsFocused();
@@ -62,7 +69,7 @@ export function ProfileSchedulingPreferencesScreen() {
     retry,
     retryFailedPreference,
     saveError,
-    setPreference,
+    setAvailability,
   } = useSchedulingPreferences({
     accountId,
     active: isFocused,
@@ -110,7 +117,7 @@ export function ProfileSchedulingPreferencesScreen() {
   const handlePreferenceChange = async (
     recurringServiceId: string,
     roleId: string,
-    shouldAvoid: boolean,
+    isAvailable: boolean,
   ) => {
     if (!identityKey) return;
 
@@ -125,18 +132,18 @@ export function ProfileSchedulingPreferencesScreen() {
     );
     setStatusTone('info');
 
-    const saved = await setPreference(
+    const saved = await setAvailability(
       recurringServiceId,
       roleId,
-      shouldAvoid
+      isAvailable
     );
     if (activeIdentityRef.current !== saveIdentity) return;
 
     if (saved) {
       setStatus(
-        shouldAvoid
-          ? `Preference saved for ${option?.service.name ?? 'weekly service'}.`
-          : `Preference removed for ${option?.service.name ?? 'weekly service'}.`
+        isAvailable
+          ? `Scheduling enabled for ${option?.service.name ?? 'weekly service'}.`
+          : `Preference saved for ${option?.service.name ?? 'weekly service'}.`
       );
       setStatusTone('success');
     } else {
@@ -163,7 +170,9 @@ export function ProfileSchedulingPreferencesScreen() {
 
     if (saved) {
       setStatus(
-        `Preference saved for ${option?.service.name ?? 'weekly service'}.`
+        failedPreference.isAvailable
+          ? `Scheduling enabled for ${option?.service.name ?? 'weekly service'}.`
+          : `Preference saved for ${option?.service.name ?? 'weekly service'}.`
       );
       setStatusTone('success');
     } else {
@@ -285,11 +294,13 @@ export function ProfileSchedulingPreferencesScreen() {
               </View>
               <View style={styles.explainerCopy}>
                 <Text style={styles.explainerTitle}>
-                  Preferences, not hard blocks
+                  Available by default
                 </Text>
                 <Text style={styles.explainerText}>
-                  Auto-assign avoids these combinations when another eligible
-                  member is available. Unavailable dates always remain blocked.
+                  Keep a switch on to be scheduled here when needed. Turn it
+                  off to ask auto-assign to avoid that service and role when
+                  another eligible member is available. Unavailable dates
+                  always remain hard blocks.
                 </Text>
               </View>
             </View>
@@ -375,7 +386,7 @@ export function ProfileSchedulingPreferencesScreen() {
                           service.id,
                           group.role.role_id
                         );
-                        const enabled = hasSchedulingPreference(
+                        const isAvailable = isSchedulingOptionAvailable(
                           preferences,
                           service.id,
                           group.role.role_id
@@ -414,37 +425,37 @@ export function ProfileSchedulingPreferencesScreen() {
                                 maxFontSizeMultiplier={1.45}
                                 style={[
                                   styles.preferenceState,
-                                  enabled && styles.preferenceStateEnabled,
+                                  isAvailable && styles.preferenceStateEnabled,
                                 ]}
                               >
-                                {enabled
-                                  ? 'Prefer not to be scheduled'
-                                  : 'No scheduling preference'}
+                                {isAvailable
+                                  ? 'Schedule me here when needed'
+                                  : 'Prefer not to be scheduled'}
                               </Text>
                             </View>
                             <View style={styles.switchFrame}>
                               {isSaving ? (
                                 <ActivityIndicator
-                                  accessibilityLabel={`Saving ${service.name} preference`}
+                                  accessibilityLabel={`Saving availability for ${service.name}`}
                                   size="small"
                                   color={colors.primary}
                                 />
                               ) : null}
                               <Switch
-                                accessibilityLabel={`Prefer not to be scheduled for ${group.role.role_name} at ${service.name}`}
-                                accessibilityHint="This is a preference, not a guaranteed block."
+                                accessibilityLabel={`Schedule me for ${group.role.role_name} at ${service.name}`}
+                                accessibilityHint="On means you can be scheduled when needed. Off asks auto-assign to avoid this combination when possible."
                                 accessibilityState={{
                                   busy: isSaving,
-                                  checked: enabled,
+                                  checked: isAvailable,
                                   disabled: switchDisabled,
                                 }}
                                 disabled={switchDisabled}
                                 ios_backgroundColor="#A6ADB7"
-                                onValueChange={nextValue => {
+                                onValueChange={nextIsAvailable => {
                                   void handlePreferenceChange(
                                     service.id,
                                     group.role.role_id,
-                                    nextValue
+                                    nextIsAvailable
                                   );
                                 }}
                                 thumbColor="#FFFFFF"
@@ -452,7 +463,7 @@ export function ProfileSchedulingPreferencesScreen() {
                                   false: '#A6ADB7',
                                   true: colors.primary,
                                 }}
-                                value={enabled}
+                                value={isAvailable}
                               />
                             </View>
                           </View>
@@ -470,7 +481,8 @@ export function ProfileSchedulingPreferencesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: LegacyThemeColors) {
+  return StyleSheet.create({
   container: {
     backgroundColor: colors.background,
     flex: 1,
@@ -743,4 +755,5 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.5,
   },
-});
+  });
+}

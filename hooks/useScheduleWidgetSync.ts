@@ -1,4 +1,5 @@
 import type { ScheduleWidgetSourceService } from '@/lib/widgets/schedule-widget-model';
+import type { ChurchSessionStatus } from '@/lib/church/startup-coordinator';
 
 export interface ScheduleWidgetSyncParams {
   churchId: string | null;
@@ -6,8 +7,12 @@ export interface ScheduleWidgetSyncParams {
   currentMemberAccountId: string | null;
   currentMemberChurchId: string | null;
   currentMemberId: string | null;
+  initialized: boolean;
+  refreshServices: () => Promise<void>;
   services: readonly ScheduleWidgetSourceService[];
+  servicesError: string | null;
   servicesLoading: boolean;
+  sessionStatus: ChurchSessionStatus;
   userId: string | null;
 }
 

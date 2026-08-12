@@ -320,6 +320,7 @@ export type Database = {
           church_id: string
           created_at: string
           description: string | null
+          icon_key: string | null
           id: string
           name: string
           updated_at: string
@@ -329,6 +330,7 @@ export type Database = {
           church_id: string
           created_at?: string
           description?: string | null
+          icon_key?: string | null
           id?: string
           name: string
           updated_at?: string
@@ -338,6 +340,7 @@ export type Database = {
           church_id?: string
           created_at?: string
           description?: string | null
+          icon_key?: string | null
           id?: string
           name?: string
           updated_at?: string
@@ -984,6 +987,16 @@ export type Database = {
           target_role_id: string
           role_name: string
           role_description: string
+        }
+        Returns: Database["public"]["Tables"]["church_roles"]["Row"]
+      }
+      save_church_role_admin_v2: {
+        Args: {
+          target_church_id: string
+          target_role_id: string
+          role_name: string
+          role_description: string
+          role_icon_key: string
         }
         Returns: Database["public"]["Tables"]["church_roles"]["Row"]
       }

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,11 +13,11 @@ import {
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
 import { InlineStatus } from '@/components/feedback/inline-status';
 import { LabeledTextInput } from '@/components/auth/LabeledTextInput';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { useChurch } from '@/hooks/useChurch';
 import {
   clearPendingOnboardingIntent,
@@ -66,7 +67,7 @@ function resolveRequestedStep(mode?: string): OnboardingStep {
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const { colors: themeColors, dark } = useTheme();
+  const theme = useAppTheme();
   const { session } = useAuth();
   const { refreshChurches } = useChurch();
   const routeParams = useLocalSearchParams<{
@@ -76,12 +77,14 @@ export default function OnboardingScreen() {
   }>();
 
   const screenColors = {
-    text: themeColors.text,
-    textSecondary: dark ? '#A7B0BE' : '#64748B',
-    border: themeColors.border,
-    primary: themeColors.primary,
-    background: themeColors.background,
-    surface: themeColors.card,
+    text: theme.colors.textPrimary,
+    textSecondary: theme.colors.textSecondary,
+    border: theme.colors.borderStrong,
+    primary: theme.button.primarySurface,
+    primaryForeground: theme.button.primaryForeground,
+    primaryMuted: theme.strongSurface.mutedForeground,
+    background: theme.colors.canvas,
+    surface: theme.colors.surface,
   };
 
   const [step, setStep] = useState<OnboardingStep>('welcome');
@@ -589,9 +592,9 @@ export default function OnboardingScreen() {
       ]}
     >
       {loading ? (
-        <ActivityIndicator color="#FFFFFF" />
+        <ActivityIndicator color={screenColors.primaryForeground} />
       ) : (
-        <Text style={styles.submitButtonText}>{label}</Text>
+        <Text style={[styles.submitButtonText, { color: screenColors.primaryForeground }]}>{label}</Text>
       )}
     </Pressable>
   );
@@ -610,17 +613,13 @@ export default function OnboardingScreen() {
         >
           {step === 'welcome' ? (
             <View style={styles.content}>
-              <View
-                style={[styles.brandIcon, { backgroundColor: screenColors.primary }]}
-                accessibilityElementsHidden
-              >
-                <IconSymbol
-                  ios_icon_name="music.note.house.fill"
-                  android_material_icon_name="church"
-                  size={42}
-                  color="#FFFFFF"
-                />
-              </View>
+              <Image
+                accessibilityLabel="Music Ministry app logo"
+                accessibilityRole="image"
+                resizeMode="contain"
+                source={require('../assets/splash-mark.png')}
+                style={[styles.brandMark, { tintColor: theme.colors.accent }]}
+              />
               <Text style={[styles.title, { color: screenColors.text }]}>
                 Music Ministry
               </Text>
@@ -880,6 +879,8 @@ function WelcomeAction({
     border: string;
     primary: string;
     surface: string;
+    primaryForeground: string;
+    primaryMuted: string;
   };
   onPress: () => void;
 }) {
@@ -902,13 +903,13 @@ function WelcomeAction({
         ios_icon_name={iconIos}
         android_material_icon_name={iconAndroid}
         size={25}
-        color={primary ? '#FFFFFF' : colors.primary}
+        color={primary ? colors.primaryForeground : colors.primary}
       />
       <View style={styles.welcomeActionCopy}>
         <Text
           style={[
             styles.welcomeActionTitle,
-            { color: primary ? '#FFFFFF' : colors.text },
+            { color: primary ? colors.primaryForeground : colors.text },
           ]}
         >
           {title}
@@ -918,7 +919,7 @@ function WelcomeAction({
             styles.welcomeActionSubtitle,
             {
               color: primary
-                ? 'rgba(255,255,255,0.82)'
+                ? colors.primaryMuted
                 : colors.textSecondary,
             },
           ]}
@@ -930,7 +931,7 @@ function WelcomeAction({
         ios_icon_name="chevron.right"
         android_material_icon_name="chevron-right"
         size={20}
-        color={primary ? '#FFFFFF' : colors.textSecondary}
+        color={primary ? colors.primaryForeground : colors.textSecondary}
       />
     </Pressable>
   );
@@ -978,14 +979,11 @@ const styles = StyleSheet.create({
     maxWidth: 460,
     alignSelf: 'center',
   },
-  brandIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+  brandMark: {
+    width: 118,
+    height: 118,
     alignSelf: 'center',
-    marginBottom: 22,
+    marginBottom: 18,
   },
   title: {
     fontSize: 30,
@@ -1114,7 +1112,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   submitButtonText: {
-    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',
     textAlign: 'center',

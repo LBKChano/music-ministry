@@ -10,6 +10,7 @@ import {
 import {
   useMutation,
   useQueries,
+  useQuery,
   useQueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
@@ -52,6 +53,7 @@ import {
   type ManualAssignmentCandidate,
 } from '@/lib/services/manual-assignment';
 import type { TablesInsert } from '@/lib/supabase/types';
+import type { ScheduleDateSummary } from '@/lib/schedules/schedule-range';
 
 export type { CachedService as ServiceWithAssignments } from '@/lib/realtime/cache-updates';
 
@@ -59,7 +61,6 @@ interface CombinedServiceQueries {
   services: ServiceWithAssignments[];
   isPending: boolean;
   isFetching: boolean;
-  lastIsFetching: boolean;
   lastError: Error | null;
   firstError: Error | null;
   lastSuccessfulIndex: number;
@@ -104,7 +105,6 @@ function combineServiceQueries(
     services,
     isPending: results.some(result => result.isPending),
     isFetching: results.some(result => result.isFetching),
-    lastIsFetching: Boolean(results.at(-1)?.isFetching),
     lastError: results.at(-1)?.error ?? null,
     firstError: results.find(result => result.error)?.error ?? null,
     lastSuccessfulIndex: results.reduce(
@@ -165,6 +165,35 @@ async function fetchServicesForChurch(
   return services;
 }
 
+async function fetchUpcomingServiceDateSummary(
+  churchId: string,
+  startDate: string,
+  signal?: AbortSignal,
+): Promise<ScheduleDateSummary | null> {
+  const buildRequest = (ascending: boolean) => {
+    let request = supabase
+      .from('services')
+      .select('date')
+      .eq('church_id', churchId)
+      .gte('date', startDate)
+      .order('date', { ascending })
+      .limit(1);
+    if (signal) request = request.abortSignal(signal);
+    return request;
+  };
+
+  const [firstResult, lastResult] = await Promise.all([
+    buildRequest(true),
+    buildRequest(false),
+  ]);
+  if (firstResult.error) throw firstResult.error;
+  if (lastResult.error) throw lastResult.error;
+
+  const firstDate = firstResult.data?.[0]?.date;
+  const lastDate = lastResult.data?.[0]?.date;
+  return firstDate && lastDate ? { firstDate, lastDate } : null;
+}
+
 export interface UseServicesOptions {
   windowed?: boolean;
   windowDays?: number;
@@ -192,6 +221,10 @@ export function useServices(
   const [serviceRanges, setServiceRanges] = useState<ServiceDateRange[]>(() => (
     windowed ? [createServiceDateRange(startDate, windowDays)] : []
   ));
+  const [pendingServiceRangeKey, setPendingServiceRangeKey] = useState<string | null>(null);
+  const [failedServiceRange, setFailedServiceRange] = useState<ServiceDateRange | null>(null);
+  const pendingServiceRangeKeyRef = useRef<string | null>(null);
+  const serviceRequestScopeRef = useRef(`${accountId ?? 'signed-out'}:${churchId ?? 'none'}`);
   const [actionError, setError] = useState<string | null>(null);
   const [reorderingServiceIds, setReorderingServiceIds] = useState<Set<string>>(
     () => new Set()
@@ -200,10 +233,14 @@ export function useServices(
   const refreshCoordinatorRef = useRef(new RefreshCoordinator());
 
   useEffect(() => {
+    serviceRequestScopeRef.current = `${accountId ?? 'signed-out'}:${churchId ?? 'none'}`;
+    pendingServiceRangeKeyRef.current = null;
+    setPendingServiceRangeKey(null);
+    setFailedServiceRange(null);
     setServiceRanges(
       windowed ? [createServiceDateRange(startDate, windowDays)] : []
     );
-  }, [churchId, startDate, windowDays, windowed]);
+  }, [accountId, churchId, startDate, windowDays, windowed]);
 
   const requestedRanges = useMemo<(ServiceDateRange | null)[]>(
     () => windowed ? serviceRanges : [null],
@@ -220,8 +257,23 @@ export function useServices(
         fetchServicesForChurch(churchId as string, range, signal)
       ),
       enabled: queryEnabled,
+      staleTime: 30_000,
     })),
     combine: combineServiceQueries,
+  });
+  const serviceDateSummaryQuery = useQuery({
+    queryKey: queryKeys.serviceDateSummary(
+      accountId ?? 'signed-out',
+      churchId ?? 'none',
+      startDate,
+    ),
+    queryFn: ({ signal }) => fetchUpcomingServiceDateSummary(
+      churchId as string,
+      startDate,
+      signal,
+    ),
+    enabled: queryEnabled,
+    staleTime: 60_000,
   });
 
   const services = combinedServicesQuery.services;
@@ -231,11 +283,9 @@ export function useServices(
   const refreshing = queryEnabled
     && services.length > 0
     && combinedServicesQuery.isFetching;
-  const loadingMoreServices = windowed
-    && serviceRanges.length > 1
-    && combinedServicesQuery.lastIsFetching;
+  const loadingMoreServices = windowed && Boolean(pendingServiceRangeKey);
   const serviceRangeError = windowed
-    && Boolean(combinedServicesQuery.lastError);
+    && Boolean(failedServiceRange ?? combinedServicesQuery.lastError);
   const queryError = combinedServicesQuery.firstError;
   const error = actionError
     ?? (queryError instanceof Error ? queryError.message : queryError ? String(queryError) : null);
@@ -259,47 +309,100 @@ export function useServices(
     );
   }, [queryClient, servicesQueryRoot]);
 
+  const invalidateServiceDateSummary = useCallback((targetChurchId: string) => {
+    if (!accountId) return;
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.serviceDateSummaryRoot(accountId, targetChurchId),
+    });
+  }, [accountId, queryClient]);
+
   const refreshServices = useCallback(async () => {
     if (!queryEnabled) return;
     await refreshCoordinatorRef.current.run(
       `services:${servicesQueryRoot.join(':')}`,
-      () => queryClient.refetchQueries(
-        { queryKey: servicesQueryRoot, type: 'active' },
-        { throwOnError: true }
-      )
+      async () => {
+        await Promise.all([
+          queryClient.refetchQueries(
+            { queryKey: servicesQueryRoot, type: 'active' },
+            { throwOnError: true },
+          ),
+          queryClient.refetchQueries({
+            queryKey: queryKeys.serviceDateSummary(
+              accountId ?? 'signed-out',
+              churchId ?? 'none',
+              startDate,
+            ),
+            exact: true,
+          }),
+        ]);
+      }
     );
-  }, [queryClient, queryEnabled, servicesQueryRoot]);
+  }, [accountId, churchId, queryClient, queryEnabled, servicesQueryRoot, startDate]);
 
-  const loadMoreServices = useCallback(() => {
-    if (!windowed) return;
+  const loadMoreServices = useCallback(async () => {
+    if (!windowed || !queryEnabled || !churchId || pendingServiceRangeKeyRef.current) return;
 
-    const lastRange = serviceRanges.at(-1)
+    const currentLastRange = serviceRanges.at(-1)
       ?? createServiceDateRange(startDate, windowDays);
-    const lastRangeQueryKey = queryKeys.services(
+    const failedRequestedRange = combinedServicesQuery.lastError
+      ? currentLastRange
+      : null;
+    const targetRange = failedServiceRange
+      ?? failedRequestedRange
+      ?? createNextServiceDateRange(currentLastRange, windowDays);
+    const targetRangeKey = getServiceRangeKey(targetRange);
+    const requestScope = `${accountId ?? 'signed-out'}:${churchId}`;
+    const targetQueryKey = queryKeys.services(
       accountId ?? 'signed-out',
-      churchId ?? 'none',
-      getServiceRangeKey(lastRange)
+      churchId,
+      targetRangeKey,
     );
-    if (queryClient.getQueryState(lastRangeQueryKey)?.status === 'error') {
-      void queryClient.refetchQueries({
-        queryKey: lastRangeQueryKey,
-        exact: true,
-      });
+
+    const targetIsAlreadyRequested = serviceRanges.some(
+      range => getServiceRangeKey(range) === targetRangeKey
+    );
+    if (targetIsAlreadyRequested && !failedRequestedRange) {
+      setFailedServiceRange(null);
       return;
     }
 
-    setServiceRanges(current => {
-      const currentLastRange = current.at(-1)
-        ?? createServiceDateRange(startDate, windowDays);
-      return [
-        ...current,
-        createNextServiceDateRange(currentLastRange, windowDays),
-      ];
-    });
+    pendingServiceRangeKeyRef.current = targetRangeKey;
+    setPendingServiceRangeKey(targetRangeKey);
+    try {
+      await queryClient.fetchQuery({
+        queryKey: targetQueryKey,
+        queryFn: ({ signal }) => fetchServicesForChurch(churchId, targetRange, signal),
+        staleTime: 30_000,
+      });
+      if (serviceRequestScopeRef.current !== requestScope) return;
+
+      setServiceRanges(current => (
+        current.some(range => getServiceRangeKey(range) === targetRangeKey)
+          ? current
+          : [...current, targetRange]
+      ));
+      setFailedServiceRange(null);
+    } catch (rangeError) {
+      if (serviceRequestScopeRef.current === requestScope) {
+        console.error('Error loading next service range:', rangeError);
+        setFailedServiceRange(targetRange);
+      }
+    } finally {
+      if (
+        serviceRequestScopeRef.current === requestScope
+        && pendingServiceRangeKeyRef.current === targetRangeKey
+      ) {
+        pendingServiceRangeKeyRef.current = null;
+        setPendingServiceRangeKey(null);
+      }
+    }
   }, [
     accountId,
     churchId,
+    combinedServicesQuery.lastError,
+    failedServiceRange,
     queryClient,
+    queryEnabled,
     serviceRanges,
     startDate,
     windowDays,
@@ -435,13 +538,14 @@ export function useServices(
       }
 
       ensureServiceDateLoaded(date);
+      invalidateServiceDateSummary(serviceChurchId);
       return serviceData;
     } catch (err) {
       console.error('Error in createServiceFromTemplate:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  }, [accountId, ensureServiceDateLoaded, queryClient, setServices]);
+  }, [accountId, ensureServiceDateLoaded, invalidateServiceDateSummary, queryClient, setServices]);
 
   const createServicesBatch = useCallback(async (
     serviceChurchId: string,
@@ -484,6 +588,7 @@ export function useServices(
             queryKey: queryKeys.servicesRoot(accountId, serviceChurchId),
           });
         }
+        invalidateServiceDateSummary(serviceChurchId);
 
         const createdCount = (
           data
@@ -531,6 +636,7 @@ export function useServices(
     accountId,
     createServiceFromTemplate,
     ensureServiceDateLoaded,
+    invalidateServiceDateSummary,
     queryClient,
   ]);
 
@@ -657,6 +763,7 @@ export function useServices(
       }
 
       setServices(previous => removeDeletedServices(previous, deletedIds));
+      invalidateServiceDateSummary(serviceChurchId);
       if (accountId) {
         void queryClient.invalidateQueries({
           queryKey: queryKeys.fillInRequests(accountId, serviceChurchId),
@@ -668,7 +775,7 @@ export function useServices(
       setError(err instanceof Error ? err.message : 'Unknown error');
       return null;
     }
-  }, [accountId, queryClient, setServices]);
+  }, [accountId, invalidateServiceDateSummary, queryClient, setServices]);
 
   // Delete a service - OPTIMIZED: No need to refetch all services
   const deleteService = useCallback(async (serviceId: string) => {
@@ -691,6 +798,7 @@ export function useServices(
       
       // OPTIMIZATION: Update local state instead of refetching all services
       setServices(prevServices => prevServices.filter(s => s.id !== serviceId));
+      if (churchId) invalidateServiceDateSummary(churchId);
       
       return true;
     } catch (err) {
@@ -698,7 +806,7 @@ export function useServices(
       setError(err instanceof Error ? err.message : 'Unknown error');
       return false;
     }
-  }, [setServices]);
+  }, [churchId, invalidateServiceDateSummary, setServices]);
 
   // Add an assignment to a service
   const addAssignment = useCallback(async (serviceId: string, role: string, personName: string, memberId?: string) => {
@@ -1472,6 +1580,9 @@ export function useServices(
     loadingMoreServices,
     serviceRangeError,
     loadedThrough,
+    scheduleDateSummary: serviceDateSummaryQuery.data,
+    scheduleDateSummaryPending: serviceDateSummaryQuery.isPending,
+    scheduleDateSummaryError: serviceDateSummaryQuery.error,
     serviceWindowDays: windowed ? windowDays : null,
   };
 }

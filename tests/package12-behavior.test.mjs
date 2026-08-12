@@ -25,12 +25,12 @@ test('local calendar boundaries do not shift through UTC conversion', () => {
   );
 });
 
-test('the editor range follows the shared 90-day scheduling horizon', () => {
+test('the editor range follows the six-calendar-month availability horizon', () => {
   assert.deepEqual(
     createAvailabilityEditorRange(new Date(2026, 6, 29, 12, 0, 0)),
     {
       startDate: '2026-07-29',
-      endDate: '2026-10-26',
+      endDate: '2027-01-29',
     },
   );
 });
@@ -105,7 +105,7 @@ test('editing the visible horizon retains every date outside it', () => {
   const savedRows = [
     row('2026-06-01'),
     row('2026-08-02'),
-    row('2027-01-10'),
+    row('2027-02-10'),
   ];
   const draft = new Set(normalizeAvailabilityDates(savedRows));
   const range = createAvailabilityEditorRange(
@@ -113,7 +113,7 @@ test('editing the visible horizon retains every date outside it', () => {
   );
   const edited = toggleAvailabilityDate(draft, '2026-08-02');
 
-  assert.deepEqual([...edited].sort(), ['2026-06-01', '2027-01-10']);
+  assert.deepEqual([...edited].sort(), ['2026-06-01', '2027-02-10']);
   assert.equal(countAvailabilityDatesInRange(edited, range), 0);
   assert.equal(edited.size - countAvailabilityDatesInRange(edited, range), 2);
 });

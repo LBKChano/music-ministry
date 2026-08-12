@@ -9,10 +9,17 @@ import {
 import { useRouter } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { WordSafeHeaderText } from '@/components/navigation/word-safe-header-text';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { useChurch } from '@/hooks/useChurch';
-import { colors } from '@/styles/commonStyles';
+import {
+  createLegacyThemeColors,
+  type LegacyThemeColors,
+} from '@/lib/ui/legacy-theme-colors';
 
 export function ChurchSwitcher() {
+  const theme = useAppTheme();
+  const colors = useMemo(() => createLegacyThemeColors(theme), [theme]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const {
     churches,
@@ -204,7 +211,8 @@ export function ChurchSwitcher() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: LegacyThemeColors) {
+  return StyleSheet.create({
   container: {
     borderRadius: 8,
     borderWidth: 1,
@@ -312,4 +320,5 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.55,
   },
-});
+  });
+}

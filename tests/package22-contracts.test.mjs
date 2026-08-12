@@ -9,6 +9,7 @@ const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf
 const androidRoute = read('app/(tabs)/(home)/index.tsx');
 const iosRoute = read('app/(tabs)/(home)/index.ios.tsx');
 const screen = read('components/schedules/schedule-screen.tsx');
+const widgetLifecycle = read('components/widgets/schedule-widget-lifecycle-sync.ios.tsx');
 const card = read('components/schedules/schedule-service-card.tsx');
 const notificationBell = read('components/NotificationBell.tsx');
 const notificationHistory = read(
@@ -26,7 +27,8 @@ test('Android and iOS routes render one shared Schedule tree', () => {
   assert.equal(androidRoute, iosRoute);
   assert.match(androidRoute, /schedule-screen/);
   assert.match(screen, /implementation: 'shared'/);
-  assert.match(screen, /useScheduleWidgetSync/);
+  assert.doesNotMatch(screen, /useScheduleWidgetSync/);
+  assert.match(widgetLifecycle, /useScheduleWidgetSync/);
   assert.doesNotMatch(screen, /buildScheduleWidgetSnapshot|AppState\.addEventListener/);
 });
 

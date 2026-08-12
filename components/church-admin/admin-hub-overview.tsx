@@ -132,18 +132,35 @@ function DestinationGroup({
   rows,
   recommendedNext,
   onOpen,
+  emphasis = 'setup',
 }: {
   title: string;
   subtitle: string;
   rows: ChurchAdminSummaryRow[];
   recommendedNext: ChurchAdminDestination | null;
   onOpen: (destination: ChurchAdminDestination) => void;
+  emphasis?: 'setup' | 'schedule';
 }) {
+  const theme = useAppTheme();
+
   return (
-    <View style={styles.group}>
+    <View style={[
+      styles.group,
+      emphasis === 'schedule' && [
+        styles.scheduleGroup,
+        { borderTopColor: theme.colors.borderStrong },
+      ],
+    ]}>
       <AppSectionHeader
         description={subtitle}
-        style={styles.groupHeader}
+        style={[
+          styles.groupHeader,
+          {
+            borderLeftColor: emphasis === 'schedule'
+              ? theme.status.info.foreground
+              : theme.colors.accent,
+          },
+        ]}
         title={title}
       />
       <AppGroupedSurface>
@@ -218,6 +235,7 @@ export function AdminHubOverview({
         onOpen={onOpen}
       />
       <DestinationGroup
+        emphasis="schedule"
         title="Schedule Management"
         subtitle="Create services first, then assign the team."
         rows={summary.scheduleRows}
@@ -260,8 +278,15 @@ const styles = StyleSheet.create({
   group: {
     gap: 0,
   },
+  scheduleGroup: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: 10,
+    paddingTop: 4,
+  },
   groupHeader: {
+    borderLeftWidth: 3,
     paddingHorizontal: 4,
+    paddingLeft: 11,
   },
   row: {
     alignItems: 'center',

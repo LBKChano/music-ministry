@@ -1,6 +1,6 @@
 import { usePreventRemove } from '@react-navigation/native';
 import { Stack, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
@@ -17,11 +17,18 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { IconSymbol } from '@/components/IconSymbol';
 import { ProfileFocusedHeader } from '@/components/profile/profile-focused-header';
 import { ProfileStatus } from '@/components/profile/profile-primitives';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { useChurch } from '@/hooks/useChurch';
 import { useAccountDeletionPreview } from '@/hooks/useAccountDeletionPreview';
-import { colors } from '@/styles/commonStyles';
+import {
+  createLegacyThemeColors,
+  type LegacyThemeColors,
+} from '@/lib/ui/legacy-theme-colors';
 
 export function ProfileDeleteAccountScreen() {
+  const theme = useAppTheme();
+  const colors = useMemo(() => createLegacyThemeColors(theme), [theme]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, deleteAccount } = useChurch();
@@ -191,6 +198,10 @@ export function ProfileDeleteAccountScreen() {
 }
 
 function ImpactRow({ label, value }: { label: string; value: number }) {
+  const theme = useAppTheme();
+  const colors = useMemo(() => createLegacyThemeColors(theme), [theme]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <View style={styles.impactRow}>
       <Text style={styles.impactLabel}>{label}</Text>
@@ -199,7 +210,8 @@ function ImpactRow({ label, value }: { label: string; value: number }) {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: LegacyThemeColors) {
+  return StyleSheet.create({
   flex: { flex: 1 },
   container: { backgroundColor: colors.background, flex: 1 },
   content: { alignSelf: 'center', gap: 18, maxWidth: 720, paddingHorizontal: 16, paddingTop: 16, width: '100%' },
@@ -230,4 +242,5 @@ const styles = StyleSheet.create({
   deleteButtonText: { color: colors.headerText, fontSize: 15, fontWeight: '800' },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.48 },
-});
+  });
+}

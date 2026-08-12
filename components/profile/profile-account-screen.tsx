@@ -14,11 +14,14 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { AppModal } from '@/components/ui/app-modal';
 import { ProfileFocusedHeader } from '@/components/profile/profile-focused-header';
 import { ProfileRow, ProfileStatus } from '@/components/profile/profile-primitives';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { useChurch } from '@/hooks/useChurch';
 import { getAppReleaseInfo } from '@/lib/profile/account';
-import { colors } from '@/styles/commonStyles';
+import type { AppTheme } from '@/lib/ui/app-theme';
 
 export function ProfileAccountScreen() {
+  const theme = useAppTheme();
+  const styles = createStyles(theme);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, signOut } = useChurch();
@@ -70,7 +73,7 @@ export function ProfileAccountScreen() {
               ios_icon_name="person.crop.circle.fill"
               android_material_icon_name="account-circle"
               size={30}
-              color={colors.headerText}
+              color={theme.strongSurface.foreground}
             />
           </View>
           <View style={styles.identityCopy}>
@@ -102,10 +105,6 @@ export function ProfileAccountScreen() {
               <Text style={styles.infoLabel}>Version</Text>
               <Text selectable style={styles.infoValue}>{release.version}</Text>
             </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Build</Text>
-              <Text selectable style={styles.infoValue}>{release.build}</Text>
-            </View>
           </View>
         </View>
 
@@ -125,7 +124,7 @@ export function ProfileAccountScreen() {
             ios_icon_name="rectangle.portrait.and.arrow.right"
             android_material_icon_name="logout"
             size={21}
-            color={colors.primary}
+            color={theme.colors.accent}
           />
           <Text style={styles.signOutText}>Sign Out</Text>
         </Pressable>
@@ -155,8 +154,8 @@ export function ProfileAccountScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { backgroundColor: colors.background, flex: 1 },
+const createStyles = (theme: AppTheme) => StyleSheet.create({
+  container: { backgroundColor: theme.colors.canvas, flex: 1 },
   content: {
     alignSelf: 'center',
     gap: 20,
@@ -167,7 +166,7 @@ const styles = StyleSheet.create({
   },
   identityPanel: {
     alignItems: 'center',
-    backgroundColor: colors.navyDark,
+    backgroundColor: theme.colors.surfaceStrong,
     borderRadius: 8,
     flexDirection: 'row',
     gap: 13,
@@ -175,25 +174,25 @@ const styles = StyleSheet.create({
   },
   identityIcon: {
     alignItems: 'center',
-    backgroundColor: colors.primary,
+    backgroundColor: theme.header.controlSurface,
     borderRadius: 8,
     height: 48,
     justifyContent: 'center',
     width: 48,
   },
   identityCopy: { flex: 1, gap: 3, minWidth: 0 },
-  eyebrow: { color: '#BFDBFE', fontSize: 11, fontWeight: '800', lineHeight: 15 },
-  email: { color: colors.headerText, fontSize: 16, fontWeight: '700', lineHeight: 22 },
+  eyebrow: { color: theme.strongSurface.mutedForeground, fontSize: 11, fontWeight: '800', lineHeight: 15 },
+  email: { color: theme.strongSurface.foreground, fontSize: 16, fontWeight: '700', lineHeight: 22 },
   section: { gap: 8 },
-  sectionTitle: { color: colors.text, fontSize: 17, fontWeight: '800', lineHeight: 22, paddingHorizontal: 4 },
-  rowGroup: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, overflow: 'hidden' },
-  infoGroup: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, overflow: 'hidden' },
-  infoRow: { alignItems: 'center', borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', justifyContent: 'space-between', minHeight: 52, paddingHorizontal: 15 },
-  infoLabel: { color: colors.text, fontSize: 15, fontWeight: '600' },
-  infoValue: { color: colors.textSecondary, fontSize: 15, fontVariant: ['tabular-nums'], fontWeight: '700' },
-  signOutButton: { alignItems: 'center', alignSelf: 'stretch', backgroundColor: colors.backgroundAlt, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 9, justifyContent: 'center', minHeight: 50, paddingHorizontal: 18 },
-  signOutText: { color: colors.primary, fontSize: 16, fontWeight: '800' },
-  modalMessage: { color: colors.textSecondary, fontSize: 14, lineHeight: 21, paddingVertical: 15, textAlign: 'center' },
+  sectionTitle: { color: theme.colors.textPrimary, fontSize: 17, fontWeight: '800', lineHeight: 22, paddingHorizontal: 4 },
+  rowGroup: { borderColor: theme.colors.borderSubtle, borderRadius: 8, borderWidth: 1, overflow: 'hidden' },
+  infoGroup: { backgroundColor: theme.colors.surface, borderColor: theme.colors.borderSubtle, borderRadius: 8, borderWidth: 1, overflow: 'hidden' },
+  infoRow: { alignItems: 'center', borderBottomColor: theme.divider.color, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', justifyContent: 'space-between', minHeight: 52, paddingHorizontal: 15 },
+  infoLabel: { color: theme.colors.textPrimary, fontSize: 15, fontWeight: '600' },
+  infoValue: { color: theme.colors.textSecondary, fontSize: 15, fontVariant: ['tabular-nums'], fontWeight: '700' },
+  signOutButton: { alignItems: 'center', alignSelf: 'stretch', backgroundColor: theme.button.secondarySurface, borderColor: theme.button.secondaryBorder, borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 9, justifyContent: 'center', minHeight: 50, paddingHorizontal: 18 },
+  signOutText: { color: theme.colors.accent, fontSize: 16, fontWeight: '800' },
+  modalMessage: { color: theme.colors.textSecondary, fontSize: 14, lineHeight: 21, paddingVertical: 15, textAlign: 'center' },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.55 },
 });

@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import { AppModal } from '@/components/ui/app-modal';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import type { ServiceWithAssignments } from '@/hooks/useServices';
 import {
   MAX_BULK_SERVICE_DELETE_COUNT,
@@ -24,7 +25,6 @@ import {
   type BulkServiceDeleteResult,
   type BulkServiceDeleteSelection,
 } from '@/lib/admin/bulk-service-deletion';
-import { colors } from '@/styles/commonStyles';
 
 type BulkServiceDeleteModalProps = {
   visible: boolean;
@@ -92,6 +92,7 @@ export function BulkServiceDeleteModal({
   onPreview,
   onApply,
 }: BulkServiceDeleteModalProps) {
+  const theme = useAppTheme();
   const [mode, setMode] = useState<BulkServiceDeleteMode>('date_range');
   const [startDate, setStartDate] = useState(() => startOfDay(new Date()));
   const [endDate, setEndDate] = useState(() => addDays(startOfDay(new Date()), 90));
@@ -279,7 +280,7 @@ export function BulkServiceDeleteModal({
     const time = formatBulkServiceDeleteTime(item.time);
     return (
       <TouchableOpacity
-        style={[styles.serviceRow, { borderBottomColor: colors.border }]}
+        style={[styles.serviceRow, { borderBottomColor: theme.colors.borderSubtle }]}
         onPress={() => toggleService(item.id)}
         disabled={isPreviewing || isApplying}
         accessibilityRole="checkbox"
@@ -289,8 +290,8 @@ export function BulkServiceDeleteModal({
         <View
           style={[
             styles.checkbox,
-            { borderColor: selected ? colors.primary : colors.border },
-            selected && { backgroundColor: colors.primary },
+            { borderColor: selected ? theme.colors.accent : theme.input.border },
+            selected && { backgroundColor: theme.button.primarySurface },
           ]}
         >
           {selected ? (
@@ -298,15 +299,15 @@ export function BulkServiceDeleteModal({
               ios_icon_name="checkmark"
               android_material_icon_name="done"
               size={15}
-              color="#FFFFFF"
+              color={theme.button.primaryForeground}
             />
           ) : null}
         </View>
         <View style={styles.serviceText}>
-          <Text style={[styles.serviceName, { color: colors.text }]} numberOfLines={2}>
+          <Text style={[styles.serviceName, { color: theme.colors.textPrimary }]} numberOfLines={2}>
             {item.service_type}
           </Text>
-          <Text style={[styles.serviceDate, { color: colors.textSecondary }]}>
+          <Text style={[styles.serviceDate, { color: theme.colors.textSecondary }]}>
             {formatDisplayDate(item.date)}
             {time ? ` at ${time}` : ''}
           </Text>
@@ -319,21 +320,29 @@ export function BulkServiceDeleteModal({
     const time = formatBulkServiceDeleteTime(item.time);
     const dependencies = dependentCount(item);
     return (
-      <View style={[styles.previewRow, { borderBottomColor: colors.border }]}>
+      <View style={[styles.previewRow, { borderBottomColor: theme.colors.borderSubtle }]}>
         <View style={styles.serviceText}>
-          <Text style={[styles.serviceName, { color: colors.text }]} numberOfLines={2}>
+          <Text style={[styles.serviceName, { color: theme.colors.textPrimary }]} numberOfLines={2}>
             {item.service_type}
           </Text>
-          <Text style={[styles.serviceDate, { color: colors.textSecondary }]}>
+          <Text style={[styles.serviceDate, { color: theme.colors.textSecondary }]}>
             {formatDisplayDate(item.date)}
             {time ? ` at ${time}` : ''}
           </Text>
-          <Text style={[styles.dependencyText, { color: colors.textSecondary }]}>
+          <Text style={[styles.dependencyText, { color: theme.colors.textSecondary }]}>
             {item.assignment_count} assignments, {item.fill_in_request_count} fill-ins, {item.song_count} songs
           </Text>
         </View>
-        <View style={[styles.dependencyBadge, { backgroundColor: colors.error + '14' }]}>
-          <Text style={[styles.dependencyBadgeText, { color: colors.error }]}>
+        <View
+          style={[
+            styles.dependencyBadge,
+            {
+              backgroundColor: theme.status.error.surface,
+              borderColor: theme.status.error.border,
+            },
+          ]}
+        >
+          <Text style={[styles.dependencyBadgeText, { color: theme.status.error.foreground }]}>
             {dependencies}
           </Text>
         </View>
@@ -349,17 +358,25 @@ export function BulkServiceDeleteModal({
 
   const header = (
     <View>
-      <Text style={[styles.intro, { color: colors.textSecondary }]}>
+      <Text style={[styles.intro, { color: theme.colors.textSecondary }]}>
         Delete generated or one-time scheduled services. Weekly recurring templates are never changed.
       </Text>
 
       {!preview ? (
         <>
-          <View style={[styles.segmentedControl, { borderColor: colors.border }]}>
+          <View
+            style={[
+              styles.segmentedControl,
+              {
+                backgroundColor: theme.colors.surfaceMuted,
+                borderColor: theme.colors.borderSubtle,
+              },
+            ]}
+          >
             <TouchableOpacity
               style={[
                 styles.segment,
-                mode === 'date_range' && { backgroundColor: colors.primary },
+                mode === 'date_range' && { backgroundColor: theme.button.primarySurface },
               ]}
               onPress={() => selectMode('date_range')}
               disabled={isPreviewing || isApplying}
@@ -368,7 +385,11 @@ export function BulkServiceDeleteModal({
             >
               <Text style={[
                 styles.segmentText,
-                { color: mode === 'date_range' ? '#FFFFFF' : colors.text },
+                {
+                  color: mode === 'date_range'
+                    ? theme.button.primaryForeground
+                    : theme.colors.textPrimary,
+                },
               ]}>
                 Date Range
               </Text>
@@ -376,7 +397,7 @@ export function BulkServiceDeleteModal({
             <TouchableOpacity
               style={[
                 styles.segment,
-                mode === 'individual' && { backgroundColor: colors.primary },
+                mode === 'individual' && { backgroundColor: theme.button.primarySurface },
               ]}
               onPress={() => selectMode('individual')}
               disabled={isPreviewing || isApplying}
@@ -385,7 +406,11 @@ export function BulkServiceDeleteModal({
             >
               <Text style={[
                 styles.segmentText,
-                { color: mode === 'individual' ? '#FFFFFF' : colors.text },
+                {
+                  color: mode === 'individual'
+                    ? theme.button.primaryForeground
+                    : theme.colors.textPrimary,
+                },
               ]}>
                 Individual
               </Text>
@@ -395,35 +420,47 @@ export function BulkServiceDeleteModal({
           {mode === 'date_range' ? (
             <View style={styles.rangeFields}>
               <TouchableOpacity
-                style={[styles.dateButton, { borderColor: colors.border }]}
+                style={[
+                  styles.dateButton,
+                  {
+                    backgroundColor: theme.input.surface,
+                    borderColor: theme.input.border,
+                  },
+                ]}
                 onPress={() => openDatePicker('start')}
                 disabled={isPreviewing || isApplying}
                 accessibilityLabel={`Start date ${formatDisplayDate(startDate)}`}
               >
-                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Start</Text>
-                <Text style={[styles.dateValue, { color: colors.text }]}>
+                <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>Start</Text>
+                <Text style={[styles.dateValue, { color: theme.input.foreground }]}>
                   {formatDisplayDate(startDate)}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.dateButton, { borderColor: colors.border }]}
+                style={[
+                  styles.dateButton,
+                  {
+                    backgroundColor: theme.input.surface,
+                    borderColor: theme.input.border,
+                  },
+                ]}
                 onPress={() => openDatePicker('end')}
                 disabled={isPreviewing || isApplying}
                 accessibilityLabel={`End date ${formatDisplayDate(endDate)}`}
               >
-                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>End</Text>
-                <Text style={[styles.dateValue, { color: colors.text }]}>
+                <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>End</Text>
+                <Text style={[styles.dateValue, { color: theme.input.foreground }]}>
                   {formatDisplayDate(endDate)}
                 </Text>
               </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.selectionToolbar}>
-              <Text style={[styles.selectionCount, { color: colors.text }]}>
+              <Text style={[styles.selectionCount, { color: theme.colors.textPrimary }]}>
                 {selectedIds.size} selected
               </Text>
               <TouchableOpacity onPress={selectAllVisible} style={styles.toolbarButton}>
-                <Text style={[styles.toolbarText, { color: colors.primary }]}>
+                <Text style={[styles.toolbarText, { color: theme.colors.accent }]}>
                   Select All Visible
                 </Text>
               </TouchableOpacity>
@@ -434,7 +471,11 @@ export function BulkServiceDeleteModal({
               >
                 <Text style={[
                   styles.toolbarText,
-                  { color: selectedIds.size === 0 ? colors.textSecondary : colors.primary },
+                  {
+                    color: selectedIds.size === 0
+                      ? theme.colors.textTertiary
+                      : theme.colors.accent,
+                  },
                 ]}>
                   Clear
                 </Text>
@@ -443,16 +484,24 @@ export function BulkServiceDeleteModal({
           )}
         </>
       ) : (
-        <View style={[styles.previewSummary, { borderColor: colors.error + '55' }]}>
-          <Text style={[styles.previewTitle, { color: colors.text }]}>
+        <View
+          style={[
+            styles.previewSummary,
+            {
+              backgroundColor: theme.status.error.surface,
+              borderColor: theme.status.error.border,
+            },
+          ]}
+        >
+          <Text style={[styles.previewTitle, { color: theme.status.error.foreground }]}>
             {preview.service_count} service{preview.service_count === 1 ? '' : 's'} will be deleted
           </Text>
-          <Text style={[styles.previewDetail, { color: colors.textSecondary }]}>
+          <Text style={[styles.previewDetail, { color: theme.colors.textSecondary }]}>
             {preview.dependent_counts.assignments} assignments,{' '}
             {preview.dependent_counts.fill_in_requests} fill-ins,{' '}
             {preview.dependent_counts.songs} songs
           </Text>
-          <Text style={[styles.previewDetail, { color: colors.textSecondary }]}>
+          <Text style={[styles.previewDetail, { color: theme.colors.textSecondary }]}>
             {preview.dependent_counts.sent_reminders} reminder records,{' '}
             {preview.dependent_counts.member_notifications} notifications,{' '}
             {preview.dependent_counts.notification_logs} logs
@@ -468,12 +517,12 @@ export function BulkServiceDeleteModal({
         ios_icon_name="calendar.badge.exclamationmark"
         android_material_icon_name="event-busy"
         size={32}
-        color={colors.textSecondary}
+        color={theme.colors.textTertiary}
       />
-      <Text style={[styles.emptyTitle, { color: colors.text }]}>
+      <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>
         {preview ? 'No matching services' : 'Choose a date range'}
       </Text>
-      <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+      <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
         {preview
           ? 'Return to the selection and choose services to delete.'
           : 'Generate a preview to see every service and dependent record before deletion.'}
@@ -484,26 +533,32 @@ export function BulkServiceDeleteModal({
   const listFooter = !preview && mode === 'individual' ? (
     <View style={styles.loadMoreArea}>
       {loadedThrough ? (
-        <Text style={[styles.loadedThrough, { color: colors.textSecondary }]}>
+        <Text style={[styles.loadedThrough, { color: theme.colors.textSecondary }]}>
           Loaded through {formatDisplayDate(loadedThrough)}
         </Text>
       ) : null}
       <TouchableOpacity
-        style={[styles.loadMoreButton, { borderColor: colors.primary }]}
+        style={[
+          styles.loadMoreButton,
+          {
+            backgroundColor: theme.button.secondarySurface,
+            borderColor: theme.button.secondaryBorder,
+          },
+        ]}
         onPress={onLoadMore}
         disabled={loadingMore || isPreviewing || isApplying}
       >
         {loadingMore ? (
-          <ActivityIndicator size="small" color={colors.primary} />
+          <ActivityIndicator size="small" color={theme.colors.accent} />
         ) : (
           <>
             <IconSymbol
               ios_icon_name="calendar.badge.plus"
               android_material_icon_name="event"
               size={17}
-              color={colors.primary}
+              color={theme.colors.accent}
             />
-            <Text style={[styles.loadMoreText, { color: colors.primary }]}>
+            <Text style={[styles.loadMoreText, { color: theme.button.secondaryForeground }]}>
               Load More Services
             </Text>
           </>
@@ -517,13 +572,28 @@ export function BulkServiceDeleteModal({
       bodyScroll={false}
       busy={isApplying || isPreviewing}
       footer={(
-        <View style={[styles.footer, { borderTopColor: colors.border }]}>
+        <View
+          style={[
+            styles.footer,
+            {
+              backgroundColor: theme.modal.footerSurface,
+              borderTopColor: theme.modal.border,
+            },
+          ]}
+        >
           <TouchableOpacity
-            style={[styles.footerButton, styles.secondaryButton, { borderColor: colors.border }]}
+            style={[
+              styles.footerButton,
+              styles.secondaryButton,
+              {
+                backgroundColor: theme.button.secondarySurface,
+                borderColor: theme.button.secondaryBorder,
+              },
+            ]}
             onPress={preview ? editSelection : onClose}
             disabled={isPreviewing || isApplying}
           >
-            <Text style={[styles.secondaryButtonText, { color: colors.text }]}>
+            <Text style={[styles.secondaryButtonText, { color: theme.button.secondaryForeground }]}>
               {preview ? 'Edit Selection' : 'Cancel'}
             </Text>
           </TouchableOpacity>
@@ -531,7 +601,9 @@ export function BulkServiceDeleteModal({
             style={[
               styles.footerButton,
               {
-                backgroundColor: preview ? colors.error : colors.primary,
+                backgroundColor: preview
+                  ? theme.button.destructiveSurface
+                  : theme.button.primarySurface,
                 opacity: (
                   isPreviewing
                   || isApplying
@@ -549,16 +621,32 @@ export function BulkServiceDeleteModal({
             }
           >
             {isPreviewing || isApplying ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <ActivityIndicator
+                size="small"
+                color={preview
+                  ? theme.button.destructiveForeground
+                  : theme.button.primaryForeground}
+              />
             ) : (
               <>
                 <IconSymbol
                   ios_icon_name={preview ? 'trash' : 'doc.text.magnifyingglass'}
                   android_material_icon_name={preview ? 'delete' : 'preview'}
                   size={18}
-                  color="#FFFFFF"
+                  color={preview
+                    ? theme.button.destructiveForeground
+                    : theme.button.primaryForeground}
                 />
-                <Text style={styles.primaryButtonText}>
+                <Text
+                  style={[
+                    styles.primaryButtonText,
+                    {
+                      color: preview
+                        ? theme.button.destructiveForeground
+                        : theme.button.primaryForeground,
+                    },
+                  ]}
+                >
                   {preview ? `Delete ${preview.service_count}` : 'Preview'}
                 </Text>
               </>
@@ -567,9 +655,20 @@ export function BulkServiceDeleteModal({
         </View>
       )}
       maxWidth={620}
+      headerIcon={(
+        <IconSymbol
+          ios_icon_name="calendar.badge.minus"
+          android_material_icon_name="event-busy"
+          size={22}
+          color={theme.modalHeader.accent}
+        />
+      )}
       onClose={onClose}
       subtitle={(
-        <Text style={[styles.churchName, { color: colors.textSecondary }]} numberOfLines={2}>
+        <Text
+          style={[styles.churchName, { color: theme.modalHeader.mutedForeground }]}
+          numberOfLines={2}
+        >
           {churchName}
         </Text>
       )}
@@ -577,8 +676,16 @@ export function BulkServiceDeleteModal({
       variant="long-content"
       visible={visible}
     >
-          {activeDateField ? (
-            <View style={[styles.pickerPanel, { borderBottomColor: colors.border }]}>
+      {activeDateField ? (
+            <View
+              style={[
+                styles.pickerPanel,
+                {
+                  backgroundColor: theme.colors.surfaceMuted,
+                  borderBottomColor: theme.colors.borderSubtle,
+                },
+              ]}
+            >
               <DateTimePicker
                 value={draftDate}
                 mode="date"
@@ -588,86 +695,58 @@ export function BulkServiceDeleteModal({
               {Platform.OS === 'ios' ? (
                 <View style={styles.pickerActions}>
                   <TouchableOpacity
-                    style={[styles.pickerButton, { borderColor: colors.border }]}
+                    style={[
+                      styles.pickerButton,
+                      {
+                        backgroundColor: theme.button.secondarySurface,
+                        borderColor: theme.button.secondaryBorder,
+                      },
+                    ]}
                     onPress={() => setActiveDateField(null)}
                   >
-                    <Text style={[styles.pickerButtonText, { color: colors.text }]}>Cancel</Text>
+                    <Text style={[styles.pickerButtonText, { color: theme.button.secondaryForeground }]}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.pickerButton, { backgroundColor: colors.primary }]}
+                    style={[
+                      styles.pickerButton,
+                      { backgroundColor: theme.button.primarySurface },
+                    ]}
                     onPress={() => commitDate(activeDateField, draftDate)}
                   >
-                    <Text style={[styles.pickerButtonText, { color: '#FFFFFF' }]}>Use Date</Text>
+                    <Text style={[styles.pickerButtonText, { color: theme.button.primaryForeground }]}>Use Date</Text>
                   </TouchableOpacity>
                 </View>
               ) : null}
             </View>
-          ) : null}
+      ) : null}
 
-          <FlatList
-            data={listData}
-            keyExtractor={item => item.id}
-            renderItem={preview
-              ? renderPreviewService as ({ item }: { item: BulkServiceDeleteItem | ServiceWithAssignments }) => React.ReactElement
-              : renderSelectionService as ({ item }: { item: BulkServiceDeleteItem | ServiceWithAssignments }) => React.ReactElement}
-            ListHeaderComponent={header}
-            ListEmptyComponent={empty}
-            ListFooterComponent={listFooter}
-            contentContainerStyle={styles.listContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-            initialNumToRender={12}
-            maxToRenderPerBatch={12}
-            windowSize={7}
-          />
-
+      <FlatList
+        style={styles.list}
+        data={listData}
+        keyExtractor={item => item.id}
+        renderItem={preview
+          ? renderPreviewService as ({ item }: { item: BulkServiceDeleteItem | ServiceWithAssignments }) => React.ReactElement
+          : renderSelectionService as ({ item }: { item: BulkServiceDeleteItem | ServiceWithAssignments }) => React.ReactElement}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
+        ListFooterComponent={listFooter}
+        contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={7}
+      />
     </AppModal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    backgroundColor: 'rgba(15, 23, 42, 0.62)',
-  },
-  modal: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 8,
-    overflow: 'hidden',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.24,
-    shadowRadius: 20,
-    elevation: 14,
-  },
-  header: {
-    minHeight: 64,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  headerText: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 20,
-    lineHeight: 25,
-    fontWeight: '800',
-  },
   churchName: {
     fontSize: 13,
     marginTop: 2,
-  },
-  closeButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   pickerPanel: {
     paddingHorizontal: 16,
@@ -689,6 +768,10 @@ const styles = StyleSheet.create({
   pickerButtonText: {
     fontSize: 15,
     fontWeight: '700',
+  },
+  list: {
+    flex: 1,
+    minHeight: 0,
   },
   listContent: {
     flexGrow: 1,
@@ -824,6 +907,7 @@ const styles = StyleSheet.create({
   dependencyBadge: {
     minWidth: 34,
     height: 28,
+    borderWidth: 1,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -899,7 +983,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   primaryButtonText: {
-    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '800',
   },

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -12,14 +12,15 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { InlineStatus } from '@/components/feedback/inline-status';
 import { AppModal } from '@/components/ui/app-modal';
 import { ResponsiveText } from '@/components/ui/responsive-text';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { queryKeys } from '@/lib/query/keys';
+import { shouldResetModalList } from '@/lib/ui/modal-presentation';
 import {
   createManualAssignmentSections,
   getManualAssignmentCandidateReason,
   normalizeManualAssignmentError,
   type ManualAssignmentCandidate,
 } from '@/lib/services/manual-assignment-model';
-import { colors } from '@/styles/commonStyles';
 
 export interface ManualAssignmentTarget {
   assignmentId: string;
@@ -50,10 +51,15 @@ export function ManualAssignmentModal({
   onClear: (serviceId: string, assignmentId: string) => void;
   onClose: () => void;
 }) {
+  const theme = useAppTheme();
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const assignmentId = target?.assignmentId ?? 'none';
+  const assignmentTargetKey = `${assignmentId}:${target?.roleName ?? 'role'}`;
+  const listRef = useRef<SectionList<ManualAssignmentCandidate>>(null);
+  const previousTargetKeyRef = useRef<string | null>(null);
+  const pendingTopResetRef = useRef(false);
   const query = useQuery({
     queryKey: queryKeys.manualAssignmentCandidates(
       accountId ?? 'signed-out',
@@ -78,6 +84,35 @@ export function ManualAssignmentModal({
     () => createManualAssignmentSections(candidates),
     [candidates],
   );
+
+  useEffect(() => {
+    if (!shouldResetModalList({
+      visible,
+      previousTargetKey: previousTargetKeyRef.current,
+      nextTargetKey: assignmentTargetKey,
+    })) return;
+    previousTargetKeyRef.current = assignmentTargetKey;
+    pendingTopResetRef.current = true;
+  }, [assignmentTargetKey, visible]);
+
+  useEffect(() => {
+    if (
+      !visible
+      || !pendingTopResetRef.current
+      || sections.length === 0
+      || sections.every(section => section.data.length === 0)
+    ) return;
+
+    pendingTopResetRef.current = false;
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToLocation({
+        animated: false,
+        itemIndex: 0,
+        sectionIndex: 0,
+        viewOffset: 0,
+      });
+    });
+  }, [sections, visible]);
   const selectedCandidate = candidates.find(
     candidate => candidate.memberId === selectedMemberId && candidate.eligible,
   ) ?? null;
@@ -119,6 +154,15 @@ export function ManualAssignmentModal({
     <AppModal
       bodyScroll={false}
       busy={assigning}
+      headerIcon={(
+        <IconSymbol
+          android_material_icon_name="manage-accounts"
+          color={theme.modalHeader.accent}
+          ios_icon_name="person.crop.circle.badge.checkmark"
+          size={22}
+        />
+      )}
+      maxWidth={620}
       onClose={close}
       primaryAction={{
         label: target?.hasAssignedMember ? 'Reassign' : 'Assign',
@@ -133,7 +177,7 @@ export function ManualAssignmentModal({
       subtitle={(
         <ResponsiveText
           text={`Role: ${roleName}`}
-          textStyle={styles.role}
+          textStyle={[styles.role, { color: theme.modalHeader.mutedForeground }]}
           variant="roleName"
         />
       )}
@@ -148,20 +192,30 @@ export function ManualAssignmentModal({
             />
           </View>
 
-          <View style={styles.currentAssignment}>
+          <View style={[
+            styles.currentAssignment,
+            { borderBottomColor: theme.divider.color },
+          ]}>
             <View
               accessibilityLabel={`Current assignment: ${target?.assignedMemberName || 'Unassigned'}`}
               accessibilityRole="text"
               accessible
               style={styles.currentAssignmentCopy}
             >
-              <Text accessible={false} style={styles.currentAssignmentLabel}>Current assignment</Text>
+              <Text
+                accessible={false}
+                style={[styles.currentAssignmentLabel, { color: theme.colors.textSecondary }]}
+              >
+                Current assignment
+              </Text>
               <ResponsiveText
                 accessible={false}
                 text={target?.assignedMemberName || 'Unassigned'}
                 textStyle={[
                   styles.currentAssignmentName,
+                  { color: theme.colors.textPrimary },
                   !target?.hasAssignedMember && styles.unassignedName,
+                  !target?.hasAssignedMember && { color: theme.colors.textTertiary },
                 ]}
                 variant="memberName"
               />
@@ -176,12 +230,13 @@ export function ManualAssignmentModal({
                 onPress={clear}
                 style={({ pressed }) => [
                   styles.clearButton,
+                  { borderColor: theme.status.error.border },
                   pressed && styles.pressed,
                 ]}
               >
                 <IconSymbol
                   android_material_icon_name="person-remove"
-                  color={colors.error}
+                  color={theme.status.error.foreground}
                   ios_icon_name="person.crop.circle.badge.minus"
                   size={19}
                 />
@@ -189,7 +244,10 @@ export function ManualAssignmentModal({
                   accessible={false}
                   style={styles.clearLabelLane}
                   text="Clear"
-                  textStyle={styles.clearButtonText}
+                  textStyle={[
+                    styles.clearButtonText,
+                    { color: theme.status.error.foreground },
+                  ]}
                   variant="actionLabel"
                 />
               </Pressable>
@@ -198,12 +256,12 @@ export function ManualAssignmentModal({
 
           {query.isLoading ? (
             <View style={styles.centerState}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.stateText}>Checking role and availability...</Text>
+              <ActivityIndicator size="large" color={theme.colors.accent} />
+              <Text style={[styles.stateText, { color: theme.colors.textSecondary }]}>Checking role and availability...</Text>
             </View>
           ) : queryError && candidates.length === 0 ? (
             <View style={styles.centerState}>
-              <Text style={styles.stateText}>
+              <Text style={[styles.stateText, { color: theme.colors.textSecondary }]}>
                 The member list could not be loaded.
               </Text>
               <Pressable
@@ -212,19 +270,19 @@ export function ManualAssignmentModal({
                 onPress={() => {
                   void query.refetch();
                 }}
-                style={styles.retryButton}
+                style={[styles.retryButton, { borderColor: theme.colors.accent }]}
               >
                 <IconSymbol
                   ios_icon_name="arrow.clockwise"
                   android_material_icon_name="refresh"
                   size={20}
-                  color={colors.primary}
+                  color={theme.colors.accent}
                 />
                 <ResponsiveText
                   accessible={false}
                   style={styles.retryLabelLane}
                   text="Try Again"
-                  textStyle={styles.retryText}
+                  textStyle={[styles.retryText, { color: theme.colors.accent }]}
                   variant="actionLabel"
                 />
               </Pressable>
@@ -235,23 +293,35 @@ export function ManualAssignmentModal({
                 ios_icon_name="person.2.slash"
                 android_material_icon_name="person-off"
                 size={36}
-                color={colors.textSecondary}
+                color={theme.colors.textSecondary}
               />
-              <Text style={styles.emptyTitle}>No members have this role</Text>
+              <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>No members have this role</Text>
               <ResponsiveText
                 text={`Assign the ${roleName} role to a member in Church Setup first.`}
-                textStyle={styles.stateText}
+                textStyle={[styles.stateText, { color: theme.colors.textSecondary }]}
                 variant="supportingCopy"
               />
             </View>
           ) : (
             <SectionList
+              ref={listRef}
               accessibilityLabel={`Members for ${roleName}`}
+              bounces
               contentContainerStyle={styles.listContent}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
               keyExtractor={candidate => candidate.memberId}
               renderSectionHeader={({ section }) => (
-                <Text accessibilityRole="header" style={styles.sectionTitle}>
+                <Text
+                  accessibilityRole="header"
+                  style={[
+                    styles.sectionTitle,
+                    {
+                      backgroundColor: theme.colors.surface,
+                      color: theme.colors.textSecondary,
+                    },
+                  ]}
+                >
                   {section.title}
                 </Text>
               )}
@@ -272,8 +342,18 @@ export function ManualAssignmentModal({
                     onPress={() => setSelectedMemberId(item.memberId)}
                     style={({ pressed }) => [
                       styles.memberRow,
-                      selected && styles.selectedRow,
-                      !item.eligible && styles.unavailableRow,
+                      { borderColor: theme.divider.color },
+                      selected && [
+                        styles.selectedRow,
+                        {
+                          backgroundColor: theme.inputHighlight.surface,
+                          borderColor: theme.inputHighlight.border,
+                        },
+                      ],
+                      !item.eligible && [
+                        styles.unavailableRow,
+                        { backgroundColor: theme.colors.surfaceMuted },
+                      ],
                       pressed && item.eligible && styles.pressed,
                     ]}
                   >
@@ -283,7 +363,9 @@ export function ManualAssignmentModal({
                         text={item.displayName}
                         textStyle={[
                           styles.memberName,
+                          { color: theme.colors.textPrimary },
                           !item.eligible && styles.unavailableText,
+                          !item.eligible && { color: theme.colors.textSecondary },
                         ]}
                         variant="memberName"
                       />
@@ -291,7 +373,10 @@ export function ManualAssignmentModal({
                         <ResponsiveText
                           accessible={false}
                           text={reason}
-                          textStyle={styles.reasonText}
+                          textStyle={[
+                            styles.reasonText,
+                            { color: theme.status.error.foreground },
+                          ]}
                           variant="supportingCopy"
                         />
                       ) : null}
@@ -301,13 +386,17 @@ export function ManualAssignmentModal({
                         ios_icon_name={selected ? 'checkmark.circle.fill' : 'circle'}
                         android_material_icon_name={selected ? 'radio-button-checked' : 'radio-button-unchecked'}
                         size={23}
-                        color={selected ? colors.primary : colors.textTertiary}
+                        color={selected ? theme.colors.accent : theme.colors.textTertiary}
                       />
                     </View>
                   </Pressable>
                 );
               }}
               sections={sections}
+              nestedScrollEnabled
+              onScrollToIndexFailed={() => {
+                pendingTopResetRef.current = true;
+              }}
               stickySectionHeadersEnabled={false}
               style={styles.list}
             />
@@ -318,57 +407,11 @@ export function ManualAssignmentModal({
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.58)',
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  modal: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    maxHeight: '82%',
-    maxWidth: 520,
-    minHeight: 360,
-    overflow: 'hidden',
-    width: '100%',
-  },
-  header: {
-    alignItems: 'center',
-    borderBottomColor: colors.border,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    minHeight: 72,
-    paddingHorizontal: 8,
-    paddingVertical: 9,
-  },
-  headerButton: {
-    alignItems: 'center',
-    height: 44,
-    justifyContent: 'center',
-    width: 44,
-  },
-  headerCopy: {
-    alignItems: 'center',
-    flex: 1,
-    minWidth: 0,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '800',
-    lineHeight: 26,
-    textAlign: 'center',
-  },
   role: {
-    color: colors.primary,
     fontSize: 14,
     fontWeight: '700',
     lineHeight: 19,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   statusWrap: {
     paddingHorizontal: 14,
@@ -376,7 +419,6 @@ const styles = StyleSheet.create({
   },
   currentAssignment: {
     alignItems: 'center',
-    borderBottomColor: colors.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: 12,
@@ -390,23 +432,19 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   currentAssignmentLabel: {
-    color: colors.textSecondary,
     fontSize: 12,
     fontWeight: '700',
   },
   currentAssignmentName: {
-    color: colors.text,
     fontSize: 15,
     fontWeight: '800',
     lineHeight: 20,
   },
   unassignedName: {
-    color: colors.textTertiary,
     fontStyle: 'italic',
   },
   clearButton: {
     alignItems: 'center',
-    borderColor: colors.error + '55',
     borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
@@ -420,7 +458,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   clearButtonText: {
-    color: colors.error,
     fontSize: 13,
     fontWeight: '800',
   },
@@ -433,20 +470,17 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   emptyTitle: {
-    color: colors.text,
     fontSize: 18,
     fontWeight: '800',
     textAlign: 'center',
   },
   stateText: {
-    color: colors.textSecondary,
     fontSize: 15,
     lineHeight: 22,
     textAlign: 'center',
   },
   retryButton: {
     alignItems: 'center',
-    borderColor: colors.primary,
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
@@ -455,7 +489,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   retryText: {
-    color: colors.primary,
     fontSize: 15,
     fontWeight: '800',
   },
@@ -463,15 +496,14 @@ const styles = StyleSheet.create({
     minWidth: 82,
   },
   list: {
-    flexGrow: 0,
+    flex: 1,
+    minHeight: 0,
   },
   listContent: {
     paddingBottom: 10,
     paddingHorizontal: 14,
   },
   sectionTitle: {
-    backgroundColor: colors.card,
-    color: colors.textSecondary,
     fontSize: 13,
     fontWeight: '800',
     lineHeight: 18,
@@ -480,7 +512,6 @@ const styles = StyleSheet.create({
   },
   memberRow: {
     alignItems: 'center',
-    borderColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: 12,
@@ -489,12 +520,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   selectedRow: {
-    backgroundColor: colors.backgroundAlt,
-    borderColor: colors.primary,
     borderWidth: 1,
   },
   unavailableRow: {
-    backgroundColor: colors.inputBackground,
     opacity: 0.76,
   },
   memberCopy: {
@@ -507,54 +535,16 @@ const styles = StyleSheet.create({
     width: 32,
   },
   memberName: {
-    color: colors.text,
     fontSize: 16,
     fontWeight: '700',
     lineHeight: 21,
   },
   unavailableText: {
-    color: colors.textSecondary,
   },
   reasonText: {
-    color: colors.error,
     fontSize: 13,
     lineHeight: 18,
     paddingTop: 2,
-  },
-  footer: {
-    borderTopColor: colors.border,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: 12,
-    padding: 14,
-  },
-  action: {
-    alignItems: 'center',
-    borderRadius: 8,
-    flex: 1,
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
-    minHeight: 48,
-    paddingHorizontal: 14,
-  },
-  cancelAction: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
-  },
-  assignAction: {
-    backgroundColor: colors.primary,
-  },
-  cancelText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  assignText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
   },
   pressed: {
     opacity: 0.72,

@@ -623,3 +623,53 @@ export function applyNotificationRealtimePayload(
     nextNotification,
   ]).slice(0, limit);
 }
+
+export interface NotificationUnreadCountUpdate {
+  count: number | undefined;
+  needsRefresh: boolean;
+}
+
+export function applyNotificationUnreadCountRealtimePayload(
+  count: number | undefined,
+  payload: RealtimePostgresChangesPayload<MemberNotification>,
+  cachedRows: readonly MemberNotification[] | undefined,
+): NotificationUnreadCountUpdate {
+  if (count === undefined) {
+    return { count, needsRefresh: true };
+  }
+
+  const currentCount = Math.max(0, count);
+  const id = payloadRecordId(payload);
+  if (!id) return { count: currentCount, needsRefresh: true };
+
+  const existing = cachedRows?.find(notification => notification.id === id);
+  if (payload.eventType === 'INSERT') {
+    if (existing) {
+      return { count: currentCount, needsRefresh: false };
+    }
+    return {
+      count: payload.new.read_at ? currentCount : currentCount + 1,
+      needsRefresh: cachedRows === undefined,
+    };
+  }
+
+  if (!existing) {
+    // DELETE payloads only include the primary key with the current replica
+    // identity. Refresh the small count query when history is not cached.
+    return { count: currentCount, needsRefresh: true };
+  }
+
+  const wasUnread = !existing.read_at;
+  if (payload.eventType === 'DELETE') {
+    return {
+      count: Math.max(0, currentCount - (wasUnread ? 1 : 0)),
+      needsRefresh: false,
+    };
+  }
+
+  const isUnread = !(payload.new.read_at ?? existing.read_at);
+  return {
+    count: Math.max(0, currentCount + Number(isUnread) - Number(wasUnread)),
+    needsRefresh: false,
+  };
+}

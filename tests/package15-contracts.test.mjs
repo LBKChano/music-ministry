@@ -29,11 +29,11 @@ test('Profile delegates neutral account actions and isolates the Danger Zone', (
   assert.doesNotMatch(profile, /showSignOutModal|showDeleteModal/);
 });
 
-test('account details expose identity, release information, password, and device sign-out', () => {
+test('account details expose identity, marketing version, password, and device sign-out', () => {
   assert.match(accountScreen, /user\?\.email/);
   assert.match(accountScreen, /getAppReleaseInfo\(Constants\.expoConfig, Platform\.OS\)/);
   assert.match(accountScreen, /Version/);
-  assert.match(accountScreen, /Build/);
+  assert.doesNotMatch(accountScreen, />Build</);
   assert.match(accountScreen, /router\.push\('\/change-password'\)/);
   assert.match(accountScreen, /await signOut\(\)/);
   assert.match(accountScreen, /router\.replace\('\/onboarding'\)/);

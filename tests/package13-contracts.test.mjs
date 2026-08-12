@@ -47,7 +47,7 @@ test('one existing hook owns summary and editor preference state', () => {
 });
 
 test('the existing optimistic mutation, rollback, and Realtime path remains intact', () => {
-  assert.match(hook, /applySchedulingPreferenceToggle/);
+  assert.match(hook, /applySchedulingAvailabilityChange/);
   assert.match(hook, /const previous =/);
   assert.match(hook, /queryClient\.setQueryData\(concreteQueryKey, previous\)/);
   assert.match(hook, /table: 'member_scheduling_preferences'/);
@@ -72,7 +72,7 @@ test('membership identity scopes pending, error, retry, and late-response state'
 test('every immediate save has pending, success, failure, and retry feedback', () => {
   assert.match(editor, /Saving \$\{/);
   assert.match(editor, /Preference saved for/);
-  assert.match(editor, /Preference removed for/);
+  assert.match(editor, /Scheduling enabled for/);
   assert.match(editor, /Last change was not saved/);
   assert.match(editor, /The previous setting was restored/);
   assert.match(editor, /void handleRetrySave\(\)/);
@@ -82,10 +82,10 @@ test('every immediate save has pending, success, failure, and retry feedback', (
 test('preference switches are accessible and do not rely on color alone', () => {
   assert.match(editor, /<Switch/);
   assert.match(editor, /accessibilityState=\{\{/);
-  assert.match(editor, /checked: enabled/);
+  assert.match(editor, /checked: isAvailable/);
   assert.match(editor, /Prefer not to be scheduled/);
-  assert.match(editor, /No scheduling preference/);
-  assert.match(editor, /This is a preference, not a guaranteed block/);
+  assert.match(editor, /Schedule me here when needed/);
+  assert.match(editor, /On means you can be scheduled when needed/);
 });
 
 test('released cleanup and assignment semantics remain unchanged', () => {

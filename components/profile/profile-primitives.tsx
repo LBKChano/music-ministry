@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/app-surface';
 import { useAppTheme } from '@/contexts/AppThemeContext';
 import { resolveSurfaceOpacity } from '@/lib/ui/surface-system';
+import type { AppSurfaceStatusTone } from '@/lib/ui/surface-system';
 
 type AndroidIconName = ComponentProps<typeof IconSymbol>['android_material_icon_name'];
 
@@ -31,7 +32,14 @@ export function ProfileSection({
   title,
   description,
 }: ProfileSectionProps) {
-  return <AppSectionHeader title={title} description={description} />;
+  const theme = useAppTheme();
+  return (
+    <AppSectionHeader
+      title={title}
+      description={description}
+      style={[styles.sectionHeader, { borderLeftColor: theme.colors.accent }]}
+    />
+  );
 }
 
 export function ProfileRowGroup({ children }: { children: ReactNode }) {
@@ -61,6 +69,7 @@ export interface ProfileRowProps {
   busy?: boolean;
   destructive?: boolean;
   trailing?: ReactNode;
+  valueTone?: AppSurfaceStatusTone;
 }
 
 export function ProfileRow({
@@ -75,6 +84,7 @@ export function ProfileRow({
   busy = false,
   destructive = false,
   trailing,
+  valueTone = 'unassigned',
 }: ProfileRowProps) {
   const theme = useAppTheme();
   const foreground = destructive
@@ -142,7 +152,7 @@ export function ProfileRow({
           {value ? (
             <AppValueChip
               label={value}
-              tone={destructive ? 'error' : 'unassigned'}
+              tone={destructive ? 'error' : valueTone}
             />
           ) : null}
           <IconSymbol
@@ -234,6 +244,11 @@ export function ProfileOverviewList({
 }
 
 const styles = StyleSheet.create({
+  sectionHeader: {
+    borderLeftWidth: 3,
+    marginTop: 4,
+    paddingLeft: 11,
+  },
   row: {
     alignItems: 'center',
     flexDirection: 'row',

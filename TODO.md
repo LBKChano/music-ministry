@@ -3302,10 +3302,10 @@ Completed verification:
 
 Status:
 
-- Planned after the shared surface system. This package contains one optional
-  additive backend checkpoint followed by client presentation work. Deploy the
-  backend checkpoint first and smoke-test released builds before the new client
-  uses it.
+- Completed on 2026-08-12. The additive backend checkpoint was deployed and
+  verified before the client began using it. The original role-save RPC and all
+  released-client paths remain available; the new client also falls back to the
+  original RPC if it encounters an older backend.
 
 Goal:
 
@@ -3437,12 +3437,51 @@ Compatibility and verification:
 - Run the full schedule authorization suite for owner, scheduling admin,
   ordinary member, assigned member, fill-in requester, and song author.
 
+Completed implementation:
+
+- Deployed migration `20260812145305_add_church_role_symbols`, adding only the
+  nullable controlled `church_roles.icon_key` field and the additive
+  `save_church_role_admin_v2` RPC. Null and unknown client values resolve to a
+  neutral General symbol; written role names remain authoritative everywhere.
+- Added the accessible Church Setup symbol picker with labeled SF Symbol and
+  Material mappings, explicit checked indicators, and the written role name in
+  every saved-row presentation.
+- Regular members now open Schedule on `My Schedule`; admins open on `All
+  Services`. Both views and all filters remain available and reset only when
+  the selected church/session role changes.
+- Added a device-local Today marker that refreshes after midnight and on app
+  resume, plus a cached first/last upcoming-service summary so the header shows
+  the real scheduled range instead of the internal query horizon.
+- Rebuilt incremental loading around one synchronous pending-range lock. A
+  range is appended only after a successful query, failed ranges retry in
+  place, stale church responses are ignored, and existing services remain
+  visible while loading or retrying.
+- Updated collapsed cards with strong date metadata, explicit `You're serving`
+  and `Not assigned` states, written roles with optional symbols, team/song
+  counts, and clearer disclosure wording. Expanded content now reads and
+  renders in disclosure, Team, then Songs order on one muted inner surface.
+- Team rows retain church role order and expose written role/member names plus
+  explicit You, Assigned, Open, or Fill-in requested badges. Existing admin
+  assignment safety, member fill-in actions, song ownership, editing, deletion,
+  reordering, and notifications are unchanged. Song numbers now use a compact
+  accent chip in saved and draft states.
+
+Completed verification:
+
+- Live rollback-safe SQL behavior checks passed. Supabase confirms the nullable
+  column, controlled constraint, original RPC, authenticated v2 RPC, and remote
+  migration record. Security and performance advisors show no new Package 26
+  findings; their remaining notices predate this package.
+- Passed TypeScript, all six Edge Function checks, ESLint, 404 repository tests,
+  `git diff --check`, and final iOS/Android production exports on 2026-08-12.
+
 #### Package 27: Church and Profile Visual Polish
 
 Status:
 
-- Planned after Package 26. Client-only unless Package 26's optional role symbol
-  is displayed; it must not add another migration.
+- Completed on 2026-08-12 as a client-only package. It adds no migration and
+  keeps the released preference-row, availability, quarter-generation, modal,
+  query, cache, Realtime, and permission contracts intact.
 
 Church direction:
 
@@ -3521,11 +3560,35 @@ Verification:
 - Ensure no grouped surface is hidden behind the new dock and pull-to-refresh
   retains visible cached content without a full-screen flash.
 
+Completion notes:
+
+- Church Setup and Schedule Management retain every existing destination while
+  using grouped white surfaces, labeled readiness states, icon tiles, and
+  separate section accents over the shared tinted canvas.
+- Fully elapsed quarters are disabled and labeled in the selector. Continue,
+  special-service staging, and final generation all repeat the local-date guard
+  before creating drafts or requests; current-quarter end dates remain valid.
+- Profile now uses an unframed, noninteractive identity mark, accented section
+  headings, semantic value chips, and the existing separated danger treatment.
+  Visible App Information shows version only while the internal build resolver
+  remains available for diagnostics and store tooling.
+- The availability editor now defaults to six true calendar months and clamps
+  end-of-month dates safely. Its optional legacy day-range argument and all
+  saved dates outside the visible range remain supported.
+- Scheduling switches now display ON as available and OFF as avoid. Only OFF
+  states continue to persist rows, and the released avoidance helpers remain as
+  compatibility aliases for older callers and tests.
+- Passed TypeScript, all six Edge Function checks, ESLint, 416 repository tests,
+  `git diff --check`, and clean iOS/Android production exports on 2026-08-12.
+
 #### Package 28: Focused Screens, Modal Parity, and Dark-Mode Readiness Gate
 
 Status:
 
-- Planned final design package. Client-only.
+- Completed on 2026-08-12 as a client-only package. No migration, Edge
+  Function, database contract, Auth route, notification payload, scheduling
+  request, or permission boundary changed, so released app versions remain
+  compatible with the same backend.
 
 Goal:
 
@@ -3606,15 +3669,73 @@ Done when:
   service and role without opening every card; and activating dark mode later
   requires selecting a palette rather than rewriting components.
 
+Completion notes:
+
+- The shared modal now owns semantic backdrop/body/footer/button colors,
+  contextual icon/title/subtitle/close zones, and safe-area-derived compact,
+  form, and long-content allocations. Forms are taller without using fixed
+  device heights; confirmations remain compact and previews remain capped.
+- `Manage Assignment` and bulk service deletion use one native list as the only
+  vertical scroll owner. Assignment lists reset only when the assignment/role
+  target changes, never when the same query refreshes in the background.
+- Focused Church/Profile headers, Profile editors, church switching,
+  onboarding, recovery, account actions, notification history, filters, and
+  custom preview/footer states resolve from semantic theme tokens. A temporary
+  focused-screen adapter maps legacy style names to the active theme without
+  changing any screen's data or mutation logic.
+- Onboarding uses the existing transparent `assets/splash-mark.png` as the one
+  canonical accessible app mark. Password recovery keeps Supabase recovery
+  validation and password-manager metadata intact; visible App Information
+  continues to show the marketing version without exposing the build number.
+- Future-dark remains intentionally disabled in production, but automated
+  checks render its token contracts and enforce WCAG text contrast for modal,
+  input, button, status, and focused-screen surfaces. Deliberate exceptions are
+  native `DateTimePicker` chrome and operating-system `Alert` confirmations,
+  whose appearance is controlled by iOS/Android.
+- Passed TypeScript, all six Edge Function checks, ESLint, 426 repository tests,
+  `git diff --check`, and clean web, Android, and iOS production exports on
+  2026-08-12. Physical small/large phone, tablet, landscape, VoiceOver,
+  TalkBack, Voice Control, display scaling, and keyboard inspection remains the
+  candidate-build release QA matrix.
+
 #### Package 29: Notification Lifecycle and iOS Widget Reliability
 
 Status:
 
-- Planned after Package 28. The two checkpoints are operationally independent:
-  notification retention is an additive backend-first change, while widget
-  repair is iOS client/native work requiring a new build.
-- Do not deploy the retention job or publish the widget repair until released
-  Android/iOS builds pass the compatibility checks described below.
+- Implemented locally on 2026-08-12. The additive retention migration was
+  deployed on 2026-08-12 after live compatibility verification. The widget
+  repair still requires a fresh iOS build and physical-device verification
+  before release.
+- Do not publish the widget repair until released Android/iOS builds pass the
+  compatibility checks described below.
+
+Implementation checkpoint:
+
+- Added a private 500-row retention routine scheduled once daily. It deletes
+  only notifications read more than 90 days ago and preserves all unread rows.
+- Added a private durable `(member_id, event_key)` ledger and insert trigger so
+  presentation-history cleanup cannot recreate an already claimed event. The
+  public table, existing unique constraint, RLS policies, Realtime publication,
+  and released Edge Function upserts remain compatible.
+- Notification Realtime DELETE handling removes only the matching cached row,
+  keeps the unread count nonnegative, and coalesces count-only reconciliation
+  instead of refetching the 50-row history list.
+- Moved iOS widget synchronization from Schedule-screen mount to an
+  authenticated selected-membership lifecycle component backed by the existing
+  React Query service cache. Intermediate loading/errors preserve valid data;
+  sign-out and terminal no-membership clear it.
+- App Group writes are verified, both unchanged widget kinds reload explicitly,
+  and duplicate timeline reloads are coalesced. Snapshot schema v1, App Group
+  names, extension bundle identifier, OneSignal configuration, and Android code
+  paths are unchanged.
+- Added rollback-safe SQL fixtures plus Package 29 behavior/contracts. Passed
+  TypeScript, all six Edge Function checks, ESLint, 439 repository tests,
+  `git diff --check`, and clean web, Android, and iOS production exports on
+  2026-08-12. Live migration `20260812181757` was then applied successfully:
+  the ledger backfilled 106 claims with none missing, all 49 unread rows were
+  preserved, both released notification policies remained active, the private
+  function was unavailable to Data API roles, and rollback-only old-client and
+  duplicate-event smoke tests passed.
 
 Goal:
 

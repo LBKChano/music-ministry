@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,16 +18,23 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { IconSymbol } from '@/components/IconSymbol';
 import { ProfileFocusedHeader } from '@/components/profile/profile-focused-header';
 import { ProfileStatus } from '@/components/profile/profile-primitives';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { useChurch } from '@/hooks/useChurch';
 import { useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { NOTIFICATION_PREFERENCE_OPTIONS } from '@/lib/notifications/preferences';
 import { getNotificationPermissionSummary } from '@/lib/profile/overview';
-import { colors } from '@/styles/commonStyles';
+import {
+  createLegacyThemeColors,
+  type LegacyThemeColors,
+} from '@/lib/ui/legacy-theme-colors';
 
 type StatusTone = 'success' | 'error' | 'info';
 
 export function ProfileNotificationPreferencesScreen() {
+  const theme = useAppTheme();
+  const colors = useMemo(() => createLegacyThemeColors(theme), [theme]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
@@ -358,7 +365,8 @@ export function ProfileNotificationPreferencesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: LegacyThemeColors) {
+  return StyleSheet.create({
   container: {
     backgroundColor: colors.background,
     flex: 1,
@@ -597,4 +605,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-});
+  });
+}

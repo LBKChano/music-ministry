@@ -16,6 +16,10 @@ export const queryKeys = {
     [...queryKeys.church(accountId, churchId), 'services'] as const,
   services: (accountId: string, churchId: string, rangeKey = 'all') =>
     [...queryKeys.servicesRoot(accountId, churchId), rangeKey] as const,
+  serviceDateSummaryRoot: (accountId: string, churchId: string) =>
+    [...queryKeys.church(accountId, churchId), 'service-date-summary'] as const,
+  serviceDateSummary: (accountId: string, churchId: string, startDate: string) =>
+    [...queryKeys.serviceDateSummaryRoot(accountId, churchId), startDate] as const,
   members: (accountId: string, churchId: string) =>
     [...queryKeys.church(accountId, churchId), 'members'] as const,
   recurringServices: (accountId: string, churchId: string) =>

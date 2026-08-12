@@ -5,15 +5,19 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { ChurchSwitcher } from '@/components/profile/ChurchSwitcher';
 import { ProfileFocusedHeader } from '@/components/profile/profile-focused-header';
 import { useChurch } from '@/hooks/useChurch';
-import { colors } from '@/styles/commonStyles';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 
 export function ProfileChurchesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { currentChurch } = useChurch();
+  const theme = useAppTheme();
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
+    <SafeAreaView
+      edges={['top', 'left', 'right']}
+      style={[styles.container, { backgroundColor: theme.colors.canvas }]}
+    >
       <Stack.Screen options={{ headerShown: false }} />
       <ProfileFocusedHeader
         onBack={() => router.back()}
@@ -35,7 +39,6 @@ export function ProfileChurchesScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.background,
     flex: 1,
   },
   content: {

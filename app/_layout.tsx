@@ -29,15 +29,11 @@ import {
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CustomSplashScreen } from '@/components/CustomSplashScreen';
 import { MemberNotificationRealtimeSync } from '@/components/notifications/member-notification-realtime-sync';
+import { ScheduleWidgetLifecycleSync } from '@/components/widgets/schedule-widget-lifecycle-sync';
 import { queryClient } from '@/lib/query/client';
 import { supabase } from '@/lib/supabase/client';
 import { resolveStartupDestination } from '@/lib/church/startup-coordinator';
 import { registerCurrentNotificationDevice } from '@/lib/notifications/device-registration';
-import {
-  clearScheduleWidgetSnapshot,
-  prepareScheduleWidgetScope,
-} from '@/lib/widgets/schedule-widget';
-import { createScheduleWidgetScopeFingerprint } from '@/lib/widgets/schedule-widget-model';
 import { usePerformanceBaselineLifecycle } from '@/hooks/usePerformanceBaselineScreen';
 import { createNavigationThemeColors } from '@/lib/ui/app-theme';
 import { isPasswordRecoveryUrl } from '@/utils/passwordResetLinks';
@@ -125,43 +121,6 @@ function RootLayoutNav() {
     authError: initializationError,
     churchStatus: sessionStatus,
   });
-
-  useEffect(() => {
-    if (Platform.OS !== 'ios' || !initialized) return;
-    if (!session || sessionStatus === 'signed-out') {
-      clearScheduleWidgetSnapshot('signed_out');
-      return;
-    }
-    if (sessionStatus === 'no-membership') {
-      clearScheduleWidgetSnapshot('no_church');
-      return;
-    }
-    if (sessionStatus === 'selecting-church') {
-      clearScheduleWidgetSnapshot('unavailable');
-      return;
-    }
-    if (
-      sessionStatus !== 'ready'
-      || !currentChurch?.id
-      || !currentMember?.id
-      || currentMember.member_id !== session.user.id
-      || currentMember.church_id !== currentChurch.id
-    ) return;
-
-    prepareScheduleWidgetScope(createScheduleWidgetScopeFingerprint(
-      session.user.id,
-      currentChurch.id,
-      currentMember.id,
-    ));
-  }, [
-    currentChurch?.id,
-    currentMember?.church_id,
-    currentMember?.id,
-    currentMember?.member_id,
-    initialized,
-    session,
-    sessionStatus,
-  ]);
 
   useEffect(() => {
     const rootSegment = segments[0] as string | undefined;
@@ -308,6 +267,7 @@ function RootLayoutNav() {
       <WidgetProvider>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <MemberNotificationRealtimeSync />
+          <ScheduleWidgetLifecycleSync />
           {/*
            * Always render the Stack unconditionally so the navigator is mounted
            * and ready to receive router.replace() calls from app/index.tsx.

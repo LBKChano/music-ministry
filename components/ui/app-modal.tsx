@@ -18,13 +18,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { ResponsiveText } from '@/components/ui/responsive-text';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { useReducedMotionPreference } from '@/hooks/useReducedMotionPreference';
 import {
   getModalDismissAction,
   getModalLayout,
   type AppModalVariant,
 } from '@/lib/ui/modal-presentation';
-import { colors } from '@/styles/commonStyles';
 
 export type AppModalAction = {
   label: string;
@@ -42,6 +42,7 @@ type AppModalProps = {
   onClose: () => void;
   variant?: AppModalVariant;
   subtitle?: ReactNode;
+  headerIcon?: ReactNode;
   primaryAction?: AppModalAction;
   secondaryAction?: AppModalAction;
   footer?: ReactNode;
@@ -68,6 +69,7 @@ export function AppModal({
   onClose,
   variant = 'form',
   subtitle,
+  headerIcon,
   primaryAction,
   secondaryAction,
   footer,
@@ -76,16 +78,17 @@ export function AppModal({
   contentContainerStyle,
   maxWidth,
   maxHeight,
-  backgroundColor = colors.cardBackground,
-  textColor = colors.text,
-  borderColor = colors.border,
-  primaryColor = colors.primary,
+  backgroundColor,
+  textColor,
+  borderColor,
+  primaryColor,
   showCloseButton = true,
   dismissOnBackdrop = true,
   busy = false,
   returnFocusRef,
   testID,
 }: AppModalProps) {
+  const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const dimensions = useWindowDimensions();
   const reduceMotionEnabled = useReducedMotionPreference();
@@ -93,6 +96,10 @@ export function AppModal({
   const [restingHeight, setRestingHeight] = useState(dimensions.height);
   const closeButtonRef = useRef<View>(null);
   const actionBusy = Boolean(busy || primaryAction?.loading || secondaryAction?.loading);
+  const resolvedBackgroundColor = backgroundColor ?? theme.modal.surface;
+  const resolvedTextColor = textColor ?? theme.colors.textPrimary;
+  const resolvedBorderColor = borderColor ?? theme.modal.border;
+  const resolvedPrimaryColor = primaryColor ?? theme.button.primarySurface;
   const layout = getModalLayout({
     width: dimensions.width,
     restingHeight,
@@ -156,16 +163,19 @@ export function AppModal({
       style={[
         styles.footer,
         layout.stackActions && styles.stackedFooter,
-        { borderTopColor: borderColor },
+        {
+          backgroundColor: theme.modal.footerSurface,
+          borderTopColor: resolvedBorderColor,
+        },
       ]}
     >
       {secondaryAction ? (
         <ModalActionButton
           action={secondaryAction}
           busy={actionBusy}
-          borderColor={borderColor}
-          primaryColor={primaryColor}
-          textColor={textColor}
+          borderColor={resolvedBorderColor}
+          primaryColor={resolvedPrimaryColor}
+          textColor={resolvedTextColor}
           secondary
           onPress={runAction}
         />
@@ -174,9 +184,9 @@ export function AppModal({
         <ModalActionButton
           action={primaryAction}
           busy={actionBusy}
-          borderColor={borderColor}
-          primaryColor={primaryColor}
-          textColor={textColor}
+          borderColor={resolvedBorderColor}
+          primaryColor={resolvedPrimaryColor}
+          textColor={resolvedTextColor}
           onPress={runAction}
         />
       ) : null}
@@ -213,7 +223,7 @@ export function AppModal({
       visible={visible}
     >
       <KeyboardAvoidingView
-        style={styles.overlay}
+        style={[styles.overlay, { backgroundColor: theme.modal.backdrop }]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <Pressable
@@ -231,8 +241,9 @@ export function AppModal({
           style={[
             styles.modal,
             {
-              backgroundColor,
-              borderColor,
+              backgroundColor: resolvedBackgroundColor,
+              borderColor: resolvedBorderColor,
+              borderRadius: theme.radii.modal,
               maxHeight: layout.maxHeight,
               maxWidth: layout.maxWidth,
               minHeight: layout.minHeight,
@@ -240,13 +251,40 @@ export function AppModal({
           ]}
           testID={testID}
         >
-          <View style={[styles.header, { borderBottomColor: borderColor }]}>
-            {showCloseButton ? <View style={styles.headerButton} /> : null}
+          <View
+            style={[
+              styles.header,
+              {
+                backgroundColor: theme.modalHeader.surface,
+                borderBottomColor: resolvedBorderColor,
+              },
+            ]}
+          >
+            <View
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={[
+                styles.headerIcon,
+                {
+                  backgroundColor: theme.colors.accentSoft,
+                  borderColor: theme.modalHeader.accent,
+                },
+              ]}
+            >
+              {headerIcon ?? (
+                <IconSymbol
+                  android_material_icon_name={variant === 'confirmation' ? 'help-outline' : variant === 'long-content' ? 'view-list' : 'edit'}
+                  color={theme.modalHeader.accent}
+                  ios_icon_name={variant === 'confirmation' ? 'questionmark.circle.fill' : variant === 'long-content' ? 'list.bullet.rectangle.fill' : 'square.and.pencil'}
+                  size={22}
+                />
+              )}
+            </View>
             <View style={styles.headerCopy}>
               <ResponsiveText
                 accessibilityRole="header"
                 text={title}
-                textStyle={[styles.title, { color: textColor }]}
+                textStyle={[styles.title, { color: theme.modalHeader.foreground }]}
                 variant="stateTitle"
               />
               {subtitle ? (
@@ -254,7 +292,7 @@ export function AppModal({
                   {typeof subtitle === 'string' ? (
                     <ResponsiveText
                       text={subtitle}
-                      textStyle={[styles.subtitleText, { color: textColor }]}
+                      textStyle={[styles.subtitleText, { color: theme.modalHeader.mutedForeground }]}
                       variant="supportingCopy"
                     />
                   ) : subtitle}
@@ -273,13 +311,17 @@ export function AppModal({
                 ref={closeButtonRef}
                 style={({ pressed }) => [
                   styles.headerButton,
+                  {
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.borderStrong,
+                  },
                   pressed && styles.pressed,
                   actionBusy && styles.disabled,
                 ]}
               >
                 <IconSymbol
                   android_material_icon_name="close"
-                  color={textColor}
+                  color={theme.modalHeader.foreground}
                   ios_icon_name="xmark"
                   size={22}
                 />
@@ -311,8 +353,14 @@ function ModalActionButton({
   secondary?: boolean;
   onPress: (action: AppModalAction) => void;
 }) {
+  const theme = useAppTheme();
   const disabled = Boolean(action.disabled || busy);
-  const actionColor = action.destructive ? colors.error : primaryColor;
+  const actionColor = action.destructive
+    ? theme.button.destructiveSurface
+    : primaryColor;
+  const primaryForeground = action.destructive
+    ? theme.button.destructiveForeground
+    : theme.button.primaryForeground;
   return (
     <Pressable
       accessibilityHint={action.accessibilityHint}
@@ -324,14 +372,21 @@ function ModalActionButton({
       style={({ pressed }) => [
         styles.actionButton,
         secondary
-          ? { backgroundColor: colors.backgroundAlt, borderColor, borderWidth: 1 }
+          ? {
+            backgroundColor: theme.button.secondarySurface,
+            borderColor: theme.button.secondaryBorder || borderColor,
+            borderWidth: 1,
+          }
           : { backgroundColor: actionColor },
         pressed && styles.pressed,
         disabled && styles.disabled,
       ]}
     >
       {action.loading ? (
-        <ActivityIndicator color={secondary ? textColor : '#FFFFFF'} size="small" />
+        <ActivityIndicator
+          color={secondary ? theme.button.secondaryForeground : primaryForeground}
+          size="small"
+        />
       ) : (
         <ResponsiveText
           accessible={false}
@@ -339,7 +394,11 @@ function ModalActionButton({
           text={action.label}
           textStyle={[
             styles.actionText,
-            { color: secondary ? textColor : '#FFFFFF' },
+            {
+              color: secondary
+                ? theme.button.secondaryForeground || textColor
+                : primaryForeground,
+            },
           ]}
           variant="actionLabel"
         />
@@ -351,13 +410,11 @@ function ModalActionButton({
 const styles = StyleSheet.create({
   overlay: {
     alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.62)',
     flex: 1,
     justifyContent: 'center',
     padding: 12,
   },
   modal: {
-    borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
     flexShrink: 1,
     overflow: 'hidden',
@@ -367,20 +424,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    minHeight: 58,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    gap: 11,
+    minHeight: 78,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
   },
-  headerButton: {
+  headerIcon: {
     alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
     height: 44,
     justifyContent: 'center',
     width: 44,
   },
-  headerCopy: { alignItems: 'center', flex: 1, minWidth: 0 },
-  title: { fontSize: 19, fontWeight: '800', lineHeight: 25, textAlign: 'center' },
-  subtitle: { alignItems: 'center', paddingTop: 3 },
-  subtitleText: { opacity: 0.76, textAlign: 'center' },
+  headerButton: {
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  headerCopy: { alignItems: 'flex-start', flex: 1, minWidth: 0 },
+  title: { fontSize: 18, fontWeight: '800', lineHeight: 23, textAlign: 'left' },
+  subtitle: { alignItems: 'flex-start', paddingTop: 3 },
+  subtitleText: { textAlign: 'left' },
   body: { flexShrink: 1, minHeight: 0 },
   longBody: { flex: 1 },
   bodyContent: { paddingHorizontal: 18, paddingVertical: 16 },

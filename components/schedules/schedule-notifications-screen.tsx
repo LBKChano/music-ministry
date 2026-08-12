@@ -14,6 +14,7 @@ import { AppStatePanel } from '@/components/feedback/app-state-panel';
 import { InlineStatus } from '@/components/feedback/inline-status';
 import { FocusedScreenHeader } from '@/components/navigation/focused-screen-header';
 import { ResponsiveText } from '@/components/ui/responsive-text';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useChurchSession } from '@/hooks/useChurch';
 import {
@@ -23,6 +24,7 @@ import {
 import { colors } from '@/styles/commonStyles';
 
 export function ScheduleNotificationsScreen() {
+  const theme = useAppTheme();
   const router = useRouter();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
@@ -111,7 +113,7 @@ export function ScheduleNotificationsScreen() {
           accessible={false}
           style={styles.permissionButtonLabel}
           text={permissionDenied ? 'Open Settings' : 'Enable Notifications'}
-          textStyle={styles.permissionButtonText}
+          textStyle={[styles.permissionButtonText, { color: theme.colors.accent }]}
           variant="actionLabel"
         />
       </Pressable>
@@ -119,13 +121,19 @@ export function ScheduleNotificationsScreen() {
   ) : null;
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
+    <SafeAreaView
+      edges={['top', 'left', 'right']}
+      style={[styles.container, { backgroundColor: theme.colors.canvas }]}
+    >
       <Stack.Screen options={{ headerShown: false }} />
       <FocusedScreenHeader
         backAccessibilityLabel="Back to Schedule"
         onBack={handleBack}
         subtitle={currentChurch?.name ?? 'Schedule updates'}
         title="Notifications"
+        tone="surface"
+        iosIcon="bell.badge.fill"
+        androidIcon="notifications-active"
       />
 
       {!scopeReady ? (
@@ -182,10 +190,10 @@ export function ScheduleNotificationsScreen() {
                   accessible
                   style={styles.listSummary}
                 >
-                  <Text accessible={false} style={styles.listTitle}>
+                  <Text accessible={false} style={[styles.listTitle, { color: theme.colors.textPrimary }]}>
                     Recent Updates
                   </Text>
-                  <Text accessible={false} style={styles.listCount}>
+                  <Text accessible={false} style={[styles.listCount, { color: theme.colors.textSecondary }]}>
                     {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
                   </Text>
                 </View>
@@ -194,16 +202,16 @@ export function ScheduleNotificationsScreen() {
           )}
           refreshControl={(
             <RefreshControl
-              colors={[colors.primary]}
+              colors={[theme.colors.accent]}
               onRefresh={() => {
                 void refetchHistory();
               }}
               refreshing={isHistoryFetching && !isHistoryLoading}
-              tintColor={colors.primary}
+              tintColor={theme.colors.accent}
             />
           )}
           renderItem={({ item }) => <NotificationHistoryRow notification={item} />}
-          style={styles.container}
+          style={[styles.container, { backgroundColor: theme.colors.canvas }]}
         />
       )}
     </SafeAreaView>
@@ -215,6 +223,7 @@ function NotificationHistoryRow({
 }: {
   notification: MemberNotification;
 }) {
+  const theme = useAppTheme();
   return (
     <View
       accessibilityLabel={[
@@ -226,29 +235,37 @@ function NotificationHistoryRow({
       accessible
       style={[
         styles.notificationRow,
-        !notification.read_at && styles.unreadNotificationRow,
+        { borderTopColor: theme.divider.color },
+        !notification.read_at && [
+          styles.unreadNotificationRow,
+          { backgroundColor: theme.colors.accentSoft },
+        ],
       ]}
     >
       <View style={styles.notificationMarker}>
         <View style={[
           styles.notificationDot,
-          notification.read_at && styles.readNotificationDot,
+          { backgroundColor: theme.colors.accent },
+          notification.read_at && [
+            styles.readNotificationDot,
+            { backgroundColor: theme.colors.borderStrong },
+          ],
         ]} />
       </View>
       <View style={styles.notificationCopy}>
         <ResponsiveText
           accessible={false}
           text={notification.title}
-          textStyle={styles.notificationTitle}
+          textStyle={[styles.notificationTitle, { color: theme.colors.textPrimary }]}
           variant="notificationTitle"
         />
         <ResponsiveText
           accessible={false}
           text={notification.body}
-          textStyle={styles.notificationBody}
+          textStyle={[styles.notificationBody, { color: theme.colors.textSecondary }]}
           variant="supportingCopy"
         />
-        <Text style={styles.notificationTime}>
+        <Text style={[styles.notificationTime, { color: theme.colors.textTertiary }]}>
           {formatNotificationTime(notification.created_at)}
         </Text>
       </View>

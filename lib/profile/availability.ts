@@ -1,6 +1,5 @@
 import type { Tables } from '../supabase/types.ts';
 import {
-  DEFAULT_SERVICE_WINDOW_DAYS,
   addDaysToDate,
   formatLocalDate,
   parseLocalDate,
@@ -8,7 +7,7 @@ import {
 
 type MemberUnavailability = Tables<'member_unavailability'>;
 
-export const AVAILABILITY_HORIZON_DAYS = DEFAULT_SERVICE_WINDOW_DAYS;
+export const AVAILABILITY_HORIZON_MONTHS = 6;
 
 export interface AvailabilityEditorRange {
   startDate: string;
@@ -24,12 +23,27 @@ export interface AvailabilitySummary {
 
 export function createAvailabilityEditorRange(
   now = new Date(),
-  horizonDays = AVAILABILITY_HORIZON_DAYS,
+  legacyHorizonDays?: number,
 ): AvailabilityEditorRange {
   const startDate = formatLocalDate(now);
+  if (legacyHorizonDays !== undefined) {
+    return {
+      startDate,
+      endDate: addDaysToDate(startDate, Math.max(1, legacyHorizonDays) - 1),
+    };
+  }
+
+  const targetYear = now.getFullYear();
+  const targetMonth = now.getMonth() + AVAILABILITY_HORIZON_MONTHS;
+  const lastDayOfTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const endDate = new Date(
+    targetYear,
+    targetMonth,
+    Math.min(now.getDate(), lastDayOfTargetMonth),
+  );
   return {
     startDate,
-    endDate: addDaysToDate(startDate, Math.max(1, horizonDays) - 1),
+    endDate: formatLocalDate(endDate),
   };
 }
 

@@ -18,6 +18,7 @@ import { AuthTextInput } from '@/components/auth/AuthTextInput';
 import { IconSymbol } from '@/components/IconSymbol';
 import { ProfileFocusedHeader } from '@/components/profile/profile-focused-header';
 import { ProfileStatus } from '@/components/profile/profile-primitives';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { useChurch } from '@/hooks/useChurch';
 import {
   changeAccountPassword,
@@ -28,11 +29,13 @@ import {
   requiresPasswordReauthentication,
   validatePasswordChange,
 } from '@/lib/profile/account';
-import { colors } from '@/styles/commonStyles';
+import type { AppTheme } from '@/lib/ui/app-theme';
 
 type StatusTone = 'success' | 'error' | 'info';
 
 export function ProfileChangePasswordScreen() {
+  const theme = useAppTheme();
+  const styles = createStyles(theme);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useChurch();
@@ -156,7 +159,7 @@ export function ProfileChangePasswordScreen() {
                 ios_icon_name="lock.shield.fill"
                 android_material_icon_name="security"
                 size={24}
-                color={colors.primary}
+                color={theme.colors.accent}
               />
               <View style={styles.headingCopy}>
                 <Text accessibilityRole="header" style={styles.sectionTitle}>Choose a New Password</Text>
@@ -174,7 +177,7 @@ export function ProfileChangePasswordScreen() {
               onChangeText={setCurrentPassword}
               onSubmitEditing={() => newPasswordRef.current?.focus()}
               placeholder="Enter current password"
-              placeholderTextColor={colors.textTertiary}
+              placeholderTextColor={theme.input.placeholder}
               returnKeyType="next"
               secureTextEntry
               style={styles.input}
@@ -190,7 +193,7 @@ export function ProfileChangePasswordScreen() {
               onChangeText={setNewPassword}
               onSubmitEditing={() => confirmPasswordRef.current?.focus()}
               placeholder="At least 6 characters"
-              placeholderTextColor={colors.textTertiary}
+              placeholderTextColor={theme.input.placeholder}
               returnKeyType="next"
               secureTextEntry
               style={styles.input}
@@ -209,7 +212,7 @@ export function ProfileChangePasswordScreen() {
                 else void handleSave();
               }}
               placeholder="Enter new password again"
-              placeholderTextColor={colors.textTertiary}
+              placeholderTextColor={theme.input.placeholder}
               returnKeyType={needsNonce ? 'next' : 'done'}
               secureTextEntry
               style={styles.input}
@@ -229,7 +232,7 @@ export function ProfileChangePasswordScreen() {
                   onChangeText={value => setNonce(value.replace(/\D/g, ''))}
                   onSubmitEditing={() => void handleSave()}
                   placeholder="000000"
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={theme.input.placeholder}
                   returnKeyType="done"
                   style={styles.input}
                   textContentType="oneTimeCode"
@@ -258,7 +261,7 @@ export function ProfileChangePasswordScreen() {
               ]}
             >
               {saving ? (
-                <ActivityIndicator color={colors.headerText} />
+                <ActivityIndicator color={theme.button.primaryForeground} />
               ) : (
                 <Text style={styles.primaryButtonText}>Update Password</Text>
               )}
@@ -280,7 +283,7 @@ export function ProfileChangePasswordScreen() {
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
             >
               {sendingReset ? (
-                <ActivityIndicator color={colors.primary} />
+                <ActivityIndicator color={theme.colors.accent} />
               ) : (
                 <Text style={styles.secondaryButtonText}>Send Reset Email</Text>
               )}
@@ -292,25 +295,25 @@ export function ProfileChangePasswordScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppTheme) => StyleSheet.create({
   flex: { flex: 1 },
-  container: { backgroundColor: colors.background, flex: 1 },
+  container: { backgroundColor: theme.colors.canvas, flex: 1 },
   content: { alignSelf: 'center', gap: 18, maxWidth: 720, paddingHorizontal: 16, paddingTop: 16, width: '100%' },
-  section: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, padding: 16 },
+  section: { backgroundColor: theme.colors.surface, borderColor: theme.colors.borderSubtle, borderRadius: 8, borderWidth: 1, padding: 16 },
   sectionHeading: { alignItems: 'flex-start', flexDirection: 'row', gap: 11 },
   headingCopy: { flex: 1, gap: 4, minWidth: 0 },
-  sectionTitle: { color: colors.text, fontSize: 18, fontWeight: '800', lineHeight: 23 },
-  sectionDescription: { color: colors.textSecondary, fontSize: 14, lineHeight: 20 },
-  label: { color: colors.text, fontSize: 14, fontWeight: '700', lineHeight: 19, marginBottom: 7, marginTop: 16 },
-  input: { backgroundColor: colors.inputBackground, borderColor: colors.border, borderRadius: 8, borderWidth: 1, color: colors.text, fontSize: 16, minHeight: 52, paddingHorizontal: 13, paddingVertical: 11 },
-  primaryButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 8, justifyContent: 'center', marginTop: 20, minHeight: 50, paddingHorizontal: 18 },
-  primaryButtonText: { color: colors.headerText, fontSize: 16, fontWeight: '800' },
+  sectionTitle: { color: theme.colors.textPrimary, fontSize: 18, fontWeight: '800', lineHeight: 23 },
+  sectionDescription: { color: theme.colors.textSecondary, fontSize: 14, lineHeight: 20 },
+  label: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: '700', lineHeight: 19, marginBottom: 7, marginTop: 16 },
+  input: { backgroundColor: theme.input.surface, borderColor: theme.input.border, borderRadius: 8, borderWidth: 1, color: theme.input.foreground, fontSize: 16, minHeight: 52, paddingHorizontal: 13, paddingVertical: 11 },
+  primaryButton: { alignItems: 'center', backgroundColor: theme.button.primarySurface, borderRadius: 8, justifyContent: 'center', marginTop: 20, minHeight: 50, paddingHorizontal: 18 },
+  primaryButtonText: { color: theme.button.primaryForeground, fontSize: 16, fontWeight: '800' },
   inlineButton: { alignSelf: 'flex-start', minHeight: 40, paddingVertical: 10 },
-  inlineButtonText: { color: colors.primary, fontSize: 14, fontWeight: '800' },
-  recoverySection: { alignItems: 'flex-start', backgroundColor: colors.backgroundAlt, borderColor: colors.border, borderRadius: 8, borderWidth: 1, gap: 13, padding: 16 },
-  recoveryTitle: { color: colors.text, fontSize: 16, fontWeight: '800', lineHeight: 21 },
-  secondaryButton: { alignItems: 'center', alignSelf: 'stretch', backgroundColor: colors.card, borderColor: colors.primary, borderRadius: 8, borderWidth: 1, justifyContent: 'center', minHeight: 48, paddingHorizontal: 16 },
-  secondaryButtonText: { color: colors.primary, fontSize: 15, fontWeight: '800' },
+  inlineButtonText: { color: theme.colors.accent, fontSize: 14, fontWeight: '800' },
+  recoverySection: { alignItems: 'flex-start', backgroundColor: theme.colors.surfaceMuted, borderColor: theme.colors.borderSubtle, borderRadius: 8, borderWidth: 1, gap: 13, padding: 16 },
+  recoveryTitle: { color: theme.colors.textPrimary, fontSize: 16, fontWeight: '800', lineHeight: 21 },
+  secondaryButton: { alignItems: 'center', alignSelf: 'stretch', backgroundColor: theme.button.secondarySurface, borderColor: theme.button.secondaryBorder, borderRadius: 8, borderWidth: 1, justifyContent: 'center', minHeight: 48, paddingHorizontal: 16 },
+  secondaryButtonText: { color: theme.colors.accent, fontSize: 15, fontWeight: '800' },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.55 },
 });

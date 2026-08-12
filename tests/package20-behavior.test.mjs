@@ -17,12 +17,12 @@ test('long content stays inside safe areas on a small Android phone', () => {
   });
 
   assert.equal(layout.maxWidth, 296);
-  assert.equal(layout.maxHeight, 463.68);
-  assert.equal(layout.minHeight, 360);
+  assert.equal(layout.maxHeight, 473.76);
+  assert.equal(layout.minHeight, 400);
   assert.equal(layout.stackActions, true);
 });
 
-test('forms remain compact on phones and long content is capped on tablets', () => {
+test('forms use a comfortable phone height and long content is capped on tablets', () => {
   const phone = getModalLayout({
     width: 390,
     restingHeight: 844,
@@ -41,9 +41,9 @@ test('forms remain compact on phones and long content is capped on tablets', () 
   });
 
   assert.equal(phone.maxWidth, 358);
-  assert.equal(phone.minHeight, 280);
+  assert.equal(phone.minHeight, 360);
   assert.equal(tablet.maxWidth, 680);
-  assert.equal(tablet.minHeight, 360);
+  assert.equal(tablet.minHeight, 400);
 });
 
 test('requested dimensions never exceed the available viewport', () => {

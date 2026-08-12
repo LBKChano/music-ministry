@@ -2,12 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import { AppModal } from '@/components/ui/app-modal';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { ResponsiveText } from '@/components/ui/responsive-text';
 import {
   EMPTY_SCHEDULE_VIEW_FILTERS,
   type ScheduleViewFilters,
 } from '@/lib/schedules/schedule-view';
-import { colors } from '@/styles/commonStyles';
 
 type FilterOption<T extends string | number | null> = {
   label: string;
@@ -31,10 +31,17 @@ function FilterGroup<T extends string | number | null>({
   selectedValue: T;
   onChange: (value: T) => void;
 }) {
+  const theme = useAppTheme();
+
   return (
     <View style={styles.group}>
-      <Text accessibilityRole="header" style={styles.groupTitle}>{label}</Text>
-      <View style={styles.options}>
+      <Text
+        accessibilityRole="header"
+        style={[styles.groupTitle, { color: theme.colors.textPrimary }]}
+      >
+        {label}
+      </Text>
+      <View style={[styles.options, { borderColor: theme.colors.borderSubtle }]}>
         {options.map(option => {
           const selected = selectedValue === option.value;
           return (
@@ -47,7 +54,12 @@ function FilterGroup<T extends string | number | null>({
               onPress={() => onChange(option.value)}
               style={({ pressed }) => [
                 styles.option,
-                selected && styles.optionSelected,
+                {
+                  backgroundColor: selected
+                    ? theme.colors.accentSoft
+                    : theme.colors.surface,
+                  borderBottomColor: theme.colors.borderSubtle,
+                },
                 pressed && styles.optionPressed,
               ]}
             >
@@ -55,14 +67,22 @@ function FilterGroup<T extends string | number | null>({
                 accessible={false}
                 style={styles.optionLabelLane}
                 text={option.label}
-                textStyle={[styles.optionText, selected && styles.optionTextSelected]}
+                textStyle={[
+                  styles.optionText,
+                  {
+                    color: selected
+                      ? theme.colors.textPrimary
+                      : theme.colors.textSecondary,
+                  },
+                  selected && styles.optionTextSelected,
+                ]}
                 variant={label === 'Service Type' ? 'serviceType' : 'roleName'}
               />
               <View style={styles.optionActionLane}>
                 <IconSymbol
                   ios_icon_name={selected ? 'checkmark.circle.fill' : 'circle'}
                   android_material_icon_name={selected ? 'radio-button-checked' : 'radio-button-unchecked'}
-                  color={selected ? colors.primary : colors.textSecondary}
+                  color={selected ? theme.colors.accent : theme.colors.textTertiary}
                   size={20}
                 />
               </View>
@@ -89,6 +109,7 @@ export function ScheduleFilterModal({
   onApply: (filters: ScheduleViewFilters) => void;
   onClose: () => void;
 }) {
+  const theme = useAppTheme();
   const [draft, setDraft] = useState(filters);
 
   useEffect(() => {
@@ -108,6 +129,7 @@ export function ScheduleFilterModal({
     <AppModal
       bodyScroll
       maxHeight={720}
+      headerIcon={<IconSymbol ios_icon_name="line.3.horizontal.decrease.circle.fill" android_material_icon_name="filter-list" size={22} color={theme.modalHeader.accent} />}
       onClose={onClose}
       primaryAction={{
         label: 'Apply Filters',
@@ -156,20 +178,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   groupTitle: {
-    color: colors.text,
     fontSize: 15,
     fontWeight: '800',
   },
   options: {
-    borderColor: colors.border,
     borderRadius: 8,
     borderWidth: 1,
     overflow: 'hidden',
   },
   option: {
     alignItems: 'center',
-    backgroundColor: colors.cardBackground,
-    borderBottomColor: colors.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: 12,
@@ -178,14 +196,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  optionSelected: {
-    backgroundColor: colors.primary + '0D',
-  },
   optionPressed: {
     opacity: 0.72,
   },
   optionText: {
-    color: colors.textSecondary,
     fontSize: 15,
     lineHeight: 20,
   },
@@ -199,7 +213,6 @@ const styles = StyleSheet.create({
     width: 32,
   },
   optionTextSelected: {
-    color: colors.text,
     fontWeight: '700',
   },
 });

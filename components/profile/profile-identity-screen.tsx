@@ -16,17 +16,24 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { IconSymbol } from '@/components/IconSymbol';
 import { ProfileFocusedHeader } from '@/components/profile/profile-focused-header';
 import { ProfileStatus } from '@/components/profile/profile-primitives';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { useChurch } from '@/hooks/useChurch';
 import {
   MAX_CHURCH_DISPLAY_NAME_LENGTH,
   validateChurchDisplayName,
 } from '@/lib/profile/identity';
 import { getMembershipAccessLabel } from '@/lib/profile/overview';
-import { colors } from '@/styles/commonStyles';
+import {
+  createLegacyThemeColors,
+  type LegacyThemeColors,
+} from '@/lib/ui/legacy-theme-colors';
 
 type StatusTone = 'success' | 'error' | 'info';
 
 export function ProfileIdentityScreen() {
+  const theme = useAppTheme();
+  const colors = useMemo(() => createLegacyThemeColors(theme), [theme]);
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const {
@@ -371,7 +378,8 @@ export function ProfileIdentityScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(colors: LegacyThemeColors) {
+  return StyleSheet.create({
   flex: {
     flex: 1,
   },
@@ -690,4 +698,5 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: 0.55,
   },
-});
+  });
+}

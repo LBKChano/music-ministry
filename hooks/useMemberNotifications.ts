@@ -9,7 +9,10 @@ import {
   realtimeChannelNames,
   removeRealtimeChannel,
 } from '@/lib/realtime/channels';
-import { applyNotificationRealtimePayload } from '@/lib/realtime/cache-updates';
+import {
+  applyNotificationRealtimePayload,
+  applyNotificationUnreadCountRealtimePayload,
+} from '@/lib/realtime/cache-updates';
 import { supabase } from '@/lib/supabase/client';
 import type { Tables } from '@/lib/supabase/types';
 
@@ -133,6 +136,17 @@ export function useMemberNotifications({
   useEffect(() => {
     if (!scopeReady || !subscribe || !accountId || !memberId) return;
 
+    let unreadRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleUnreadCountRefresh = () => {
+      if (unreadRefreshTimer) return;
+      unreadRefreshTimer = setTimeout(() => {
+        unreadRefreshTimer = null;
+        void queryClient.invalidateQueries({
+          exact: true,
+          queryKey: unreadQueryKey,
+        });
+      }, 350);
+    };
     const channelLabel = `member notifications ${memberId}`;
     const channel = createRealtimeChannel(
       realtimeChannelNames.memberNotifications(accountId, memberId),
@@ -141,16 +155,22 @@ export function useMemberNotifications({
     const handleNotificationPayload = (payload: Parameters<
       typeof applyNotificationRealtimePayload
     >[1]) => {
-      if (queryClient.getQueryData(historyQueryKey) !== undefined) {
+      const cachedRows = queryClient.getQueryData<MemberNotification[]>(historyQueryKey);
+      const unreadUpdate = applyNotificationUnreadCountRealtimePayload(
+        queryClient.getQueryData<number>(unreadQueryKey),
+        payload,
+        cachedRows,
+      );
+      if (unreadUpdate.count !== undefined) {
+        queryClient.setQueryData<number>(unreadQueryKey, unreadUpdate.count);
+      }
+      if (cachedRows !== undefined) {
         queryClient.setQueryData<MemberNotification[]>(
           historyQueryKey,
           previous => applyNotificationRealtimePayload(previous, payload),
         );
       }
-      void queryClient.invalidateQueries({
-        exact: true,
-        queryKey: unreadQueryKey,
-      });
+      if (unreadUpdate.needsRefresh) scheduleUnreadCountRefresh();
     };
 
     channel
@@ -186,6 +206,7 @@ export function useMemberNotifications({
       .subscribe(logRealtimeStatus(channelLabel));
 
     return () => {
+      if (unreadRefreshTimer) clearTimeout(unreadRefreshTimer);
       void removeRealtimeChannel(channel, channelLabel).catch(error => {
         console.warn(`[Realtime] ${channelLabel} cleanup failed`, error);
       });
