@@ -21,6 +21,23 @@ export function mergeVisibleChurches<T extends { id: string }>(
   );
 }
 
+export function filterChurchesWithAccountMembership<
+  T extends { id: string },
+  M extends { church_id: string; member_id: string | null },
+>(
+  churches: readonly T[],
+  memberships: readonly M[],
+  accountId: string,
+): T[] {
+  const accessibleChurchIds = new Set(
+    memberships
+      .filter(membership => membership.member_id === accountId)
+      .map(membership => membership.church_id),
+  );
+
+  return churches.filter(church => accessibleChurchIds.has(church.id));
+}
+
 export function resolveCurrentChurch<T extends { id: string }>(
   churches: readonly T[],
   currentChurchId?: string | null,

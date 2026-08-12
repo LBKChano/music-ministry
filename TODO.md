@@ -2,15 +2,13 @@
 
 ## Product Roadmap
 
-Implementation status: Package 0's automated compatibility baseline is
-implemented locally, Package 1 is deployed live, and Packages 2 through 8 are
-implemented and verified locally. Package 9 is also implemented and verified
-locally, and its additive migration is deployed live. Packages 10 through 15
-are implemented and verified, with the Package 14 database changes and Package
-15 delete-account v4 deployed live. Packages 16 through 21 are planned but not
-implemented.
-Packages 2 through 15 require a new app build; the remaining release gates are
-the documented physical-device checks.
+Implementation status: Packages 0 through 22 are implemented, with their
+  backend-first additive migrations deployed where documented. Packages 23
+  through 29 are planned visual-system, Schedule-comprehension, and reliability
+  work. They must be implemented in order so the theme foundation and navigation
+  contract exist before individual screens are restyled, followed by the final
+  data-lifecycle/native reliability gate. The remaining release gates include
+  the documented physical-device checks.
 
 ### Delivery Rules
 
@@ -3041,6 +3039,596 @@ Done when:
   permission is understandable and device-specific; multi-church roles are
   correct; and the currently released app versions continue to work throughout
   the compatibility window.
+
+#### Package 23: Semantic Theme Foundation and Header Contract
+
+Status:
+
+- Planned. Do not begin screen-by-screen recoloring until this package is
+  complete.
+- Client-only. It must not change Supabase, Auth, notifications, routes,
+  permissions, scheduling behavior, persisted settings, or released-client
+  contracts.
+
+Goal:
+
+- Replace the current white-on-white visual foundation with one semantic theme
+  API that can support the approved light redesign now and a complete dark-mode
+  implementation later.
+- Preserve the branded header direction from the earlier three-screen preview:
+  deep navy flowing into restrained royal blue, responsive white titles, the
+  subtle geometric accent, and the thin blue lower accent line. Do not adopt
+  the later Schedule-only preview's flatter dark header.
+
+Checkpoint 23A: inventory the current visual contract:
+
+- Record screenshots and token usage for Schedule, Church, Profile, onboarding,
+  recovery screens, focused editors, modals, notification history, assignment
+  previews, and both two-tab and three-tab navigation.
+- Record the current login/onboarding mark, app icon, splash mark, Profile
+  identity icon, modal headers, service date/details treatment, and app-version
+  presentation so the redesign uses one intentional brand source instead of
+  accumulating near-duplicate artwork and styles.
+- Find hard-coded light colors, opacity-derived colors, shadows, borders, and
+  direct imports of the static `colors` object. Classify each use by semantic
+  purpose instead of performing a mechanical hex replacement.
+- Add characterization tests for the current `ResponsiveTabHeader`, safe-area
+  behavior, word-safe titles, status contrast, modal dimensions, and floating
+  tab clearance before changing shared primitives.
+
+Checkpoint 23B: introduce one semantic theme API:
+
+- Add a typed `useAppTheme()` source with light and future-dark token groups for
+  `canvas`, `surface`, `surfaceMuted`, `surfaceElevated`, `surfaceStrong`,
+  `textPrimary`, `textSecondary`, `textTertiary`, `borderSubtle`,
+  `borderStrong`, `accent`, `accentSoft`, `navigationSurface`,
+  `navigationSelected`, `navigationInactive`, and success/warning/error/info
+  status surfaces and foregrounds.
+- Include explicit foreground-on-strong-surface, service-metadata, modal-header,
+  input-highlight, and brand-mark tokens. This keeps the requested dark navy
+  schedule details, richer focused-screen headers, and login logo readable in
+  both the approved light palette and the future dark palette.
+- Include semantic spacing, corner-radius, divider, elevation, icon-tile, and
+  pressed/focus-state values where they prevent components from inventing new
+  one-off treatments.
+- Keep compatibility exports while components migrate. Do not replace every
+  style in one commit or leave two authoritative theme systems indefinitely;
+  document the retirement condition for the compatibility bridge.
+- Define the future dark token values and contrast-test them, but do not expose
+  a dark-mode setting or automatically switch the app in this package.
+
+Checkpoint 23C: lock the header direction:
+
+- Move the approved gradient stops, accent panel, accent line, icon surfaces,
+  metadata pills, and header shadows into semantic header tokens consumed by
+  `ResponsiveTabHeader`.
+- Preserve all existing title sizing, word-safe wrapping, reserved action
+  lanes, invitation-code behavior, notification badge behavior, Profile member
+  identity, and accessibility strings.
+- Fix the Church header's selected-church identity contract while migrating the
+  shared header. The visible title must come from the same ready membership
+  snapshot as the Church content, update immediately after church switching or
+  name editing, and never retain the previous church name or show a partial
+  fallback after the selected membership is ready.
+- Add short, long, multiword, single-word, renamed, rapidly switched, cached,
+  Realtime-updated, and Larger Text Church title fixtures. Preserve word-safe
+  wrapping and the add-church/invitation-code action lanes at every width.
+- Keep the header visually prominent without allowing its blue treatment to
+  dominate every surface below it.
+
+Compatibility and verification:
+
+- Run TypeScript, full lint, all existing tests, Android/iOS production exports,
+  and `git diff --check` after each checkpoint.
+- Add token-completeness and contrast tests so a future theme cannot omit a
+  required semantic role or make text/statuses unreadable.
+- Package 23 is complete when shared primitives can consume light or dark token
+  objects without changing business behavior and the approved header remains
+  visually unchanged on all supported sizes.
+
+#### Package 24: Futuristic Floating Navigation Dock
+
+Status:
+
+- Planned after Package 23. Client-only and isolated from tab authorization and
+  route behavior.
+
+Goal:
+
+- Replace the current square, gray, heavy floating bar with a lighter futuristic
+  dock that feels modern without becoming decorative, distracting, or difficult
+  to read.
+
+Visual contract:
+
+- Use a 60-64px floating shell with approximately 20-22px corners, a thin cool
+  border, a soft short shadow, and clear separation from page content.
+- Use a translucent white/cool surface with controlled blur on iOS and a tested
+  opaque fallback on Android so the dock never becomes muddy gray.
+- Give the selected tab a pale-blue moving capsule, crisp navy icon and label,
+  and one restrained futuristic accent such as a thin luminous blue edge or
+  short underglow. Do not use a large dark rectangle, glowing orb, rainbow
+  gradient, or color-only selected state.
+- Keep inactive icons and labels in readable slate. Keep labels visible for all
+  tabs rather than switching to icon-only navigation.
+- Let the active capsule move with a short spring and provide an immediate
+  Reduced Motion path. Press feedback may use a subtle scale/opacity response,
+  but the dock must remain stable in size.
+
+Behavior and layout safeguards:
+
+- Preserve Schedule, Church, Profile order, route names, proper tab switching,
+  active-route resolution, and dynamic admin-only Church visibility.
+- Support both two-tab members and three-tab admins without changing tab widths
+  unexpectedly during a church/account transition.
+- Guarantee 44x44 minimum targets, safe-area clearance, keyboard avoidance,
+  landscape placement, tablet maximum width, Larger Text labels, and enough
+  list bottom inset that no service or setting row is covered.
+- Keep selected icon, label, accessibility selected state, and visible capsule
+  synchronized throughout navigation and church permission changes.
+
+Verification:
+
+- Add focused tests for two/three-tab geometry, selected-state animation,
+  Reduced Motion, admin-to-member changes, repeated tab presses, safe-area
+  padding, and content clearance.
+- Compare physical Android and iOS screenshots because blur and elevation render
+  differently. The Android fallback must look intentionally designed rather
+  than like a disabled gray control.
+
+#### Package 25: Cross-App Surface Hierarchy
+
+Status:
+
+- Planned after the new dock. Client-only.
+
+Goal:
+
+- Introduce the approved light visual hierarchy across the main tabs without
+  changing any workflow: a cool blue-gray canvas, crisp white primary surfaces,
+  restrained pale-blue secondary surfaces, deep navy accents, and small semantic
+  green/amber/red states.
+
+Checkpoint 25A: shared canvas and grouped surfaces:
+
+- Set the main page canvas to a subtle cool blue-gray instead of pure white.
+  Keep primary content surfaces white and secondary/expanded content on a
+  restrained blue-gray tint.
+- Add shared grouped-row, section-header, icon-tile, value-chip, metadata-chip,
+  divider, and pressed-state primitives. Reuse them across tabs instead of
+  creating Schedule-, Church-, and Profile-specific copies.
+- Avoid card-inside-card decoration. A grouped row surface may contain internal
+  separators, while genuinely nested information such as expanded service
+  details uses one quiet tinted band rather than another floating card.
+- Reduce bright pale-blue outlines. Use neutral blue-gray borders and reserve
+  stronger blue for selection, personal relevance, and actions.
+- Give repeated Schedule, Church, and Profile content enough surface contrast
+  to remain distinct from the canvas. The result must add depth and color
+  without turning every section into a floating card or making the app feel
+  dominated by one blue shade.
+
+Checkpoint 25B: semantic status system:
+
+- Standardize success, attention, error, informational, personal, assigned,
+  unassigned, and disabled treatments as icon/text/surface combinations.
+- Never communicate completion, assignment, fill-in state, or ownership through
+  color alone. Every status must retain a readable label or accessible value.
+- Keep green for complete/assigned, amber for pending attention, red for errors
+  or destructive actions, and blue for selection/personal relevance.
+
+Checkpoint 25C: typography and rhythm:
+
+- Preserve the responsive and word-safe name system while standardizing section
+  spacing, heading sizes, supporting copy, row density, and tablet maximum
+  widths across Schedule, Church, and Profile.
+- Ensure all church and person names wrap only between words, retain full
+  accessibility labels, and do not shrink unpredictably because of decorative
+  controls.
+
+Verification:
+
+- Use before/after screenshots on narrow Android, current iPhone, large phone,
+  and tablet. Verify normal and Larger Text, sufficient contrast, no overlap,
+  and no lost actions.
+- No Supabase migration or backend deployment belongs to Package 25.
+
+#### Package 26: Schedule Comprehension and Role Symbols
+
+Status:
+
+- Planned after the shared surface system. This package contains one optional
+  additive backend checkpoint followed by client presentation work. Deploy the
+  backend checkpoint first and smoke-test released builds before the new client
+  uses it.
+
+Goal:
+
+- Make every service answer, in order: what service is this, when is it, am I
+  serving, what is my role, is the team complete, and where are the songs/team
+  details.
+- Add optional admin-selected role symbols without ever replacing written role
+  names or changing role eligibility, assignment, auto-assignment, or fill-in
+  behavior.
+- Replace the current generic 90-day summary with truthful date context and use
+  stronger visual emphasis for service metadata and song numbering without
+  changing schedule loading, assignment permissions, or song behavior.
+
+Checkpoint 26A: additive role-symbol foundation:
+
+- Confirm no existing role metadata already represents this capability.
+- Add one nullable `icon_key`-style field to the existing church-role record,
+  using an additive idempotent migration. Do not rename the roles table, change
+  existing role IDs/names, or require a value for old rows.
+- Store only a controlled semantic key such as `microphone`, `keyboard`,
+  `guitar`, `drums`, `music`, `reading`, `presentation`, `sound`, `camera`,
+  `hospitality`, or `person`. Map that key in client code to reviewed SF Symbol
+  and Material icon names; never execute or render an arbitrary icon identifier
+  from the database.
+- Keep null/unknown keys safe with a neutral person/music fallback. Released
+  builds continue reading and writing roles without the optional field.
+- Regenerate Supabase types, add RLS/behavior tests, run advisors, deploy the
+  migration before client use, and smoke-test the currently released Android
+  and iOS builds.
+
+Checkpoint 26B: admin role-symbol editor:
+
+- Add an optional symbol picker to the existing Church Setup role add/edit
+  workflow. Use a compact, labeled grid/list of familiar symbols with `None` or
+  `General` as a valid choice.
+- Save symbol changes through the existing role mutation/cache/Realtime path.
+  Do not create a separate role-settings table, role identity, or competing
+  editor.
+- Display both icon and role name in the picker, preview, and saved row. Add
+  full VoiceOver/TalkBack labels and a non-color selected indicator.
+
+Checkpoint 26C: member-first Schedule defaults:
+
+- Open regular members on local `My Schedule` presentation state and admins on
+  `All Services`. Keep both segments available and keep `Needs Attention`
+  visible in either view. Do not persist a hidden filter that makes services
+  appear missing on a future launch.
+- Retain the earlier approved branded header from Package 23. Do not use the
+  flatter header from the last Schedule-only concept image.
+- Keep month grouping, loaded windows, filters, pagination, refresh, Realtime,
+  notification history, and widget behavior unchanged.
+- Add a compact, noninteractive `Today` date marker near the Schedule controls,
+  styled from the same date-tile family as a service but clearly distinguished
+  from a real service row. It must show the device-local weekday, day, and month,
+  update after midnight/app resume, and never create, filter, or scroll to a
+  nonexistent service.
+- Replace any visible `next 90 days` or query-horizon wording in the main
+  Schedule summary with the actual first-to-last date represented by scheduled
+  service records. Keep the existing incremental loading horizon internally;
+  if later services are not loaded, use a lightweight cached min/max summary
+  query against existing service data rather than pretending the loaded window
+  is the church's complete scheduled range.
+- Define clear empty and partial-data wording: no range when no services exist,
+  one date when only one scheduled date exists, and an honest `Loaded through`
+  state while the complete min/max summary is unavailable. Filters may show a
+  separate visible-result range but must not overwrite the church schedule
+  range.
+- Stabilize `Load Next 90 Days` before changing its appearance. Track one
+  explicit pending range key from press through settled query state, reject
+  repeated presses for that range, and do not infer the button's busy state
+  solely from a newly appended query that may not be fetching until the next
+  render.
+- Keep the footer's dimensions and label lane stable while loading so the icon,
+  spinner, and text cannot flicker or move the list. Preserve all already-loaded
+  services, scroll position, expanded cards, filters, and widget input while the
+  next range loads; show one stable Retry state on failure and advance
+  `loadedThrough` only after success.
+- Add slow-network, cached-range, rapid-double-press, failed/retried range,
+  church-switch-during-load, empty-range, Realtime update, and end-of-list tests.
+  Loading a range must issue one request and must never duplicate or temporarily
+  remove visible services.
+
+Checkpoint 26D: faster collapsed-card comprehension:
+
+- Use a stable deep-navy metadata treatment with white/high-contrast text for
+  the service date and restrained dark-blue emphasis for the time and service
+  type/name. Keep the primary card surface lighter so services stand out from
+  the canvas without becoming dense dark blocks. Reserve the right lane for
+  status and the existing admin overflow action.
+- When the current member is assigned, show a prominent soft-blue
+  `You're serving` summary with the configured symbol and written role name.
+  Combine multiple roles clearly without duplicating the service.
+- When not assigned, show the explicit quieter text `Not assigned`. Show
+  `Fill-in requested`, open-role, or other attention states with text and icon.
+- Keep compact Team and Songs metadata chips. Rename the disclosure to the more
+  descriptive `View team and songs` / `Hide team and songs`.
+- Give services involving the current member a subtle blue edge/accent without
+  relying on that accent as the only assignment cue.
+
+Checkpoint 26E: clearer expanded team and songs:
+
+- Place expanded details on one softly tinted inner surface with Team first and
+  Songs second.
+- Render each team role as a structured row: icon tile, written role name,
+  assigned member, and explicit `You`, `Assigned`, `Open`, or
+  `Fill-in requested` state. Highlight the current member's row with both a
+  soft-blue surface and a `YOU` badge.
+- Preserve church role order. For members, rows stay read-only except the
+  existing own-assignment fill-in actions. For admins, the existing
+  availability-safe assignment interaction remains available and no direct
+  mutation is added to a decorative icon.
+- Keep songs as an ordered written list. Show the existing add/edit/delete
+  controls only to the same authorized admin or song author as today.
+- Make an entered `song_number` immediately scannable with a compact accent
+  `#number` chip beside the song type/title. Give the existing Song Number input
+  the same visual emphasis while adding or editing one/multiple song drafts,
+  including a clear selected/focused state. Do not generate a number when the
+  field is empty or alter ordering, validation, edit/delete ownership, or
+  notification behavior.
+
+Compatibility and verification:
+
+- Add tests proving icons never affect role matching, manual assignment,
+  auto-assignment, unavailable-date enforcement, notification targeting, or
+  fill-in eligibility.
+- Verify services with null, known, and unknown symbol keys; duplicate role
+  names; several roles assigned to one person; multiple roles for the current
+  user; long translated role names; open slots; and pending fill-ins.
+- Run the full schedule authorization suite for owner, scheduling admin,
+  ordinary member, assigned member, fill-in requester, and song author.
+
+#### Package 27: Church and Profile Visual Polish
+
+Status:
+
+- Planned after Package 26. Client-only unless Package 26's optional role symbol
+  is displayed; it must not add another migration.
+
+Church direction:
+
+- Preserve the approved header, church name, invitation-code copy action, and
+  add-church action.
+- Place Church Setup on the tinted canvas and group related destinations into
+  clean white row surfaces with restrained separators, pale-blue icon tiles,
+  concise summaries, green labeled completion states, and stable chevrons.
+- Keep Schedule Management visually separate from core setup so first-time
+  admins understand what must be configured before creating and assigning
+  services.
+- Preserve every existing setup editor, readiness calculation, recommended next
+  step, bulk deletion, quarter preparation, auto-assignment, reminder setting,
+  and permission boundary.
+- Keep Church editor content ready for Package 28's taller responsive popup
+  presentation. Do not add per-editor height overrides or duplicate modal
+  shells while polishing the launch rows in this package.
+- Guard quarter preparation against a quarter whose local-calendar end date is
+  earlier than today. Mark every fully elapsed quarter/year option unavailable,
+  explain `This quarter has already ended`, and disable Continue/Generate before
+  any draft or request is created.
+- Repeat the elapsed-quarter validation in the final prepare handler so stale
+  modal state, a midnight rollover, or programmatic invocation cannot create
+  past-quarter services. The current or a future quarter remains selectable;
+  keep all existing block-date, special-service, duplicate protection, batch
+  creation, cache, and Realtime behavior unchanged.
+
+Profile direction:
+
+- Preserve the approved member-identity header and place each settings group on
+  a distinct white grouped surface over the tinted canvas.
+- Restyle the Profile identity symbol as an unframed avatar/identity mark rather
+  than a bordered square that appears tappable. It must not expose button
+  semantics, pressed feedback, or a hit target unless a real profile-photo
+  action is added in a separately approved feature.
+- Use semantic icon tiles and compact value chips for Owner/Admin/Member,
+  connected churches, unavailable-date count, scheduling preference summary,
+  notification count, and account state.
+- Distinguish actionable rows with chevrons and pressed states from informational
+  values. Keep Account and destructive actions in their existing lower sections
+  with a clearly separate danger treatment.
+- Preserve all Profile queries, immediate saves, rollback behavior, church
+  switching, password-manager metadata, notification settings, sign-out, and
+  account deletion.
+- Add restrained navy/pale-blue section accents, icon surfaces, and status/value
+  treatments so the tab no longer reads as a long white page. Keep text-heavy
+  information on quiet surfaces and preserve sufficient contrast.
+- In visible App Information, show the marketing app version only. Remove the
+  native build number from the user-facing row while retaining it internally
+  for logs, diagnostics, store submissions, and support data where it is not
+  rendered as ordinary Profile content. This intentionally supersedes Package
+  22's earlier visible-build-number presentation without changing build config.
+- Extend the Unavailable Dates editor from the shared 90-day service window to
+  a true six-calendar-month range beginning on the device-local current date.
+  Calculate the end with calendar-month arithmetic instead of assuming every
+  month has 30 days. This is a client range change only: preserve existing saved
+  dates outside the visible range and keep the current table, save operation,
+  auto-assignment hard block, manual-assignment validation, and older clients
+  unchanged.
+- Reverse only the presentation semantics of Scheduling Preferences. Every
+  eligible weekly-service/role switch appears ON by default and means `Schedule
+  me here when needed`; switching it OFF means `Prefer not to schedule me here`.
+  Continue storing only OFF/avoid combinations in the existing
+  `member_scheduling_preferences` rows so released builds and every deployed
+  auto-assign RPC retain exactly the same meaning.
+- Rename client helpers and mutation arguments around `isAvailable`/`shouldAvoid`
+  so the inversion is explicit rather than relying on scattered boolean
+  negation. Update summaries, accessibility labels, optimistic updates,
+  rollback/retry copy, Realtime replacement, and multi-device tests. A missing
+  row must always render ON; an existing avoidance row must always render OFF.
+
+Verification:
+
+- Compare one/many-church, owner/admin/member, incomplete/complete setup,
+  no-role/many-role, and long-name fixtures at all supported sizes.
+- Ensure no grouped surface is hidden behind the new dock and pull-to-refresh
+  retains visible cached content without a full-screen flash.
+
+#### Package 28: Focused Screens, Modal Parity, and Dark-Mode Readiness Gate
+
+Status:
+
+- Planned final design package. Client-only.
+
+Goal:
+
+- Finish the design system beyond the three main tabs and prove that all new
+  visual primitives can switch to a dark token set later without another
+  component rewrite.
+
+Implementation:
+
+- Migrate focused Church/Profile editors, onboarding, password reset, account
+  actions, notification history, filters, assignment pickers, song editors,
+  quarter preparation, bulk deletion, and auto-assignment previews to the same
+  canvas, surface, input, status, button, and modal tokens.
+- Replace the login/onboarding placeholder or generic symbol with the canonical
+  Music Ministry app mark selected from the existing app/splash assets. Use one
+  transparent, high-quality source with responsive bounds, correct aspect
+  ratio, accessible treatment, and no button styling; do not duplicate the full
+  splash experience or alter authentication routing and validation.
+- Extend, rather than bypass, the Package 20 modal contract. Keep consistent
+  outer margins and maximum width, but give Church forms and other content-rich
+  forms a taller safe-area-derived body on normal/large devices. Confirmations
+  remain compact, forms use a comfortable medium/tall range, and previews use
+  capped long-content height with one internal scroll owner.
+- Do not use one fixed height for every popup. Preserve Package 20 keyboard and
+  dismissal behavior, pinned/reachable footer actions, Android back, iOS
+  accessibility escape, date/time draft confirmation, and compact fallbacks on
+  small phones or landscape. No popup may expand underneath the keyboard or
+  beyond the safe area.
+- Redesign focused-screen and popup headers as contextual header zones using the
+  semantic modal-header surface, relevant icon, concise title, optional helpful
+  subtitle, and a clearly separated close/back action. Avoid the current
+  one-stripe-bar appearance, decorative card nesting, and oversized hero
+  typography; the header must make the displayed task or information easy to
+  identify at a glance.
+- Give `Manage Assignment` the taller long-content allocation from the shared
+  modal system so role-grouped member names and unavailable explanations are
+  visible without making the footer leave the safe area. Keep selection,
+  availability enforcement, assign/reassign/clear permissions, and request
+  payloads unchanged.
+- Make the assignment list the only vertical scroll owner inside that modal.
+  Reset it to the top whenever a newly opened assignment target/role replaces
+  the previous one, but do not jump while the user is reading the same list or
+  while a background refresh settles. Verify upward and downward scrolling from
+  both ends, momentum interruption, orientation change, Android nested-scroll
+  behavior, iOS bounce, keyboard dismissal, and Larger Text.
+- Replace remaining hard-coded light colors in migrated UI with semantic tokens.
+  Document any deliberate platform/native exceptions.
+- Render every migrated screen against the future dark token object in automated
+  component/contract tests or a development-only visual harness. Fix missing
+  tokens and contrast failures, but keep production dark-mode activation
+  deferred until separately approved.
+
+Final visual release gate:
+
+- Run TypeScript, full ESLint, all package tests, Deno checks where unchanged
+  backend contracts are revalidated, Android/iOS/web production exports, and
+  `git diff --check`.
+- Capture light-theme screenshots for Schedule collapsed/expanded/attention,
+  Church setup/management, Profile overview/focused editors, onboarding,
+  recovery, every modal family, and two/three-tab navigation.
+- Include dedicated visual fixtures for the branded login mark, Profile's
+  noninteractive identity icon, App Information without a visible build number,
+  the Today marker, actual scheduled date ranges, navy service metadata,
+  highlighted song numbers, compact confirmations, taller forms, and long
+  scrollable previews.
+- Test small Android, current and older supported iPhones, large phone, tablet,
+  landscape, Larger Text, display scaling, VoiceOver, TalkBack, Voice Control,
+  Reduced Motion, keyboard interaction, and gesture navigation.
+- Confirm no functionality, action, permission, notification, cache update,
+  Realtime event, widget refresh, route, or older-version database contract was
+  removed or changed by the redesign.
+
+Done when:
+
+- The approved header, futuristic dock, layered light surfaces, clearer
+  Schedule, role symbols, Church setup, Profile settings, focused screens, and
+  modals read as one coherent product; first-time members can identify their
+  service and role without opening every card; and activating dark mode later
+  requires selecting a palette rather than rewriting components.
+
+#### Package 29: Notification Lifecycle and iOS Widget Reliability
+
+Status:
+
+- Planned after Package 28. The two checkpoints are operationally independent:
+  notification retention is an additive backend-first change, while widget
+  repair is iOS client/native work requiring a new build.
+- Do not deploy the retention job or publish the widget repair until released
+  Android/iOS builds pass the compatibility checks described below.
+
+Goal:
+
+- Keep in-app notification history useful without retaining old read entries
+  indefinitely, and make both iOS widget choices reliably load the selected
+  church's real upcoming service details without requiring the user to visit the
+  Schedule tab first.
+
+Checkpoint 29A: bounded notification-history retention:
+
+- Treat the request as automatic cleanup of old in-app history. Use a proposed
+  default of 90 days and confirm that period before deployment. Prune only read
+  `member_notifications` whose `read_at` is older than the retention threshold;
+  never delete unread entries merely because they are old.
+- Keep push delivery and idempotency independent from presentation cleanup. Do
+  not delete or shorten `notification_log`, OneSignal device/subscription rows,
+  event-key ledgers, fill-in requests, service assignments, or any source record
+  required to prevent duplicate pushes.
+- Implement the cleanup as an idempotent, bounded-batch private database routine
+  scheduled at most daily. It must not be publicly callable, must not use a
+  client service-role key, and must be safe when rerun after a partial failure.
+- Keep the notification list and unread-count queries valid when rows disappear.
+  Realtime DELETE payload handling must remove only the matching cached row and
+  must not make the bell count negative or refetch the whole history repeatedly.
+- Add migration/RLS/security-advisor tests, retention-boundary fixtures, unread
+  preservation, dedupe-ledger preservation, multi-church/member isolation, and
+  old-client smoke tests before live deployment. Released builds should simply
+  show a shorter recent-history list and continue receiving pushes normally.
+
+Checkpoint 29B: repair widget snapshot delivery:
+
+- Reproduce the reported `widget shell displays but service details do not`
+  state on a physical iPhone and inspect, in order: main-app and extension App
+  Group entitlements, provisioning profiles, shared defaults suite/key,
+  snapshot decoding, scope fingerprint, query readiness, timeline reload, and
+  stale/empty-state selection. Do not mask a provisioning failure with UI copy.
+- Move snapshot synchronization from Schedule-screen mount ownership to an
+  authenticated selected-membership lifecycle owner. Once the selected church,
+  current member, and upcoming service query are ready, write the sanitized
+  snapshot and reload both widget kinds even when the user opens Church/Profile
+  or leaves the app without visiting Schedule.
+- Reuse the existing React Query service cache or one deduplicated lightweight
+  upcoming-service query; do not create a second polling loop. Ensure the
+  personal projection receives assignments and role names while the church-wide
+  projection receives service name, date, and time.
+- Never replace a valid snapshot with `unavailable` during ordinary intermediate
+  loading. Clear it only on sign-out, account/church scope change, removed
+  membership, or an explicit terminal no-church state; then write the new scope
+  atomically after it becomes ready.
+- Preserve snapshot schema v1 unless a change is demonstrably required. If a
+  new schema is needed, make the Swift decoder and app writer tolerate the last
+  schema during an app upgrade and safely rewrite it; keep App Group names,
+  widget kinds, extension bundle identifier, and OneSignal App Group untouched.
+- Reload timelines after committed service/assignment/song-independent schedule
+  changes, app resume, pull-to-refresh success, and church/account switching,
+  while coalescing duplicate reloads. Widget refresh remains best-effort and
+  must never block app navigation or schedule mutations.
+
+Compatibility and verification:
+
+- Notification retention requires a backend-first released-build canary before
+  enabling the daily schedule. Confirm one push per eligible device before and
+  after cleanup and verify old Android/iOS clients can open and mark the
+  remaining history read.
+- Widget repair requires a fresh iOS development/TestFlight build because the
+  extension and entitlements are native. Test both widget kinds simultaneously
+  in small and medium sizes after first login, app restart, app termination,
+  church switch, account switch, assignment change, service deletion, no
+  upcoming services, denied notifications, and an app upgrade with an existing
+  snapshot.
+- Add TypeScript model tests, extension contract tests, Swift build/export
+  verification, app-group entitlement checks for both targets, and a physical
+  timeline-reload test. Android behavior and builds must remain unchanged.
+
+Done when:
+
+- Read notification history expires only under the confirmed policy without
+  affecting delivery or duplicate prevention, and each iOS widget displays the
+  correct selected-church service details after login without requiring the
+  Schedule tab to be opened.
 
 ## Cross-Feature Release Gate
 

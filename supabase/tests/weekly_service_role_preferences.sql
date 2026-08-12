@@ -1,5 +1,5 @@
--- Run inside a transaction after the Step 7 migration. The caller must roll
--- the transaction back so this isolated church never persists.
+-- Run after the Step 7 migration. This test removes its isolated church and
+-- all cascading test data before it completes successfully.
 do $behavior$
 declare
   caller_id uuid;
@@ -238,5 +238,8 @@ begin
   ) then
     raise exception 'Legacy batch payload did not infer its recurring source';
   end if;
+
+  delete from public.churches
+  where id = test_church_id;
 end
 $behavior$;

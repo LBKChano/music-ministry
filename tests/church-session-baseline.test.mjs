@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  filterChurchesWithAccountMembership,
   hasChurchAdminAccess,
   membershipMatchesChurchSession,
   mergeVisibleChurches,
@@ -28,6 +29,40 @@ test('visible churches preserve first position while the later duplicate value w
   );
 
   assert.deepEqual(result, [duplicateChurchA, churchB]);
+});
+
+test('church discovery excludes owner records without an account membership', () => {
+  const memberships = [{
+    church_id: churchB.id,
+    member_id: 'account-owner',
+    is_admin: false,
+  }];
+
+  assert.deepEqual(
+    filterChurchesWithAccountMembership(
+      [churchA, churchB],
+      memberships,
+      'account-owner',
+    ),
+    [churchB],
+  );
+});
+
+test('church discovery ignores memberships belonging to another account', () => {
+  const memberships = [{
+    church_id: churchA.id,
+    member_id: 'different-account',
+    is_admin: true,
+  }];
+
+  assert.deepEqual(
+    filterChurchesWithAccountMembership(
+      [churchA],
+      memberships,
+      'account-owner',
+    ),
+    [],
+  );
 });
 
 test('current church remains selected while access still exists', () => {

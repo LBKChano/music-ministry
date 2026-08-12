@@ -1,5 +1,8 @@
 import { supabase } from '@/lib/supabase/client';
-import { mergeVisibleChurches } from '@/lib/church/session-baseline';
+import {
+  filterChurchesWithAccountMembership,
+  mergeVisibleChurches,
+} from '@/lib/church/session-baseline';
 import type { Tables } from '@/lib/supabase/types';
 
 type Church = Tables<'churches'>;
@@ -73,9 +76,16 @@ export async function fetchAccountChurchDiscovery(
     memberChurches = data ?? [];
   }
 
+  const accountMemberships = memberships ?? [];
+  const accessibleOwnedChurches = filterChurchesWithAccountMembership(
+    ownedChurches ?? [],
+    accountMemberships,
+    accountId,
+  );
+
   return {
-    churches: mergeVisibleChurches(ownedChurches ?? [], memberChurches),
-    memberships: memberships ?? [],
+    churches: mergeVisibleChurches(accessibleOwnedChurches, memberChurches),
+    memberships: accountMemberships,
   };
 }
 

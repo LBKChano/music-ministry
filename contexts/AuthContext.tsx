@@ -1,5 +1,4 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import * as SplashScreen from 'expo-splash-screen';
 import type { Session } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase/client';
@@ -27,7 +26,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [initialized, setInitialized] = useState(false);
   const [initializationError, setInitializationError] = useState<string | null>(null);
-  const splashHidden = useRef(false);
   const mountedRef = useRef(false);
   const authEventRevisionRef = useRef(0);
   const activeAccountIdRef = useRef<string | null>(null);
@@ -44,20 +42,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(newSession);
   }, [queryClient]);
 
-  const hideSplash = useCallback(() => {
-    if (!splashHidden.current) {
-      splashHidden.current = true;
-      console.log('[AuthContext] hiding splash screen');
-      try {
-        SplashScreen.hideAsync().catch((err) => {
-          console.warn('[AuthContext] SplashScreen.hideAsync error (ignored):', err);
-        });
-      } catch (err) {
-        console.warn('[AuthContext] SplashScreen.hideAsync threw (ignored):', err);
-      }
-    }
-  }, []);
-
   const initializeAuth = useCallback(async () => {
     const startingRevision = authEventRevisionRef.current;
     setInitializationError(null);
@@ -70,7 +54,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         setInitializationError(error.message);
         setInitialized(true);
-        hideSplash();
         return;
       }
 
@@ -78,7 +61,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         replaceSession(data.session ?? null);
       }
       setInitialized(true);
-      hideSplash();
     } catch (error) {
       if (!mountedRef.current) return;
       const message = error instanceof Error
@@ -87,9 +69,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('[AuthContext] Session initialization failed:', error);
       setInitializationError(message);
       setInitialized(true);
-      hideSplash();
     }
-  }, [hideSplash, replaceSession]);
+  }, [replaceSession]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -117,7 +98,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         setInitialized(true);
-        hideSplash();
       });
 
       subscription = data?.subscription ?? null;
@@ -138,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // ignore cleanup errors
       }
     };
-  }, [hideSplash, initializeAuth, replaceSession]);
+  }, [initializeAuth, replaceSession]);
 
   const signOut = async () => {
     console.log('[AuthContext] signOut called');

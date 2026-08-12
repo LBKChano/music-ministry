@@ -107,7 +107,16 @@ function RootLayoutNav() {
     onesignalSubscriptionId,
   } = useNotifications();
   const registeredDeviceKeyRef = useRef<string | null>(null);
+  const nativeSplashHiddenRef = useRef(false);
   usePerformanceBaselineLifecycle();
+
+  const handleSplashReady = React.useCallback(() => {
+    if (nativeSplashHiddenRef.current) return;
+    nativeSplashHiddenRef.current = true;
+    SplashScreen.hideAsync().catch(error => {
+      console.warn('[Layout] Unable to hide native splash screen:', error);
+    });
+  }, []);
 
   useEffect(() => {
     const subscription = Linking.addEventListener('url', ({ url }) => {
@@ -177,7 +186,7 @@ function RootLayoutNav() {
   ]);
 
   useEffect(() => {
-    const rootSegment = segments[0];
+    const rootSegment = segments[0] as string | undefined;
     const isPasswordRecovery = rootSegment === 'reset-password';
     const isOnboarding = rootSegment === 'onboarding';
     const isEmailVerification = rootSegment === 'verify-email';
@@ -303,6 +312,16 @@ function RootLayoutNav() {
   const activeTheme = colorScheme === 'dark'
     ? CustomDarkTheme
     : CustomDefaultTheme;
+  const showStartupSplash = (
+    !initialized
+    || (
+      startupDestination === 'wait'
+      && !currentChurch
+      && segments[0] !== 'onboarding'
+      && segments[0] !== 'reset-password'
+      && segments[0] !== 'verify-email'
+    )
+  );
 
   return (
     <ThemeProvider value={activeTheme}>
@@ -341,18 +360,10 @@ function RootLayoutNav() {
            * so the navigator is mounted (and can receive navigation calls) but
            * the user sees a clean loading screen instead of a flash of the wrong route.
            */}
-          {(
-            !initialized
-            || (
-              startupDestination === 'wait'
-              && !currentChurch
-              && segments[0] !== 'onboarding'
-              && segments[0] !== 'reset-password'
-              && segments[0] !== 'verify-email'
-            )
-          ) && (
-            <CustomSplashScreen />
-          )}
+          <CustomSplashScreen
+            onReady={handleSplashReady}
+            visible={showStartupSplash}
+          />
 
           {sessionStatus === 'selecting-church' ? (
             <View

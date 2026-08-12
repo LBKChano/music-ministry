@@ -40,7 +40,9 @@ export const performanceBaselineEnabled =
 const deviceLabel =
   process.env.EXPO_PUBLIC_PERFORMANCE_DEVICE_LABEL?.trim() || `${Platform.OS}-local`;
 
-function sanitizeEndpoint(input: Parameters<typeof fetch>[0]): string {
+type PerformanceFetchInput = string | URL | Request;
+
+function sanitizeEndpoint(input: PerformanceFetchInput): string {
   const rawUrl =
     typeof input === 'string'
       ? input
@@ -58,7 +60,7 @@ function sanitizeEndpoint(input: Parameters<typeof fetch>[0]): string {
 }
 
 function requestMethod(
-  input: Parameters<typeof fetch>[0],
+  input: PerformanceFetchInput,
   init?: Parameters<typeof fetch>[1]
 ): string {
   if (init?.method) return init.method.toUpperCase();
