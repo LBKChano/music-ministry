@@ -290,7 +290,7 @@ export function AppModal({
               borderRadius: theme.radii.modal,
               maxHeight: layout.maxHeight,
               maxWidth: layout.maxWidth,
-              minHeight: layout.minHeight,
+              minHeight: keyboardVisible ? undefined : layout.minHeight,
             },
           ]}
           testID={testID}

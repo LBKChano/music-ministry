@@ -35,6 +35,7 @@ export function ProfileFocusedHeader({
     <FocusedScreenHeader
       backAccessibilityLabel="Back to Profile"
       disabled={disabled}
+      extendIntoTopSafeArea
       onBack={onBack}
       subtitle={subtitle}
       title={title}

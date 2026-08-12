@@ -41,6 +41,20 @@ test('the extension exposes two independent static iOS 16 widget choices', () =>
   assert.equal(swift.includes('URLSession'), false);
 });
 
+test('the church widget shows one service with its assigned team', () => {
+  const model = read('lib/widgets/schedule-widget-model.ts');
+  const swift = read('targets/ScheduleWidgets/ScheduleWidgets.swift');
+
+  assert.match(model, /person_name\?: string \| null/);
+  assert.match(model, /team\?: ScheduleWidgetTeamMember\[\]/);
+  assert.match(model, /team: assignedTeam\(service\.assignments\)/);
+  assert.match(swift, /let team: \[StoredScheduleTeamMember\]\?/);
+  assert.match(swift, /prefix\(1\)/);
+  assert.match(swift, /Assigned Team/);
+  assert.match(swift, /member\.role[\s\S]*member\.memberName/);
+  assert.doesNotMatch(swift, /followingServices|dropFirst\(\)\.prefix/);
+});
+
 test('snapshot identifiers and privacy boundaries match across JavaScript and Swift', () => {
   const model = read('lib/widgets/schedule-widget-model.ts');
   const nativeStorage = read('lib/widgets/schedule-widget.ios.ts');

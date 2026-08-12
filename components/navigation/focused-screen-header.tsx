@@ -5,6 +5,7 @@ import { AdaptiveHeaderText } from '@/components/navigation/adaptive-header-text
 import { WordSafeHeaderText } from '@/components/navigation/word-safe-header-text';
 import { useAppTheme } from '@/contexts/AppThemeContext';
 import { calculateFocusedHeaderTitleLaneWidth } from '@/lib/ui/header-typography';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type FocusedScreenHeaderTone = 'brand' | 'surface';
 
@@ -16,6 +17,7 @@ export function FocusedScreenHeader({
   backAccessibilityLabel,
   onBack,
   trailing,
+  extendIntoTopSafeArea = false,
   iosIcon = 'slider.horizontal.3',
   androidIcon = 'tune',
 }: {
@@ -26,10 +28,12 @@ export function FocusedScreenHeader({
   backAccessibilityLabel: string;
   onBack: () => void;
   trailing?: ReactNode;
+  extendIntoTopSafeArea?: boolean;
   iosIcon?: string;
   androidIcon?: React.ComponentProps<typeof IconSymbol>['android_material_icon_name'];
 }) {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
   const { width: windowWidth, fontScale } = useWindowDimensions();
   const isBrand = tone === 'brand';
   const foreground = isBrand
@@ -54,6 +58,8 @@ export function FocusedScreenHeader({
           backgroundColor: surface,
           borderBottomColor: theme.modalHeader.accent,
           boxShadow: theme.elevation.low,
+          minHeight: styles.header.minHeight + (extendIntoTopSafeArea ? insets.top : 0),
+          paddingTop: styles.header.paddingVertical + (extendIntoTopSafeArea ? insets.top : 0),
         },
       ]}
     >
@@ -149,7 +155,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     minHeight: 76,
-    borderBottomWidth: 3,
+    borderBottomWidth: 2,
     gap: 10,
     paddingHorizontal: 12,
     paddingVertical: 11,

@@ -24,7 +24,7 @@ test('modal families use progressively more safe vertical space', () => {
   assert.equal(form.maxHeight, 687.14);
   assert.equal(tallForm.maxHeight, 716.38);
   assert.equal(longContent.maxHeight, 731);
-  assert.equal(tallForm.minHeight, 440);
+  assert.equal(tallForm.minHeight, 657.9);
   assert.ok(confirmation.maxHeight < form.maxHeight);
   assert.ok(form.maxHeight < tallForm.maxHeight);
   assert.ok(tallForm.maxHeight < longContent.maxHeight);
@@ -52,6 +52,7 @@ test('safe margins and minimum heights adapt to narrow and landscape devices', (
   assert.equal(narrow.verticalMargin, 12);
   assert.equal(narrow.maxWidth, 296);
   assert.equal(narrow.maxHeight, 493.92);
+  assert.equal(narrow.minHeight, 453.6);
   assert.equal(landscape.maxHeight, 280);
   assert.equal(landscape.minHeight, 280);
   assert.equal(landscape.stackActions, true);

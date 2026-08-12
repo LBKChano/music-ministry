@@ -41,6 +41,14 @@ const VARIANT_MIN_HEIGHTS: Record<AppModalVariant, number | undefined> = {
   'long-content': 440,
 };
 
+const VARIANT_MIN_HEIGHT_RATIOS: Record<AppModalVariant, number | undefined> = {
+  confirmation: undefined,
+  form: undefined,
+  'tall-form': 0.9,
+  'long-content': 0.94,
+};
+const CONTENT_MODAL_MIN_HEIGHT_CEILING = 760;
+
 export function getModalLayout(input: ModalLayoutInput): ModalLayout {
   const horizontalMargin = input.width < 380 ? 12 : 16;
   const verticalMargin = input.restingHeight < 620 ? 12 : 16;
@@ -52,6 +60,14 @@ export function getModalLayout(input: ModalLayoutInput): ModalLayout {
   const variantHeight = availableHeight * VARIANT_HEIGHT_RATIOS[input.variant];
   const requestedHeight = input.requestedMaxHeight ?? variantHeight;
   const resolvedMaxHeight = Math.min(availableHeight, requestedHeight);
+  const fixedMinimum = VARIANT_MIN_HEIGHTS[input.variant];
+  const proportionalMinimum = VARIANT_MIN_HEIGHT_RATIOS[input.variant] === undefined
+    ? undefined
+    : Math.min(
+      availableHeight * (VARIANT_MIN_HEIGHT_RATIOS[input.variant] as number),
+      CONTENT_MODAL_MIN_HEIGHT_CEILING,
+    );
+  const preferredMinimum = proportionalMinimum ?? fixedMinimum;
 
   return {
     maxWidth: Math.min(
@@ -59,9 +75,9 @@ export function getModalLayout(input: ModalLayoutInput): ModalLayout {
       input.requestedMaxWidth ?? VARIANT_WIDTHS[input.variant],
     ),
     maxHeight: resolvedMaxHeight,
-    minHeight: VARIANT_MIN_HEIGHTS[input.variant] === undefined
+    minHeight: preferredMinimum === undefined
       ? undefined
-      : Math.min(VARIANT_MIN_HEIGHTS[input.variant] as number, resolvedMaxHeight),
+      : Math.min(Math.max(fixedMinimum ?? 0, preferredMinimum), resolvedMaxHeight),
     horizontalMargin,
     verticalMargin,
     stackActions: input.width < 360 || input.fontScale > 1.35,

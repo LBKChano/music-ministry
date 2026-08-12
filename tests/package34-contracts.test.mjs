@@ -30,6 +30,12 @@ test('shared modal shell owns safe geometry, pinned chrome, and form scrolling',
   assert.match(appModal, /contentInsetAdjustmentBehavior="never"/);
 });
 
+test('content-rich modal height yields to the software keyboard', () => {
+  assert.match(appModal, /minHeight: keyboardVisible \? undefined : layout\.minHeight/);
+  assert.match(appModal, /automaticallyAdjustKeyboardInsets=\{Platform\.OS === 'ios'\}/);
+  assert.match(appModal, /keyboardDismissMode=\{Platform\.OS === 'ios' \? 'interactive' : 'on-drag'\}/);
+});
+
 test('form-heavy workflows use the tall family without legacy height caps', () => {
   assert.match(church, /title="Edit Member"[\s\S]{0,180}variant="tall-form"/);
   assert.match(church, /title=\{serviceToEdit \? 'Edit Weekly Service' : 'Add Weekly Service'\}[\s\S]{0,180}variant="tall-form"/);

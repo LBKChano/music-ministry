@@ -17,7 +17,7 @@ const services = [
     date: '2026-08-02',
     time: '09:00:00',
     service_type: 'Sunday Morning',
-    assignments: [{ member_id: 'other-member', role: 'Piano' }],
+    assignments: [{ member_id: 'other-member', role: 'Piano', person_name: 'Elly' }],
   },
   {
     id: 'service-assigned',
@@ -25,9 +25,9 @@ const services = [
     time: '09:00:00',
     service_type: 'Sunday Morning',
     assignments: [
-      { member_id: 'member-21', role: 'Vocals' },
-      { member_id: 'member-21', role: 'Guitar' },
-      { member_id: 'member-21', role: ' vocals ' },
+      { member_id: 'member-21', role: 'Vocals', person_name: 'Lisandro' },
+      { member_id: 'member-21', role: 'Guitar', person_name: 'Lisandro' },
+      { member_id: 'member-21', role: ' vocals ', person_name: ' Lisandro ' },
     ],
   },
 ];
@@ -45,6 +45,35 @@ test('the two widget projections select independent next services', () => {
   assert.equal(snapshot.memberServices[0].serviceId, 'service-assigned');
   assert.deepEqual(snapshot.memberServices[0].roles, ['Guitar', 'Vocals']);
   assert.deepEqual(snapshot.churchServices[0].roles, []);
+  assert.deepEqual(snapshot.churchServices[0].team, [
+    { role: 'Piano', memberName: 'Elly' },
+  ]);
+});
+
+test('church team entries are sanitized, sorted by role, and exclude open slots', () => {
+  const snapshot = buildScheduleWidgetSnapshot({
+    churchName: 'Grace Church',
+    currentMemberId: 'member-21',
+    scopeFingerprint: 'scope-a',
+    now,
+    services: [{
+      id: 'service-team',
+      date: '2026-08-03',
+      time: '09:00',
+      service_type: 'Sunday Morning',
+      assignments: [
+        { member_id: null, role: 'Drums', person_name: '' },
+        { member_id: 'member-2', role: ' Vocals ', person_name: '  Maria\nLopez ' },
+        { member_id: 'member-1', role: 'Piano', person_name: 'Elly' },
+        { member_id: 'member-2', role: 'vocals', person_name: 'Maria Lopez' },
+      ],
+    }],
+  });
+
+  assert.deepEqual(snapshot.churchServices[0].team, [
+    { role: 'Piano', memberName: 'Elly' },
+    { role: 'Vocals', memberName: 'Maria Lopez' },
+  ]);
 });
 
 test('past and malformed services are removed using local date and time', () => {
@@ -106,18 +135,21 @@ test('deletion, reassignment, and fill-in acceptance rebuild both projections', 
 
   const afterReassignment = build(services.map(service => (
     service.id === 'service-assigned'
-      ? { ...service, assignments: [{ member_id: 'other-member', role: 'Vocals' }] }
+      ? { ...service, assignments: [{ member_id: 'other-member', role: 'Vocals', person_name: 'Other Member' }] }
       : service
   )));
   assert.deepEqual(afterReassignment.memberServices, []);
 
   const afterFillInAcceptance = build(services.map(service => (
     service.id === 'service-unassigned'
-      ? { ...service, assignments: [{ member_id: 'member-21', role: 'Piano' }] }
+      ? { ...service, assignments: [{ member_id: 'member-21', role: 'Piano', person_name: 'Lisandro' }] }
       : service
   )));
   assert.equal(afterFillInAcceptance.memberServices[0].serviceId, 'service-unassigned');
   assert.deepEqual(afterFillInAcceptance.memberServices[0].roles, ['Piano']);
+  assert.deepEqual(afterFillInAcceptance.churchServices[0].team, [
+    { role: 'Piano', memberName: 'Lisandro' },
+  ]);
 });
 
 test('snapshot text is sanitized without storing account identity', () => {
@@ -210,6 +242,12 @@ test('snapshot parsing rejects malformed or unsupported data', () => {
   });
 
   assert.deepEqual(parseScheduleWidgetSnapshot(JSON.stringify(ready)), ready);
+  const oldReady = {
+    ...ready,
+    churchServices: ready.churchServices.map(({ team: _team, ...service }) => service),
+    memberServices: ready.memberServices.map(({ team: _team, ...service }) => service),
+  };
+  assert.deepEqual(parseScheduleWidgetSnapshot(JSON.stringify(oldReady)), oldReady);
   assert.equal(parseScheduleWidgetSnapshot('{bad json'), null);
   assert.equal(parseScheduleWidgetSnapshot(JSON.stringify({ ...ready, schemaVersion: 2 })), null);
   assert.equal(parseScheduleWidgetSnapshot(JSON.stringify({ ...ready, scopeFingerprint: null })), null);

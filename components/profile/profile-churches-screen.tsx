@@ -15,7 +15,7 @@ export function ProfileChurchesScreen() {
 
   return (
     <SafeAreaView
-      edges={['top', 'left', 'right']}
+      edges={['left', 'right']}
       style={[styles.container, { backgroundColor: theme.colors.canvas }]}
     >
       <Stack.Screen options={{ headerShown: false }} />

@@ -35,12 +35,18 @@ private enum ScheduleWidgetContentState: Equatable {
     case empty
 }
 
+private struct StoredScheduleTeamMember: Codable, Hashable {
+    let role: String
+    let memberName: String
+}
+
 private struct StoredScheduleService: Codable, Identifiable {
     let serviceId: String
     let date: String
     let time: String?
     let serviceType: String
     let roles: [String]
+    let team: [StoredScheduleTeamMember]?
 
     var id: String { serviceId }
 }
@@ -96,7 +102,13 @@ private struct ScheduleWidgetEntry: TimelineEntry {
                     date: "2026-08-09",
                     time: "09:00:00",
                     serviceType: "Sunday Morning",
-                    roles: mode == .member ? ["Vocals"] : []
+                    roles: mode == .member ? ["Vocals"] : [],
+                    team: mode == .church
+                        ? [
+                            StoredScheduleTeamMember(role: "Worship Leader", memberName: "Lisandro"),
+                            StoredScheduleTeamMember(role: "Piano", memberName: "Elly")
+                        ]
+                        : nil
                 )
             ]
         )
@@ -194,7 +206,7 @@ private struct ScheduleTimelineProvider: TimelineProvider {
         }
 
         let upcoming = state == .ready
-            ? Array(services(from: snapshot).filter { isVisible($0, at: date) }.prefix(3))
+            ? Array(services(from: snapshot).filter { isVisible($0, at: date) }.prefix(1))
             : []
         return ScheduleWidgetEntry(
             date: date,
@@ -263,6 +275,62 @@ private struct ScheduleWidgetView: View {
     }
 
     private func readyView(_ service: StoredScheduleService) -> some View {
+        Group {
+            if entry.mode == .church {
+                churchServiceView(service)
+            } else {
+                memberAssignmentView(service)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func churchServiceView(_ service: StoredScheduleService) -> some View {
+        if family == .systemMedium {
+            HStack(alignment: .top, spacing: 12) {
+                serviceSummary(service)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Divider().overlay(.white.opacity(0.18))
+                teamList(service, limit: 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                modeHeading
+                Text(service.serviceType)
+                    .font(.system(.headline, design: .rounded, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(formattedSchedule(service))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color(red: 0.412, green: 0.776, blue: 1.0))
+                    .lineLimit(1)
+                Divider().overlay(.white.opacity(0.18))
+                teamList(service, limit: 2)
+            }
+        }
+    }
+
+    private func serviceSummary(_ service: StoredScheduleService) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            modeHeading
+            Text(entry.churchName ?? "Church")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.72))
+                .lineLimit(2)
+            Spacer(minLength: 0)
+            Text(service.serviceType)
+                .font(.system(.headline, design: .rounded, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+            Text(formattedSchedule(service))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color(red: 0.412, green: 0.776, blue: 1.0))
+                .lineLimit(1)
+        }
+    }
+
+    private func memberAssignmentView(_ service: StoredScheduleService) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             modeHeading
             Text(entry.churchName ?? "Church")
@@ -278,15 +346,11 @@ private struct ScheduleWidgetView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Color(red: 0.412, green: 0.776, blue: 1.0))
                 .lineLimit(1)
-            if entry.mode == .member && !service.roles.isEmpty {
+            if !service.roles.isEmpty {
                 Label(service.roles.joined(separator: ", "), systemImage: "music.note")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.9))
                     .lineLimit(2)
-            }
-            if family == .systemMedium && entry.services.count > 1 {
-                Divider().overlay(.white.opacity(0.18))
-                followingServices
             }
         }
     }
@@ -298,19 +362,34 @@ private struct ScheduleWidgetView: View {
             .lineLimit(1)
     }
 
-    private var followingServices: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            ForEach(entry.services.dropFirst().prefix(2)) { service in
-                HStack(spacing: 6) {
-                    Text(service.serviceType)
-                        .lineLimit(1)
-                    Spacer(minLength: 4)
-                    Text(shortDate(service))
-                        .foregroundStyle(.white.opacity(0.68))
+    private func teamList(_ service: StoredScheduleService, limit: Int) -> some View {
+        let team = service.team ?? []
+        return VStack(alignment: .leading, spacing: 4) {
+            Label(
+                team.isEmpty ? "Assigned Team" : "Assigned Team (\(team.count))",
+                systemImage: "person.2.fill"
+            )
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white.opacity(0.78))
+                .lineLimit(1)
+            if team.isEmpty {
+                Text("No team assigned yet")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.68))
+                    .lineLimit(2)
+            } else {
+                ForEach(Array(team.prefix(limit)), id: \.self) { member in
+                    Text("\(member.role): \(member.memberName)")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.92))
                         .lineLimit(1)
                 }
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(.white.opacity(0.86))
+                if team.count > limit && family == .systemMedium {
+                    Text("+\(team.count - limit) more")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.62))
+                        .lineLimit(1)
+                }
             }
         }
     }
@@ -371,11 +450,6 @@ private struct ScheduleWidgetView: View {
         return "\(dateText) at \(date.formatted(date: .omitted, time: .shortened))"
     }
 
-    private func shortDate(_ service: StoredScheduleService) -> String {
-        guard let date = displayDate(service) else { return "" }
-        return date.formatted(.dateTime.month(.abbreviated).day())
-    }
-
     private func displayDate(_ service: StoredScheduleService) -> Date? {
         localServiceDate(service)
     }
@@ -384,6 +458,9 @@ private struct ScheduleWidgetView: View {
         var parts = [entry.mode.title, entry.churchName ?? "Church", service.serviceType, formattedSchedule(service)]
         if entry.mode == .member && !service.roles.isEmpty {
             parts.append("Roles: \(service.roles.joined(separator: ", "))")
+        }
+        if entry.mode == .church, let team = service.team, !team.isEmpty {
+            parts.append("Assigned team: \(team.map { "\($0.role), \($0.memberName)" }.joined(separator: "; "))")
         }
         return parts.joined(separator: ". ")
     }

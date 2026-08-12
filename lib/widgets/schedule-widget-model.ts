@@ -18,6 +18,12 @@ export type ScheduleWidgetService = {
   time: string | null;
   serviceType: string;
   roles: string[];
+  team?: ScheduleWidgetTeamMember[];
+};
+
+export type ScheduleWidgetTeamMember = {
+  role: string;
+  memberName: string;
 };
 
 export type ScheduleWidgetSnapshot = {
@@ -38,6 +44,7 @@ export type ScheduleWidgetSourceService = {
   assignments?: readonly {
     member_id?: string | null;
     role?: string | null;
+    person_name?: string | null;
   }[] | null;
 };
 
@@ -144,6 +151,23 @@ function uniqueSortedRoles(values: readonly (string | null | undefined)[]): stri
   ));
 }
 
+function assignedTeam(
+  assignments: ScheduleWidgetSourceService['assignments'],
+): ScheduleWidgetTeamMember[] {
+  const members = new Map<string, ScheduleWidgetTeamMember>();
+  (assignments ?? []).forEach(assignment => {
+    const role = sanitizeText(assignment.role, 80);
+    const memberName = sanitizeText(assignment.person_name, 120);
+    if (!role || !memberName) return;
+    const key = `${role.toLocaleLowerCase()}\u001f${memberName.toLocaleLowerCase()}`;
+    if (!members.has(key)) members.set(key, { role, memberName });
+  });
+  return [...members.values()].sort((left, right) => (
+    left.role.localeCompare(right.role, undefined, { sensitivity: 'base' })
+      || left.memberName.localeCompare(right.memberName, undefined, { sensitivity: 'base' })
+  ));
+}
+
 export function createScheduleWidgetScopeFingerprint(
   accountId: string,
   churchId: string,
@@ -191,6 +215,7 @@ export function buildScheduleWidgetSnapshot({
       time,
       serviceType,
       roles: [],
+      team: assignedTeam(service.assignments),
     };
     churchServices.push(base);
 

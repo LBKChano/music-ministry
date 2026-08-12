@@ -50,7 +50,7 @@ export function ProfileAccountScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
+    <SafeAreaView edges={['left', 'right']} style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
       <ProfileFocusedHeader
         disabled={signingOut}

@@ -23,6 +23,26 @@ test('focused headers render no placeholder when a trailing action is absent', (
   assert.match(focusedHeader, /AdaptiveHeaderText/);
 });
 
+test('Profile focused headers own the Dynamic Island safe-area surface', () => {
+  assert.match(focusedHeader, /extendIntoTopSafeArea/);
+  assert.match(focusedHeader, /useSafeAreaInsets/);
+  assert.match(profileHeader, /extendIntoTopSafeArea/);
+
+  for (const file of [
+    'profile-account-screen.tsx',
+    'profile-availability-screen.tsx',
+    'profile-change-password-screen.tsx',
+    'profile-churches-screen.tsx',
+    'profile-delete-account-screen.tsx',
+    'profile-identity-screen.tsx',
+    'profile-notification-preferences-screen.tsx',
+    'profile-scheduling-preferences-screen.tsx',
+  ]) {
+    const source = read('components', 'profile', file);
+    assert.match(source, /edges=\{\['left', 'right'\]\}/, `${file} should delegate its top inset`);
+  }
+});
+
 test('all focused Church and Profile screens retain the shared header contract', () => {
   assert.match(profileHeader, /<FocusedScreenHeader/);
   assert.match(churchHeader, /<FocusedScreenHeader/);

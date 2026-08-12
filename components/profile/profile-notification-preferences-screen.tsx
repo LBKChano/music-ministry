@@ -200,13 +200,13 @@ export function ProfileNotificationPreferencesScreen() {
   const visibleTone: StatusTone = saveError ? 'error' : statusTone;
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
+    <SafeAreaView edges={['left', 'right']} style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
       <ProfileFocusedHeader
         disabled={isSaving}
         onBack={() => router.back()}
         subtitle={currentChurch.name}
-        title="Notifications"
+        title="Notification Delivery"
       />
 
       <ScrollView
