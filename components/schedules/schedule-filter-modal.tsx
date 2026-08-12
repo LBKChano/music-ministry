@@ -128,7 +128,6 @@ export function ScheduleFilterModal({
   return (
     <AppModal
       bodyScroll
-      maxHeight={720}
       headerIcon={<IconSymbol ios_icon_name="line.3.horizontal.decrease.circle.fill" android_material_icon_name="filter-list" size={22} color={theme.modalHeader.accent} />}
       onClose={onClose}
       primaryAction={{
@@ -142,7 +141,7 @@ export function ScheduleFilterModal({
       subtitle="Filters apply only to services already loaded on this device."
       testID="schedule-filter-modal"
       title="Filter Schedule"
-      variant="form"
+      variant="tall-form"
       visible={visible}
     >
       <View style={styles.content}>

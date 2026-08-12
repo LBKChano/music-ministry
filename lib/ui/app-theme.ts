@@ -156,6 +156,18 @@ const sharedStructure = {
   },
 } as const;
 
+const lightBrand = {
+  navy: '#102E52',
+  accent: '#1E3A8A',
+  bright: '#2563EB',
+} as const;
+
+const darkBrand = {
+  navy: '#123A69',
+  accent: '#1D56A8',
+  bright: '#2867B8',
+} as const;
+
 export const lightAppTheme: AppTheme = {
   mode: 'light',
   colors: {
@@ -163,13 +175,13 @@ export const lightAppTheme: AppTheme = {
     surface: '#FFFFFF',
     surfaceMuted: '#F0F5FA',
     surfaceElevated: '#FFFFFF',
-    surfaceStrong: '#102E52',
+    surfaceStrong: lightBrand.navy,
     textPrimary: '#1A202C',
     textSecondary: '#52627A',
     textTertiary: '#66758C',
     borderSubtle: '#D9E3EF',
     borderStrong: '#B7C6D8',
-    accent: '#1E3A8A',
+    accent: lightBrand.accent,
     accentSoft: '#E8F0FF',
     navigationSurface: 'rgba(248, 251, 255, 0.84)',
     navigationOpaqueSurface: '#F8FBFF',
@@ -206,7 +218,7 @@ export const lightAppTheme: AppTheme = {
     mutedForeground: '#DCEAFF',
   },
   serviceMetadata: {
-    surface: '#102E52',
+    surface: lightBrand.navy,
     foreground: '#FFFFFF',
     mutedForeground: '#DCEAFF',
   },
@@ -229,7 +241,7 @@ export const lightAppTheme: AppTheme = {
     border: '#B7C6D8',
   },
   button: {
-    primarySurface: '#1E3A8A',
+    primarySurface: lightBrand.accent,
     primaryForeground: '#FFFFFF',
     secondarySurface: '#F0F5FA',
     secondaryForeground: '#1A202C',
@@ -243,11 +255,11 @@ export const lightAppTheme: AppTheme = {
     border: '#5184DE',
   },
   brandMark: {
-    surface: '#091C35',
+    surface: lightBrand.navy,
     foreground: '#F8FBFF',
   },
   header: {
-    gradient: ['#0F172A', '#1E3A8A', '#2563EB'],
+    gradient: [lightBrand.navy, lightBrand.accent, lightBrand.bright],
     title: '#FFFFFF',
     subtitle: '#EFF6FF',
     eyebrow: '#EFF6FF',
@@ -272,7 +284,7 @@ export const lightAppTheme: AppTheme = {
     size: 48,
     radius: 8,
     surface: '#EAF3FF',
-    foreground: '#1E3A8A',
+    foreground: lightBrand.accent,
   },
 };
 
@@ -283,7 +295,7 @@ export const futureDarkAppTheme: AppTheme = {
     surface: '#131C29',
     surfaceMuted: '#182536',
     surfaceElevated: '#1D2A3B',
-    surfaceStrong: '#123A69',
+    surfaceStrong: darkBrand.navy,
     textPrimary: '#F7FAFC',
     textSecondary: '#C1CCDA',
     textTertiary: '#98A8BC',
@@ -326,7 +338,7 @@ export const futureDarkAppTheme: AppTheme = {
     mutedForeground: '#DCEAFF',
   },
   serviceMetadata: {
-    surface: '#123A69',
+    surface: darkBrand.navy,
     foreground: '#FFFFFF',
     mutedForeground: '#D5E7FF',
   },
@@ -363,11 +375,11 @@ export const futureDarkAppTheme: AppTheme = {
     border: '#709BE0',
   },
   brandMark: {
-    surface: '#091C35',
+    surface: darkBrand.navy,
     foreground: '#F8FBFF',
   },
   header: {
-    gradient: ['#091426', '#123A69', '#1D56A8'],
+    gradient: [darkBrand.navy, darkBrand.accent, darkBrand.bright],
     title: '#FFFFFF',
     subtitle: '#E5F0FF',
     eyebrow: '#E5F0FF',

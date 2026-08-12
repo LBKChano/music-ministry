@@ -32,12 +32,11 @@ export function ProfileSection({
   title,
   description,
 }: ProfileSectionProps) {
-  const theme = useAppTheme();
   return (
     <AppSectionHeader
       title={title}
       description={description}
-      style={[styles.sectionHeader, { borderLeftColor: theme.colors.accent }]}
+      style={styles.sectionHeader}
     />
   );
 }
@@ -245,9 +244,7 @@ export function ProfileOverviewList({
 
 const styles = StyleSheet.create({
   sectionHeader: {
-    borderLeftWidth: 3,
     marginTop: 4,
-    paddingLeft: 11,
   },
   row: {
     alignItems: 'center',

@@ -15,23 +15,35 @@ import {
 export function AppSectionHeader({
   title,
   description,
+  accent = 'brand',
   style,
 }: {
   title: string;
   description?: string;
+  accent?: 'brand' | 'info';
   style?: StyleProp<ViewStyle>;
 }) {
   const theme = useAppTheme();
+  const accentColor = accent === 'info'
+    ? theme.status.info.foreground
+    : theme.colors.accent;
 
   return (
     <View style={[styles.sectionHeader, style]}>
-      <Text
-        accessibilityRole="header"
-        maxFontSizeMultiplier={1.4}
-        style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}
-      >
-        {title}
-      </Text>
+      <View style={styles.sectionTitleRow}>
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[styles.sectionAccent, { backgroundColor: accentColor }]}
+        />
+        <Text
+          accessibilityRole="header"
+          maxFontSizeMultiplier={1.4}
+          style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}
+        >
+          {title}
+        </Text>
+      </View>
       {description ? (
         <Text
           maxFontSizeMultiplier={1.45}
@@ -221,6 +233,16 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     paddingHorizontal: 4,
     paddingTop: 22,
+  },
+  sectionTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  sectionAccent: {
+    borderRadius: 1,
+    height: 15,
+    width: 2,
   },
   sectionTitle: {
     fontSize: 18,

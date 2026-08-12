@@ -19,6 +19,7 @@ import type {
   ChurchAdminSummary,
   ChurchAdminSummaryRow,
 } from '@/lib/church-admin/summary';
+import { resolveChurchSetupPresentation } from '@/lib/church-admin/presentation';
 import { resolveSurfaceOpacity } from '@/lib/ui/surface-system';
 
 function DestinationIcon({
@@ -53,10 +54,12 @@ function DestinationIcon({
 function DestinationRow({
   row,
   recommended,
+  showReadiness,
   onPress,
 }: {
   row: ChurchAdminSummaryRow;
   recommended: boolean;
+  showReadiness: boolean;
   onPress: () => void;
 }) {
   const theme = useAppTheme();
@@ -64,7 +67,7 @@ function DestinationRow({
   return (
     <Pressable
       accessibilityHint={`Opens ${row.title}`}
-      accessibilityLabel={`${row.title}, ${row.summary}${recommended ? ', recommended next' : ''}${row.ready ? ', ready' : ''}`}
+      accessibilityLabel={`${row.title}, ${row.summary}${recommended ? ', recommended next' : ''}${showReadiness && row.ready ? ', ready' : ''}`}
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => [
@@ -102,7 +105,7 @@ function DestinationRow({
           {row.summary}
         </Text>
       </View>
-      {row.ready ? (
+      {showReadiness && row.ready ? (
         <AppStatusBadge
           icon={(
             <IconSymbol
@@ -131,6 +134,7 @@ function DestinationGroup({
   subtitle,
   rows,
   recommendedNext,
+  showReadiness = false,
   onOpen,
   emphasis = 'setup',
 }: {
@@ -138,6 +142,7 @@ function DestinationGroup({
   subtitle: string;
   rows: ChurchAdminSummaryRow[];
   recommendedNext: ChurchAdminDestination | null;
+  showReadiness?: boolean;
   onOpen: (destination: ChurchAdminDestination) => void;
   emphasis?: 'setup' | 'schedule';
 }) {
@@ -152,15 +157,9 @@ function DestinationGroup({
       ],
     ]}>
       <AppSectionHeader
+        accent={emphasis === 'schedule' ? 'info' : 'brand'}
         description={subtitle}
-        style={[
-          styles.groupHeader,
-          {
-            borderLeftColor: emphasis === 'schedule'
-              ? theme.status.info.foreground
-              : theme.colors.accent,
-          },
-        ]}
+        style={styles.groupHeader}
         title={title}
       />
       <AppGroupedSurface>
@@ -170,10 +169,94 @@ function DestinationGroup({
             <DestinationRow
               row={row}
               recommended={recommendedNext === row.id}
+              showReadiness={showReadiness}
               onPress={() => onOpen(row.id)}
             />
           </React.Fragment>
         ))}
+      </AppGroupedSurface>
+    </View>
+  );
+}
+
+function SetupEditorGroup({
+  expanded,
+  rows,
+  onOpen,
+  onToggle,
+}: {
+  expanded: boolean;
+  rows: ChurchAdminSummaryRow[];
+  onOpen: (destination: ChurchAdminDestination) => void;
+  onToggle: () => void;
+}) {
+  const theme = useAppTheme();
+
+  return (
+    <View style={styles.group}>
+      <AppSectionHeader
+        description="Church configuration stays editable at any time."
+        title="Church Setup"
+      />
+      <AppGroupedSurface>
+        <Pressable
+          accessibilityHint={expanded
+            ? 'Collapses the Church Setup editors'
+            : 'Shows every editable Church Setup area'}
+          accessibilityLabel={expanded ? 'Hide Church Setup editors' : 'Edit Church Setup'}
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          onPress={onToggle}
+          style={({ pressed }) => [
+            styles.row,
+            {
+              backgroundColor: pressed
+                ? theme.colors.surfaceMuted
+                : theme.colors.surface,
+              opacity: resolveSurfaceOpacity({ disabled: false, pressed, theme }),
+            },
+          ]}
+        >
+          <AppIconTile compact>
+            <IconSymbol
+              android_material_icon_name="settings"
+              color={theme.iconTile.foreground}
+              ios_icon_name="gearshape.fill"
+              size={22}
+            />
+          </AppIconTile>
+          <View style={styles.rowText}>
+            <Text
+              maxFontSizeMultiplier={1.35}
+              style={[styles.rowTitle, { color: theme.colors.textPrimary }]}
+            >
+              Edit Church Setup
+            </Text>
+            <Text
+              maxFontSizeMultiplier={1.35}
+              style={[styles.rowSummary, { color: theme.colors.textSecondary }]}
+            >
+              Details, roles, services, members, rules, songs, and reminders
+            </Text>
+          </View>
+          <IconSymbol
+            android_material_icon_name={expanded ? 'expand-less' : 'chevron-right'}
+            color={theme.colors.textTertiary}
+            ios_icon_name={expanded ? 'chevron.up' : 'chevron.right'}
+            size={21}
+          />
+        </Pressable>
+        {expanded ? rows.map((row) => (
+          <React.Fragment key={row.id}>
+            <AppDivider inset={68} />
+            <DestinationRow
+              onPress={() => onOpen(row.id)}
+              recommended={false}
+              row={row}
+              showReadiness={false}
+            />
+          </React.Fragment>
+        )) : null}
       </AppGroupedSurface>
     </View>
   );
@@ -187,6 +270,11 @@ export function AdminHubOverview({
   onOpen: (destination: ChurchAdminDestination) => void;
 }) {
   const theme = useAppTheme();
+  const [setupExpanded, setSetupExpanded] = React.useState(false);
+  const setupPresentation = resolveChurchSetupPresentation({
+    setupReady: summary.setupReady,
+    expanded: setupExpanded,
+  });
 
   return (
     <View style={styles.container}>
@@ -227,13 +315,23 @@ export function AdminHubOverview({
         </View>
       ) : null}
 
-      <DestinationGroup
-        title="Church Setup"
-        subtitle="Keep your church, people, roles, and scheduling defaults organized."
-        rows={summary.setupRows}
-        recommendedNext={summary.recommendedNext}
-        onOpen={onOpen}
-      />
+      {setupPresentation === 'guided' ? (
+        <DestinationGroup
+          title="Church Setup"
+          subtitle="Complete the required steps. Every setting remains editable later."
+          rows={summary.setupRows}
+          recommendedNext={summary.recommendedNext}
+          showReadiness
+          onOpen={onOpen}
+        />
+      ) : (
+        <SetupEditorGroup
+          expanded={setupPresentation === 'expanded'}
+          onOpen={onOpen}
+          onToggle={() => setSetupExpanded(current => !current)}
+          rows={summary.setupRows}
+        />
+      )}
       <DestinationGroup
         emphasis="schedule"
         title="Schedule Management"
@@ -284,9 +382,7 @@ const styles = StyleSheet.create({
     paddingTop: 4,
   },
   groupHeader: {
-    borderLeftWidth: 3,
     paddingHorizontal: 4,
-    paddingLeft: 11,
   },
   row: {
     alignItems: 'center',

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
@@ -17,6 +17,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { AppModal } from '@/components/ui/app-modal';
 import { useAppTheme } from '@/contexts/AppThemeContext';
 import type { ServiceWithAssignments } from '@/hooks/useServices';
+import { shouldResetModalList } from '@/lib/ui/modal-presentation';
 import {
   MAX_BULK_SERVICE_DELETE_COUNT,
   formatBulkServiceDeleteTime,
@@ -102,6 +103,9 @@ export function BulkServiceDeleteModal({
   const [preview, setPreview] = useState<BulkServiceDeleteResult | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
+  const listRef = useRef<FlatList<BulkServiceDeleteItem | ServiceWithAssignments>>(null);
+  const previousVisibleRef = useRef(false);
+  const previousStepKeyRef = useRef<string | null>(null);
 
   const orderedServices = useMemo(
     () => [...services].sort((left, right) => {
@@ -125,6 +129,24 @@ export function BulkServiceDeleteModal({
     setIsPreviewing(false);
     setIsApplying(false);
   }, [visible]);
+
+  useEffect(() => {
+    const stepKey = preview ? `preview:${preview.service_ids.join(',')}` : `selection:${mode}`;
+    const shouldReset = shouldResetModalList({
+      visible,
+      previousVisible: previousVisibleRef.current,
+      previousTargetKey: previousStepKeyRef.current,
+      nextTargetKey: stepKey,
+    });
+    previousVisibleRef.current = visible;
+    previousStepKeyRef.current = stepKey;
+    if (!shouldReset) return;
+
+    const frame = requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset({ animated: false, offset: 0 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [mode, preview, visible]);
 
   const editSelection = () => {
     setPreview(null);
@@ -721,6 +743,7 @@ export function BulkServiceDeleteModal({
       ) : null}
 
       <FlatList
+        ref={listRef}
         style={styles.list}
         data={listData}
         keyExtractor={item => item.id}
@@ -731,6 +754,7 @@ export function BulkServiceDeleteModal({
         ListEmptyComponent={empty}
         ListFooterComponent={listFooter}
         contentContainerStyle={styles.listContent}
+        contentInsetAdjustmentBehavior="never"
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         nestedScrollEnabled

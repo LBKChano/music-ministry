@@ -44,7 +44,7 @@ test('short church names stay at the preferred size on every named viewport', ()
   }
 });
 
-test('a short church title remains prominent beside all Church actions', () => {
+test('a short church title remains prominent beside the Church action', () => {
   const availableWidth = calculateHeaderTitleLaneWidth({
     windowWidth: deviceWidths.smallAndroid,
     trailingWidth: HEADER_ACTION_LANE_WIDTHS.churchActions,
@@ -56,7 +56,7 @@ test('a short church title remains prominent beside all Church actions', () => {
     fontScale: 1,
   });
 
-  assert.equal(availableWidth, 128);
+  assert.equal(availableWidth, 216);
   assert.equal(selection.fontSize, 28);
 });
 
@@ -164,7 +164,7 @@ test('reserved action lanes and orientation changes have stable widths', () => {
       windowWidth: 320,
       trailingWidth: HEADER_ACTION_LANE_WIDTHS.churchActions,
     }),
-    128,
+    216,
   );
   assert.ok(
     calculateHeaderTitleLaneWidth({

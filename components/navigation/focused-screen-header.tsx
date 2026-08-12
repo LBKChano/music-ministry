@@ -1,8 +1,10 @@
 import React, { type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
+import { AdaptiveHeaderText } from '@/components/navigation/adaptive-header-text';
 import { WordSafeHeaderText } from '@/components/navigation/word-safe-header-text';
 import { useAppTheme } from '@/contexts/AppThemeContext';
+import { calculateFocusedHeaderTitleLaneWidth } from '@/lib/ui/header-typography';
 
 type FocusedScreenHeaderTone = 'brand' | 'surface';
 
@@ -28,6 +30,7 @@ export function FocusedScreenHeader({
   androidIcon?: React.ComponentProps<typeof IconSymbol>['android_material_icon_name'];
 }) {
   const theme = useAppTheme();
+  const { width: windowWidth, fontScale } = useWindowDimensions();
   const isBrand = tone === 'brand';
   const foreground = isBrand
     ? theme.strongSurface.foreground
@@ -38,6 +41,10 @@ export function FocusedScreenHeader({
   const surface = isBrand
     ? theme.colors.surfaceStrong
     : theme.modalHeader.surface;
+  const titleLaneWidth = calculateFocusedHeaderTitleLaneWidth({
+    windowWidth,
+    hasTrailingAction: Boolean(trailing),
+  });
 
   return (
     <View
@@ -104,17 +111,22 @@ export function FocusedScreenHeader({
       </View>
 
       <View style={styles.copy}>
-        <Text
+        <AdaptiveHeaderText
+          accessibilityLabel={title}
           accessibilityRole="header"
-          maxFontSizeMultiplier={1.45}
-          numberOfLines={2}
-          style={[styles.title, { color: foreground }]}
-        >
-          {title}
-        </Text>
+          availableWidth={titleLaneWidth}
+          color={foreground}
+          fontScale={fontScale}
+          style={styles.title}
+          text={title}
+          variant="focusedTitle"
+        />
         {subtitle ? (
           <WordSafeHeaderText
             accessible={false}
+            availableWidth={titleLaneWidth}
+            fontScale={Math.min(Math.max(fontScale, 1), 1.4)}
+            fontSize={13}
             maxFontSizeMultiplier={1.4}
             maxLines={2}
             style={[styles.subtitle, { color: secondary }]}
@@ -123,9 +135,11 @@ export function FocusedScreenHeader({
         ) : null}
       </View>
 
-      <View style={styles.headerButton}>
-        {trailing}
-      </View>
+      {trailing ? (
+        <View style={styles.trailingAction}>
+          {trailing}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -162,9 +176,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   title: {
-    fontSize: 19,
-    fontWeight: '800',
-    lineHeight: 24,
     textAlign: 'left',
   },
   subtitle: {
@@ -179,5 +190,11 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.48,
+  },
+  trailingAction: {
+    alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
   },
 });

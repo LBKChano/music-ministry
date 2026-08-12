@@ -17,8 +17,8 @@ test('long content stays inside safe areas on a small Android phone', () => {
   });
 
   assert.equal(layout.maxWidth, 296);
-  assert.equal(layout.maxHeight, 473.76);
-  assert.equal(layout.minHeight, 400);
+  assert.equal(layout.maxHeight, 504);
+  assert.equal(layout.minHeight, 440);
   assert.equal(layout.stackActions, true);
 });
 
@@ -43,7 +43,7 @@ test('forms use a comfortable phone height and long content is capped on tablets
   assert.equal(phone.maxWidth, 358);
   assert.equal(phone.minHeight, 360);
   assert.equal(tablet.maxWidth, 680);
-  assert.equal(tablet.minHeight, 400);
+  assert.equal(tablet.minHeight, 440);
 });
 
 test('requested dimensions never exceed the available viewport', () => {

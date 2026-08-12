@@ -218,10 +218,17 @@ export function TabHeaderPill({
   );
 }
 
-export function TabHeaderMetaText({ children }: { children: string }) {
+export function TabHeaderMetaText({
+  accessibilityLabel,
+  children,
+}: {
+  accessibilityLabel?: string;
+  children: string;
+}) {
   const theme = useAppTheme();
   return (
     <ResponsiveText
+      accessibilityLabel={accessibilityLabel}
       numberOfLines={1}
       selectable
       style={styles.metaTextLane}

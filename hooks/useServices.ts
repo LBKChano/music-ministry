@@ -53,7 +53,15 @@ import {
   type ManualAssignmentCandidate,
 } from '@/lib/services/manual-assignment';
 import type { TablesInsert } from '@/lib/supabase/types';
-import type { ScheduleDateSummary } from '@/lib/schedules/schedule-range';
+import type {
+  ScheduleDateSummary,
+  ScheduleDateSummaryStatus,
+} from '@/lib/schedules/schedule-range';
+import {
+  resolveServicePaginationStatus,
+  shouldCompleteAfterRange,
+  type ServicePaginationOperation,
+} from '@/lib/schedules/service-pagination';
 
 export type { CachedService as ServiceWithAssignments } from '@/lib/realtime/cache-updates';
 
@@ -64,6 +72,7 @@ interface CombinedServiceQueries {
   lastError: Error | null;
   firstError: Error | null;
   lastSuccessfulIndex: number;
+  lastRangeUnavailable: boolean;
 }
 
 export interface BatchServiceDraft {
@@ -109,9 +118,12 @@ function combineServiceQueries(
     firstError: results.find(result => result.error)?.error ?? null,
     lastSuccessfulIndex: results.reduce(
       (lastIndex, result, index) => (
-        result.status === 'success' ? index : lastIndex
+        result.data !== undefined ? index : lastIndex
       ),
       -1
+    ),
+    lastRangeUnavailable: Boolean(
+      results.at(-1)?.error && results.at(-1)?.data === undefined
     ),
   };
 }
@@ -211,6 +223,7 @@ export function useServices(
   const windowed = options.windowed ?? false;
   const windowDays = options.windowDays ?? DEFAULT_SERVICE_WINDOW_DAYS;
   const startDate = options.startDate ?? formatLocalDate(new Date());
+  const serviceRequestScope = `${accountId ?? 'signed-out'}:${churchId ?? 'none'}:${startDate}:${windowDays}`;
   const servicesQueryRoot = useMemo(
     () => queryKeys.servicesRoot(
       accountId ?? 'signed-out',
@@ -221,10 +234,11 @@ export function useServices(
   const [serviceRanges, setServiceRanges] = useState<ServiceDateRange[]>(() => (
     windowed ? [createServiceDateRange(startDate, windowDays)] : []
   ));
-  const [pendingServiceRangeKey, setPendingServiceRangeKey] = useState<string | null>(null);
-  const [failedServiceRange, setFailedServiceRange] = useState<ServiceDateRange | null>(null);
-  const pendingServiceRangeKeyRef = useRef<string | null>(null);
-  const serviceRequestScopeRef = useRef(`${accountId ?? 'signed-out'}:${churchId ?? 'none'}`);
+  const [paginationOperation, setPaginationOperation] = useState<ServicePaginationOperation>({
+    status: 'idle',
+  });
+  const paginationOperationRef = useRef<ServicePaginationOperation>({ status: 'idle' });
+  const serviceRequestScopeRef = useRef(serviceRequestScope);
   const [actionError, setError] = useState<string | null>(null);
   const [reorderingServiceIds, setReorderingServiceIds] = useState<Set<string>>(
     () => new Set()
@@ -232,15 +246,18 @@ export function useServices(
   const reorderingServiceIdsRef = useRef(new Set<string>());
   const refreshCoordinatorRef = useRef(new RefreshCoordinator());
 
+  const updatePaginationOperation = useCallback((next: ServicePaginationOperation) => {
+    paginationOperationRef.current = next;
+    setPaginationOperation(next);
+  }, []);
+
   useEffect(() => {
-    serviceRequestScopeRef.current = `${accountId ?? 'signed-out'}:${churchId ?? 'none'}`;
-    pendingServiceRangeKeyRef.current = null;
-    setPendingServiceRangeKey(null);
-    setFailedServiceRange(null);
+    serviceRequestScopeRef.current = serviceRequestScope;
+    updatePaginationOperation({ status: 'idle' });
     setServiceRanges(
       windowed ? [createServiceDateRange(startDate, windowDays)] : []
     );
-  }, [accountId, churchId, startDate, windowDays, windowed]);
+  }, [serviceRequestScope, startDate, updatePaginationOperation, windowDays, windowed]);
 
   const requestedRanges = useMemo<(ServiceDateRange | null)[]>(
     () => windowed ? serviceRanges : [null],
@@ -283,15 +300,30 @@ export function useServices(
   const refreshing = queryEnabled
     && services.length > 0
     && combinedServicesQuery.isFetching;
-  const loadingMoreServices = windowed && Boolean(pendingServiceRangeKey);
-  const serviceRangeError = windowed
-    && Boolean(failedServiceRange ?? combinedServicesQuery.lastError);
   const queryError = combinedServicesQuery.firstError;
   const error = actionError
     ?? (queryError instanceof Error ? queryError.message : queryError ? String(queryError) : null);
   const loadedThrough = windowed
     ? serviceRanges[combinedServicesQuery.lastSuccessfulIndex]?.endDate ?? null
     : null;
+  const scheduleDateSummaryStatus: ScheduleDateSummaryStatus = serviceDateSummaryQuery.data !== undefined
+    ? 'success'
+    : serviceDateSummaryQuery.isPending
+      ? 'pending'
+      : serviceDateSummaryQuery.error
+        ? 'error'
+        : 'success';
+  const servicePaginationStatus = windowed
+    ? resolveServicePaginationStatus({
+        operationStatus: paginationOperation.status,
+        loadedThrough,
+        lastServiceDate: serviceDateSummaryQuery.data?.lastDate ?? null,
+        summaryStatus: scheduleDateSummaryStatus,
+        rangeQueryUnavailable: combinedServicesQuery.lastRangeUnavailable,
+      })
+    : 'complete';
+  const loadingMoreServices = servicePaginationStatus === 'loading';
+  const serviceRangeError = servicePaginationStatus === 'error';
 
   useEffect(() => {
     setError(null);
@@ -340,18 +372,27 @@ export function useServices(
   }, [accountId, churchId, queryClient, queryEnabled, servicesQueryRoot, startDate]);
 
   const loadMoreServices = useCallback(async () => {
-    if (!windowed || !queryEnabled || !churchId || pendingServiceRangeKeyRef.current) return;
+    if (
+      !windowed
+      || !queryEnabled
+      || !churchId
+      || paginationOperationRef.current.status === 'loading'
+      || servicePaginationStatus === 'complete'
+    ) return;
 
     const currentLastRange = serviceRanges.at(-1)
       ?? createServiceDateRange(startDate, windowDays);
-    const failedRequestedRange = combinedServicesQuery.lastError
+    const failedOperationRange = paginationOperationRef.current.status === 'error'
+      ? paginationOperationRef.current.range
+      : null;
+    const failedRequestedRange = combinedServicesQuery.lastRangeUnavailable
       ? currentLastRange
       : null;
-    const targetRange = failedServiceRange
+    const targetRange = failedOperationRange
       ?? failedRequestedRange
       ?? createNextServiceDateRange(currentLastRange, windowDays);
     const targetRangeKey = getServiceRangeKey(targetRange);
-    const requestScope = `${accountId ?? 'signed-out'}:${churchId}`;
+    const requestScope = serviceRequestScope;
     const targetQueryKey = queryKeys.services(
       accountId ?? 'signed-out',
       churchId,
@@ -361,15 +402,18 @@ export function useServices(
     const targetIsAlreadyRequested = serviceRanges.some(
       range => getServiceRangeKey(range) === targetRangeKey
     );
-    if (targetIsAlreadyRequested && !failedRequestedRange) {
-      setFailedServiceRange(null);
+    if (targetIsAlreadyRequested && !failedRequestedRange && !failedOperationRange) {
+      updatePaginationOperation({ status: 'idle' });
       return;
     }
 
-    pendingServiceRangeKeyRef.current = targetRangeKey;
-    setPendingServiceRangeKey(targetRangeKey);
+    updatePaginationOperation({
+      status: 'loading',
+      range: targetRange,
+      rangeKey: targetRangeKey,
+    });
     try {
-      await queryClient.fetchQuery({
+      const fetchedServices = await queryClient.fetchQuery({
         queryKey: targetQueryKey,
         queryFn: ({ signal }) => fetchServicesForChurch(churchId, targetRange, signal),
         staleTime: 30_000,
@@ -381,30 +425,37 @@ export function useServices(
           ? current
           : [...current, targetRange]
       ));
-      setFailedServiceRange(null);
+      updatePaginationOperation(shouldCompleteAfterRange({
+        fetchedServiceCount: fetchedServices.length,
+        targetRange,
+        lastServiceDate: serviceDateSummaryQuery.data?.lastDate ?? null,
+        summaryStatus: scheduleDateSummaryStatus,
+      }) ? { status: 'complete' } : { status: 'idle' });
     } catch (rangeError) {
       if (serviceRequestScopeRef.current === requestScope) {
         console.error('Error loading next service range:', rangeError);
-        setFailedServiceRange(targetRange);
-      }
-    } finally {
-      if (
-        serviceRequestScopeRef.current === requestScope
-        && pendingServiceRangeKeyRef.current === targetRangeKey
-      ) {
-        pendingServiceRangeKeyRef.current = null;
-        setPendingServiceRangeKey(null);
+        updatePaginationOperation({
+          status: 'error',
+          range: targetRange,
+          message: rangeError instanceof Error
+            ? rangeError.message
+            : 'The next service range could not load.',
+        });
       }
     }
   }, [
     accountId,
     churchId,
-    combinedServicesQuery.lastError,
-    failedServiceRange,
+    combinedServicesQuery.lastRangeUnavailable,
     queryClient,
     queryEnabled,
+    scheduleDateSummaryStatus,
+    serviceDateSummaryQuery.data?.lastDate,
+    servicePaginationStatus,
+    serviceRequestScope,
     serviceRanges,
     startDate,
+    updatePaginationOperation,
     windowDays,
     windowed,
   ]);
@@ -1579,9 +1630,11 @@ export function useServices(
     loadMoreServices,
     loadingMoreServices,
     serviceRangeError,
+    servicePaginationStatus,
     loadedThrough,
     scheduleDateSummary: serviceDateSummaryQuery.data,
-    scheduleDateSummaryPending: serviceDateSummaryQuery.isPending,
+    scheduleDateSummaryPending: scheduleDateSummaryStatus === 'pending',
+    scheduleDateSummaryStatus,
     scheduleDateSummaryError: serviceDateSummaryQuery.error,
     serviceWindowDays: windowed ? windowDays : null,
   };

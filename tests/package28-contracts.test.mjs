@@ -28,8 +28,9 @@ test('shared modal contract owns adaptive sizing, semantic surfaces, and context
   assert.match(appModal, /keyboardDismissMode/);
   assert.doesNotMatch(appModal, /backgroundColor:\s*['"]#(?:fff|ffffff)['"]/i);
   assert.match(modalPresentation, /confirmation:\s*0\.58/);
-  assert.match(modalPresentation, /form:\s*0\.88/);
-  assert.match(modalPresentation, /'long-content':\s*0\.94/);
+  assert.match(modalPresentation, /form:\s*0\.94/);
+  assert.match(modalPresentation, /'tall-form':\s*0\.98/);
+  assert.match(modalPresentation, /'long-content':\s*1/);
 });
 
 test('focused headers use one semantic contextual zone with a distinct back action', () => {

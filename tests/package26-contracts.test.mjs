@@ -65,6 +65,8 @@ test('Schedule defaults are permission-aware and truthful range context is separ
   assert.match(schedule, /setViewMode\(isAdmin \? 'all' : 'mine'\)/);
   assert.match(schedule, /<ScheduleTodayMarker today=\{currentLocalDate\}/);
   assert.match(schedule, /resolveSchedulePeriodText/);
+  assert.match(schedule, /loadedServiceDates/);
+  assert.doesNotMatch(schedule, /summaryPending:[\s\S]{0,80}loadedThrough/);
   assert.match(servicesHook, /fetchUpcomingServiceDateSummary/);
   assert.match(servicesHook, /\.gte\('date', startDate\)/);
   assert.match(servicesHook, /\.limit\(1\)/);
@@ -73,17 +75,17 @@ test('Schedule defaults are permission-aware and truthful range context is separ
 });
 
 test('load-more owns one pending key, retries failures, and appends only after success', () => {
-  assert.match(servicesHook, /pendingServiceRangeKeyRef\.current/);
-  assert.match(servicesHook, /if \(!windowed \|\| !queryEnabled \|\| !churchId \|\| pendingServiceRangeKeyRef\.current\) return/);
-  assert.match(servicesHook, /failedRequestedRange = combinedServicesQuery\.lastError/);
+  assert.match(servicesHook, /paginationOperationRef\.current/);
+  assert.match(servicesHook, /paginationOperationRef\.current\.status === 'loading'/);
+  assert.match(servicesHook, /failedRequestedRange = combinedServicesQuery\.lastRangeUnavailable/);
   assert.match(servicesHook, /await queryClient\.fetchQuery\(/);
   assert.match(servicesHook, /if \(serviceRequestScopeRef\.current !== requestScope\) return/);
   assert.ok(
     servicesHook.indexOf('await queryClient.fetchQuery(')
       < servicesHook.indexOf('setServiceRanges(current => (', servicesHook.indexOf('await queryClient.fetchQuery(')),
   );
-  assert.match(schedule, /accessibilityState=\{\{[\s\S]*busy: loadingMoreServices/);
-  assert.match(schedule, /serviceRangeError[\s\S]*Retry Service Range/);
+  assert.match(schedule, /accessibilityState=\{complete \? undefined/);
+  assert.match(schedule, /error[\s\S]*Retry Service Range/);
 });
 
 test('Today refreshes at midnight and whenever the app resumes', () => {
@@ -91,7 +93,7 @@ test('Today refreshes at midnight and whenever the app resumes', () => {
   assert.match(currentDateHook, /state === 'active'/);
   assert.match(currentDateHook, /millisecondsUntilNextLocalDay/);
   assert.match(todayMarker, /accessibilityLabel=\{`Today,/);
-  assert.match(todayMarker, /accessibilityRole="text"/);
+  assert.match(todayMarker, /TabHeaderMetaText/);
   assert.doesNotMatch(todayMarker, /onPress|router|scrollTo/);
 });
 

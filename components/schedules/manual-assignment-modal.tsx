@@ -59,6 +59,7 @@ export function ManualAssignmentModal({
   const assignmentTargetKey = `${assignmentId}:${target?.roleName ?? 'role'}`;
   const listRef = useRef<SectionList<ManualAssignmentCandidate>>(null);
   const previousTargetKeyRef = useRef<string | null>(null);
+  const previousVisibleRef = useRef(false);
   const pendingTopResetRef = useRef(false);
   const query = useQuery({
     queryKey: queryKeys.manualAssignmentCandidates(
@@ -86,12 +87,15 @@ export function ManualAssignmentModal({
   );
 
   useEffect(() => {
-    if (!shouldResetModalList({
+    const shouldReset = shouldResetModalList({
       visible,
+      previousVisible: previousVisibleRef.current,
       previousTargetKey: previousTargetKeyRef.current,
       nextTargetKey: assignmentTargetKey,
-    })) return;
+    });
+    previousVisibleRef.current = visible;
     previousTargetKeyRef.current = assignmentTargetKey;
+    if (!shouldReset) return;
     pendingTopResetRef.current = true;
   }, [assignmentTargetKey, visible]);
 
@@ -308,6 +312,7 @@ export function ManualAssignmentModal({
               accessibilityLabel={`Members for ${roleName}`}
               bounces
               contentContainerStyle={styles.listContent}
+              contentInsetAdjustmentBehavior="never"
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
               keyExtractor={candidate => candidate.memberId}

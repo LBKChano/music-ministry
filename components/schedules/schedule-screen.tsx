@@ -52,6 +52,7 @@ import {
   type ScheduleListState,
 } from '@/lib/schedules/schedule-state';
 import { resolveSchedulePeriodText } from '@/lib/schedules/schedule-range';
+import type { ServicePaginationStatus } from '@/lib/schedules/service-pagination';
 import { useNetworkState } from 'expo-network';
 import {
   AccessibilityInfo,
@@ -207,9 +208,100 @@ function ScheduleEmptyState({
     <AppStatePanel
       androidIcon="event-available"
       iosIcon="calendar"
-      message="There are no upcoming services in the loaded date range."
+      message="There are no upcoming scheduled services."
       title="No upcoming services"
     />
+  );
+}
+
+function SchedulePaginationFooter({
+  status,
+  onPress,
+}: {
+  status: ServicePaginationStatus;
+  onPress: () => void;
+}) {
+  const theme = useAppTheme();
+  const complete = status === 'complete';
+  const loading = status === 'loading';
+  const error = status === 'error';
+  const label = complete
+    ? 'All scheduled services loaded'
+    : loading
+      ? 'Loading services...'
+      : error
+        ? 'Retry Service Range'
+        : 'Load More Services';
+
+  return (
+    <TouchableOpacity
+      accessibilityHint={complete
+        ? undefined
+        : 'Loads the next date range without removing the visible schedule'}
+      accessibilityLabel={label}
+      accessibilityRole={complete ? 'text' : 'button'}
+      accessibilityState={complete ? undefined : {
+        busy: loading,
+        disabled: loading,
+      }}
+      activeOpacity={complete ? 1 : 0.78}
+      disabled={complete || loading}
+      onPress={onPress}
+      style={[
+        styles.loadMoreButton,
+        {
+          backgroundColor: complete
+            ? theme.colors.surfaceMuted
+            : theme.colors.surface,
+          borderColor: complete
+            ? theme.colors.borderSubtle
+            : error
+              ? theme.status.error.border
+              : theme.colors.accent,
+        },
+      ]}
+    >
+      <View style={styles.loadMoreIconLane}>
+        {loading ? (
+          <ActivityIndicator size="small" color={theme.colors.accent} />
+        ) : (
+          <IconSymbol
+            ios_icon_name={complete
+              ? 'checkmark.circle.fill'
+              : error
+                ? 'arrow.clockwise.circle.fill'
+                : 'calendar.badge.plus'}
+            android_material_icon_name={complete
+              ? 'check-circle'
+              : error
+                ? 'refresh'
+                : 'event'}
+            size={19}
+            color={complete
+              ? theme.status.success.foreground
+              : error
+                ? theme.status.error.foreground
+                : theme.colors.accent}
+          />
+        )}
+      </View>
+      <ResponsiveText
+        accessible={false}
+        style={styles.loadMoreLabelLane}
+        text={label}
+        textStyle={[
+          styles.loadMoreButtonText,
+          {
+            color: complete
+              ? theme.colors.textSecondary
+              : error
+                ? theme.status.error.foreground
+                : theme.colors.accent,
+          },
+        ]}
+        variant="actionLabel"
+      />
+    </TouchableOpacity>
   );
 }
 
@@ -246,7 +338,6 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 12,
     marginTop: 16,
@@ -256,20 +347,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   loadMoreButtonText: {
-    color: colors.primary,
     fontSize: 15,
     fontWeight: '600',
+  },
+  loadMoreIconLane: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 22,
   },
   loadMoreLabelLane: {
     flexShrink: 1,
     minWidth: 0,
-  },
-  todayMarkerRow: {
-    alignSelf: 'center',
-    maxWidth: 520,
-    paddingBottom: 4,
-    paddingHorizontal: 16,
-    width: '100%',
   },
   modalOverlay: {
     flex: 1,
@@ -599,27 +687,6 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
     fontWeight: '700',
   },
-  resultsHeader: {
-    alignItems: 'baseline',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  resultsTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  resultsTitleLane: {
-    flex: 1,
-    minWidth: 0,
-  },
-  resultsCount: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '700',
-  },
   serviceActionRow: {
     alignItems: 'center',
     borderColor: colors.error + '55',
@@ -707,11 +774,10 @@ export default function HomeScreen() {
     reorderingServiceIds,
     notifyServiceComments,
     loadMoreServices,
-    loadingMoreServices,
     serviceRangeError,
-    loadedThrough,
+    servicePaginationStatus,
     scheduleDateSummary,
-    scheduleDateSummaryPending,
+    scheduleDateSummaryStatus,
     error: servicesError,
   } = useServices(currentChurch?.id ?? null, {
     windowed: true,
@@ -1405,11 +1471,16 @@ export default function HomeScreen() {
   const upcomingText = viewMode === 'mine'
     ? `${scheduleView.personalServiceCount} assigned`
     : `${upcomingCount} services`;
+  const loadedServiceDates = useMemo(
+    () => services.map(service => service.date),
+    [services],
+  );
   const schedulePeriod = useMemo(() => resolveSchedulePeriodText({
     summary: scheduleDateSummary,
-    summaryPending: scheduleDateSummaryPending,
-    loadedThrough,
-  }), [loadedThrough, scheduleDateSummary, scheduleDateSummaryPending]);
+    summaryStatus: scheduleDateSummaryStatus,
+    loadedServiceDates,
+    isOffline,
+  }), [isOffline, loadedServiceDates, scheduleDateSummary, scheduleDateSummaryStatus]);
   const themedScheduleCardStyles = useMemo(() => ({
     serviceCard: [
       styles.serviceCard,
@@ -1580,6 +1651,7 @@ export default function HomeScreen() {
           label="Upcoming"
           detail={upcomingText}
         />
+        <ScheduleTodayMarker today={currentLocalDate} />
         <TabHeaderMetaText>{schedulePeriod}</TabHeaderMetaText>
       </ResponsiveTabHeader>
 
@@ -1589,10 +1661,6 @@ export default function HomeScreen() {
         onChange={setViewMode}
         onOpenFilters={() => setFilterModalVisible(true)}
       />
-
-      <View style={styles.todayMarkerRow}>
-        <ScheduleTodayMarker today={currentLocalDate} />
-      </View>
 
       <RefreshErrorNotice message={refreshError} />
 
@@ -1609,6 +1677,7 @@ export default function HomeScreen() {
       <NotificationPermissionOnboarding scheduleReady />
 
       <SectionList
+        accessibilityLabel={`${viewMode === 'mine' ? 'My upcoming services' : 'All upcoming services'}, ${visibleServiceCount}`}
         style={[styles.container, { backgroundColor: theme.colors.canvas }]}
         contentContainerStyle={styles.scrollContent}
         contentInsetAdjustmentBehavior="automatic"
@@ -1628,25 +1697,6 @@ export default function HomeScreen() {
             colors={[theme.colors.accent]}
           />
         }
-        ListHeaderComponent={(
-          <View
-            accessibilityLabel={`${viewMode === 'mine' ? 'My Upcoming Services' : 'All Upcoming Services'}, ${scheduleView.attentionServices.length + scheduleView.regularServices.length}`}
-            accessibilityRole="header"
-            accessible
-            style={styles.resultsHeader}
-          >
-            <ResponsiveText
-              accessible={false}
-              style={styles.resultsTitleLane}
-              text={viewMode === 'mine' ? 'My Upcoming Services' : 'All Upcoming Services'}
-              textStyle={[styles.resultsTitle, { color: theme.colors.textPrimary }]}
-              variant="monthLabel"
-            />
-            <Text accessible={false} style={[styles.resultsCount, { color: theme.colors.textSecondary }]}>
-              {scheduleView.attentionServices.length + scheduleView.regularServices.length}
-            </Text>
-          </View>
-        )}
         renderSectionHeader={({ section }) => (
           <View
             accessibilityLabel={section.kind === 'attention'
@@ -1705,44 +1755,10 @@ export default function HomeScreen() {
         )}
         renderItem={renderScheduleService}
         ListFooterComponent={listState === 'content' || listState === 'no-services' ? (
-          <TouchableOpacity
-            accessibilityHint="Loads the next date range without removing the visible schedule"
-            accessibilityLabel={loadingMoreServices
-              ? 'Loading more services'
-              : serviceRangeError
-                ? 'Retry service range'
-                : 'Load more scheduled services'}
-            accessibilityRole="button"
-            accessibilityState={{
-              busy: loadingMoreServices,
-              disabled: loadingMoreServices,
-            }}
-            style={styles.loadMoreButton}
+          <SchedulePaginationFooter
             onPress={loadMoreServices}
-            disabled={loadingMoreServices}
-          >
-            {loadingMoreServices ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <IconSymbol
-                ios_icon_name="calendar.badge.plus"
-                android_material_icon_name="event"
-                size={19}
-                color={colors.primary}
-              />
-            )}
-            <ResponsiveText
-              accessible={false}
-              style={styles.loadMoreLabelLane}
-              text={loadingMoreServices
-                ? 'Loading services...'
-                : serviceRangeError
-                  ? 'Retry Service Range'
-                  : 'Load More Services'}
-              textStyle={styles.loadMoreButtonText}
-              variant="actionLabel"
-            />
-          </TouchableOpacity>
+            status={servicePaginationStatus}
+          />
         ) : null}
       />
 
@@ -1762,7 +1778,7 @@ export default function HomeScreen() {
           visible={commentModalVisible}
           title={editingServiceCommentId ? 'Edit Song' : 'Add Song'}
           onClose={closeCommentModal}
-          variant="long-content"
+          variant="tall-form"
           maxWidth={520}
           headerIcon={<IconSymbol ios_icon_name="music.note.list" android_material_icon_name="queue-music" size={22} color={theme.modalHeader.accent} />}
           busy={isSavingServiceComment}

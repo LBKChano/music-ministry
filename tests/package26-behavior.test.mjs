@@ -9,6 +9,8 @@ import {
   resolveRoleSymbolForName,
 } from '../lib/roles/role-symbols.ts';
 import {
+  deriveScheduleDateSummary,
+  formatScheduleTodayText,
   formatScheduleDateSummary,
   getLocalDateParts,
   millisecondsUntilNextLocalDay,
@@ -74,32 +76,38 @@ test('schedule summaries cover empty, single-date, same-year, and cross-year dat
 test('schedule period wording stays truthful while the complete summary is unavailable', () => {
   assert.match(resolveSchedulePeriodText({
     summary: { firstDate: '2026-08-12', lastDate: '2026-11-02' },
-    summaryPending: false,
-    loadedThrough: '2026-11-10',
+    summaryStatus: 'success',
+    loadedServiceDates: ['2026-08-12'],
   }), /2026/);
 
-  assert.match(resolveSchedulePeriodText({
+  assert.doesNotMatch(resolveSchedulePeriodText({
     summary: null,
-    summaryPending: true,
-    loadedThrough: '2026-11-10',
-  }), /^Loaded through /);
+    summaryStatus: 'pending',
+    loadedServiceDates: ['2026-08-12', '2026-09-30'],
+  }), /Nov/);
 
   assert.match(resolveSchedulePeriodText({
     summary: null,
-    summaryPending: false,
-    loadedThrough: '2026-11-10',
-  }), /^Loaded through /);
+    summaryStatus: 'error',
+    loadedServiceDates: ['2026-08-12', '2026-09-30'],
+  }), /2026/);
 
   assert.equal(resolveSchedulePeriodText({
     summary: null,
-    summaryPending: true,
-    loadedThrough: null,
-  }), 'Loading schedule range');
+    summaryStatus: 'pending',
+    loadedServiceDates: [],
+  }), 'Loading schedule');
   assert.equal(resolveSchedulePeriodText({
     summary: null,
-    summaryPending: false,
-    loadedThrough: null,
+    summaryStatus: 'success',
+    loadedServiceDates: [],
   }), 'No upcoming services');
+
+  assert.deepEqual(
+    deriveScheduleDateSummary(['2026-09-30', 'invalid', '2026-08-12']),
+    { firstDate: '2026-08-12', lastDate: '2026-09-30' },
+  );
+  assert.match(formatScheduleTodayText({ weekday: 'Wed', month: 'Aug', day: '12' }), /^Today - /);
 });
 
 test('Today marker date parts are local and the rollover delay is bounded', () => {

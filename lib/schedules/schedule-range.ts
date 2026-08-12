@@ -5,6 +5,8 @@ export interface ScheduleDateSummary {
   lastDate: string;
 }
 
+export type ScheduleDateSummaryStatus = 'pending' | 'success' | 'error';
+
 function formatDate(value: string, options: Intl.DateTimeFormatOptions): string {
   return parseLocalDate(value).toLocaleDateString(undefined, options);
 }
@@ -50,27 +52,51 @@ export function formatScheduleDateSummary(
   })}`;
 }
 
+export function deriveScheduleDateSummary(
+  serviceDates: readonly string[],
+): ScheduleDateSummary | null {
+  const validDates = serviceDates
+    .filter(value => /^\d{4}-\d{2}-\d{2}$/.test(value))
+    .sort((left, right) => left.localeCompare(right));
+
+  if (validDates.length === 0) return null;
+  return {
+    firstDate: validDates[0],
+    lastDate: validDates[validDates.length - 1],
+  };
+}
+
 export function resolveSchedulePeriodText({
   summary,
-  summaryPending,
-  loadedThrough,
+  summaryStatus,
+  loadedServiceDates,
+  isOffline = false,
 }: {
   summary: ScheduleDateSummary | null | undefined;
-  summaryPending: boolean;
-  loadedThrough: string | null;
+  summaryStatus: ScheduleDateSummaryStatus;
+  loadedServiceDates: readonly string[];
+  isOffline?: boolean;
 }): string {
   const completeRange = formatScheduleDateSummary(summary);
   if (completeRange) return completeRange;
 
-  if (loadedThrough) {
-    return `Loaded through ${formatDate(loadedThrough, {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    })}`;
+  const loadedRange = formatScheduleDateSummary(
+    deriveScheduleDateSummary(loadedServiceDates),
+  );
+  if (loadedRange) return loadedRange;
+
+  if (summaryStatus === 'pending') return 'Loading schedule';
+  if (summaryStatus === 'error') {
+    return isOffline ? 'Schedule unavailable offline' : 'Schedule range unavailable';
   }
 
-  return summaryPending ? 'Loading schedule range' : 'No upcoming services';
+  return 'No upcoming services';
+}
+
+export function formatScheduleTodayText(
+  today: { weekday: string; day: string; month: string },
+): string {
+  return `Today - ${today.weekday}, ${today.month} ${today.day}`;
 }
 
 export function getLocalDateParts(date: Date): {

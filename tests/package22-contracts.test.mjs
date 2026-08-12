@@ -269,7 +269,8 @@ test('Schedule controls expose labels, states, keyboard targets, and non-color c
   assert.match(screen, /accessibilityState=\{\{ checked: selected \}\}/);
   assert.match(screen, /accessibilityLabel="Song title or details"/);
   assert.match(screen, /pendingSongMoveButton:[\s\S]*?width: 44,[\s\S]*?height: 44/);
-  assert.match(screen, /accessibilityState=\{\{[\s\S]*?busy: loadingMoreServices/);
+  assert.match(screen, /accessibilityState=\{complete \? undefined : \{[\s\S]*?busy: loading/);
+  assert.match(screen, /All scheduled services loaded/);
   assert.doesNotMatch(card, /color: colors\.accent/);
 });
 

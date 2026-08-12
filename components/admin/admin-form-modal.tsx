@@ -17,10 +17,10 @@ type AdminFormModalProps = {
   borderColor?: string;
   primaryColor?: string;
   maxWidth?: number;
-  maxRestingHeight?: number;
   variant?: AppModalVariant;
   bodyScroll?: boolean;
   headerIcon?: ReactNode;
+  scrollResetKey?: string;
 };
 
 export function AdminFormModal({
@@ -31,20 +31,20 @@ export function AdminFormModal({
   primaryAction,
   secondaryAction,
   maxWidth,
-  maxRestingHeight,
   variant = 'form',
   bodyScroll = true,
   headerIcon,
+  scrollResetKey,
 }: AdminFormModalProps) {
   return (
     <AppModal
       bodyScroll={bodyScroll}
       headerIcon={headerIcon}
-      maxHeight={maxRestingHeight}
       maxWidth={maxWidth}
       onClose={onClose}
       primaryAction={primaryAction}
       secondaryAction={secondaryAction}
+      scrollResetKey={scrollResetKey}
       title={title}
       variant={variant}
       visible={visible}

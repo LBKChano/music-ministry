@@ -16,6 +16,7 @@ const account = read('components', 'profile', 'profile-account-screen.tsx');
 const accountModel = read('lib', 'profile', 'account.ts');
 const preferenceEditor = read('components', 'profile', 'profile-scheduling-preferences-screen.tsx');
 const preferenceHook = read('hooks', 'useSchedulingPreferences.ts');
+const appSurface = read('components', 'ui', 'app-surface.tsx');
 
 test('Church keeps setup and schedule management grouped and visually distinct', () => {
   assert.match(adminHub, /title="Church Setup"/);
@@ -41,7 +42,9 @@ test('Profile identity is decorative while rows remain clearly actionable', () =
   assert.doesNotMatch(profile, /TabHeaderIconSurface/);
   assert.match(profilePrimitives, /accessibilityRole="button"/);
   assert.match(profilePrimitives, /valueTone/);
-  assert.match(profilePrimitives, /borderLeftColor: theme\.colors\.accent/);
+  assert.match(profilePrimitives, /AppSectionHeader/);
+  assert.match(appSurface, /sectionAccent/);
+  assert.match(appSurface, /theme\.colors\.accent/);
   assert.match(profilePrimitives, /chevron\.right/);
 });
 

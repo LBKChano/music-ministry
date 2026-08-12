@@ -23,6 +23,7 @@ import { useReducedMotionPreference } from '@/hooks/useReducedMotionPreference';
 import {
   getModalDismissAction,
   getModalLayout,
+  shouldResetModalScroll,
   type AppModalVariant,
 } from '@/lib/ui/modal-presentation';
 
@@ -59,6 +60,7 @@ type AppModalProps = {
   dismissOnBackdrop?: boolean;
   busy?: boolean;
   returnFocusRef?: RefObject<View | null>;
+  scrollResetKey?: string;
   testID?: string;
 };
 
@@ -86,6 +88,7 @@ export function AppModal({
   dismissOnBackdrop = true,
   busy = false,
   returnFocusRef,
+  scrollResetKey,
   testID,
 }: AppModalProps) {
   const theme = useAppTheme();
@@ -95,6 +98,9 @@ export function AppModal({
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [restingHeight, setRestingHeight] = useState(dimensions.height);
   const closeButtonRef = useRef<View>(null);
+  const bodyScrollRef = useRef<ScrollView>(null);
+  const previousVisibleRef = useRef(false);
+  const previousContentKeyRef = useRef<string | null>(null);
   const actionBusy = Boolean(busy || primaryAction?.loading || secondaryAction?.loading);
   const resolvedBackgroundColor = backgroundColor ?? theme.modal.surface;
   const resolvedTextColor = textColor ?? theme.colors.textPrimary;
@@ -125,6 +131,24 @@ export function AppModal({
   useEffect(() => {
     if (!keyboardVisible) setRestingHeight(dimensions.height);
   }, [dimensions.height, keyboardVisible]);
+
+  useEffect(() => {
+    const contentKey = scrollResetKey ?? title;
+    const shouldReset = bodyScroll && shouldResetModalScroll({
+      visible,
+      previousVisible: previousVisibleRef.current,
+      previousContentKey: previousContentKeyRef.current,
+      nextContentKey: contentKey,
+    });
+    previousVisibleRef.current = visible;
+    previousContentKeyRef.current = contentKey;
+
+    if (!shouldReset) return;
+    const frame = requestAnimationFrame(() => {
+      bodyScrollRef.current?.scrollTo({ animated: false, y: 0 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [bodyScroll, scrollResetKey, title, visible]);
 
   const requestDismiss = useCallback((dismissAllowed = true) => {
     const action = getModalDismissAction({
@@ -195,17 +219,29 @@ export function AppModal({
 
   const body = bodyScroll ? (
     <ScrollView
-      style={[styles.body, variant === 'long-content' && styles.longBody, bodyStyle]}
+      ref={bodyScrollRef}
+      style={[
+        styles.body,
+        variant !== 'confirmation' && styles.flexBody,
+        bodyStyle,
+      ]}
       contentContainerStyle={[styles.bodyContent, contentContainerStyle]}
+      bounces
+      contentInsetAdjustmentBehavior="never"
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+      nestedScrollEnabled
       showsVerticalScrollIndicator={false}
     >
       {children}
     </ScrollView>
   ) : (
-    <View style={[styles.body, variant === 'long-content' && styles.longBody, bodyStyle]}>
+    <View style={[
+      styles.body,
+      variant !== 'confirmation' && styles.flexBody,
+      bodyStyle,
+    ]}>
       {children}
     </View>
   );
@@ -223,7 +259,15 @@ export function AppModal({
       visible={visible}
     >
       <KeyboardAvoidingView
-        style={[styles.overlay, { backgroundColor: theme.modal.backdrop }]}
+        style={[
+          styles.overlay,
+          {
+            backgroundColor: theme.modal.backdrop,
+            paddingBottom: insets.bottom + layout.verticalMargin,
+            paddingHorizontal: layout.horizontalMargin,
+            paddingTop: insets.top + layout.verticalMargin,
+          },
+        ]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <Pressable
@@ -412,7 +456,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     justifyContent: 'center',
-    padding: 12,
   },
   modal: {
     borderWidth: StyleSheet.hairlineWidth,
@@ -428,6 +471,7 @@ const styles = StyleSheet.create({
     minHeight: 78,
     paddingHorizontal: 14,
     paddingVertical: 11,
+    flexShrink: 0,
   },
   headerIcon: {
     alignItems: 'center',
@@ -450,14 +494,15 @@ const styles = StyleSheet.create({
   subtitle: { alignItems: 'flex-start', paddingTop: 3 },
   subtitleText: { textAlign: 'left' },
   body: { flexShrink: 1, minHeight: 0 },
-  longBody: { flex: 1 },
-  bodyContent: { paddingHorizontal: 18, paddingVertical: 16 },
+  flexBody: { flex: 1 },
+  bodyContent: { flexGrow: 1, paddingHorizontal: 18, paddingVertical: 16 },
   footer: {
     borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: 10,
     paddingHorizontal: 18,
     paddingVertical: 14,
+    flexShrink: 0,
   },
   stackedFooter: { flexDirection: 'column-reverse' },
   actionButton: {

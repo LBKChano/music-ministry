@@ -48,6 +48,7 @@ import {
   shouldShowInitialLoader,
 } from '@/lib/query/refresh-coordinator';
 import { HEADER_ACTION_LANE_WIDTHS } from '@/lib/ui/header-typography';
+import { shouldResetModalList } from '@/lib/ui/modal-presentation';
 import { resolveSelectedChurchHeaderTitle } from '@/lib/church/header-identity';
 import { useAppTheme } from '@/contexts/AppThemeContext';
 import type { ChurchAdminDestination } from '@/lib/church-admin/summary';
@@ -532,6 +533,9 @@ export default function ChurchScreen() {
   const [showAutoAssignEndPicker, setShowAutoAssignEndPicker] = useState(false);
   const [autoAssignPreview, setAutoAssignPreview] = useState<AutoAssignResult | null>(null);
   const [autoAssignPreviewKey, setAutoAssignPreviewKey] = useState<string | null>(null);
+  const autoAssignListRef = React.useRef<SectionList<AutoAssignListItem, AutoAssignListSection>>(null);
+  const previousAutoAssignVisibleRef = React.useRef(false);
+  const previousAutoAssignTargetRef = React.useRef<string | null>(null);
   const [autoAssignOperationStatus, setAutoAssignOperationStatus] = useState<string | null>(null);
   const [isGeneratingAutoAssignPreview, setIsGeneratingAutoAssignPreview] = useState(false);
   const [isApplyingAutoAssign, setIsApplyingAutoAssign] = useState(false);
@@ -835,6 +839,29 @@ export default function ChurchScreen() {
 
     return sections;
   }, [autoAssignPreview]);
+
+  React.useEffect(() => {
+    const targetKey = `${pendingAutoAssignMode}:${autoAssignPreviewKey ?? 'draft'}`;
+    const shouldReset = shouldResetModalList({
+      visible: showAutoAssignModal,
+      previousVisible: previousAutoAssignVisibleRef.current,
+      previousTargetKey: previousAutoAssignTargetRef.current,
+      nextTargetKey: targetKey,
+    });
+    previousAutoAssignVisibleRef.current = showAutoAssignModal;
+    previousAutoAssignTargetRef.current = targetKey;
+    if (!shouldReset || autoAssignSections.length === 0) return;
+
+    const frame = requestAnimationFrame(() => {
+      autoAssignListRef.current?.scrollToLocation({
+        animated: false,
+        itemIndex: 0,
+        sectionIndex: 0,
+        viewOffset: 0,
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [autoAssignPreviewKey, autoAssignSections.length, pendingAutoAssignMode, showAutoAssignModal]);
 
   if (sessionStatus !== 'ready' || !isAdmin) {
     console.log('[ChurchScreen] Non-admin user attempted to access church screen, redirecting');
@@ -2113,6 +2140,7 @@ export default function ChurchScreen() {
 
         {currentChurch && adminSummary && !activeHubDestination ? (
           <AdminHubOverview
+            key={currentChurch.id}
             summary={adminSummary}
             onOpen={setActiveHubDestination}
           />
@@ -3165,7 +3193,7 @@ export default function ChurchScreen() {
         title="Edit Member"
         onClose={() => setEditMemberModalVisible(false)}
         maxWidth={500}
-        variant="long-content"
+        variant="tall-form"
         secondaryAction={{
           label: 'Cancel',
           onPress: () => {
@@ -3290,7 +3318,7 @@ export default function ChurchScreen() {
         title={serviceToEdit ? 'Edit Weekly Service' : 'Add Weekly Service'}
         onClose={closeServiceModal}
         maxWidth={440}
-        maxRestingHeight={600}
+        variant="tall-form"
         secondaryAction={{
           label: 'Cancel',
           onPress: closeServiceModal,
@@ -3417,7 +3445,7 @@ export default function ChurchScreen() {
       <AdminFormModal
         visible={isAddRoleModalVisible}
         title={roleToEdit ? 'Edit Church Role' : 'Add Church Role'}
-        variant="long-content"
+        variant="tall-form"
         onClose={() => setAddRoleModalVisible(false)}
         maxWidth={440}
         secondaryAction={{
@@ -3616,9 +3644,10 @@ export default function ChurchScreen() {
         testID="auto-assign-preview-modal"
       >
             <SectionList<AutoAssignListItem, AutoAssignListSection>
+              ref={autoAssignListRef}
               style={styles.autoAssignModalBody}
               contentContainerStyle={styles.autoAssignModalBodyContent}
-              contentInsetAdjustmentBehavior="automatic"
+              contentInsetAdjustmentBehavior="never"
               sections={autoAssignSections}
               keyExtractor={item => (
                 item.kind === 'assignment'
@@ -3947,8 +3976,9 @@ export default function ChurchScreen() {
           : showAddSpecialService
             ? 'Add Special Service'
             : 'Step 2: Add Special Services'}
-        variant="long-content"
+        variant="tall-form"
         maxWidth={520}
+        scrollResetKey={`${prepareQuarterStep}:${showAddSpecialService ? 'special-editor' : 'service-list'}`}
         headerIcon={<IconSymbol ios_icon_name="calendar.badge.plus" android_material_icon_name="event" size={22} color={theme.modalHeader.accent} />}
         busy={isPreparing}
         onClose={() => {
@@ -4323,7 +4353,7 @@ export default function ChurchScreen() {
         title="Add Single Service"
         onClose={closeAdHocServiceModal}
         maxWidth={460}
-        maxRestingHeight={620}
+        variant="tall-form"
         secondaryAction={{
           label: 'Cancel',
           onPress: closeAdHocServiceModal,
@@ -5193,8 +5223,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   autoAssignModalBody: {
+    flex: 1,
+    minHeight: 0,
     width: '100%',
-    flexShrink: 1,
   },
   autoAssignModalBodyContent: {
     paddingHorizontal: 18,

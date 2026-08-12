@@ -2,13 +2,10 @@
 
 ## Product Roadmap
 
-Implementation status: Packages 0 through 22 are implemented, with their
-  backend-first additive migrations deployed where documented. Packages 23
-  through 29 are planned visual-system, Schedule-comprehension, and reliability
-  work. They must be implemented in order so the theme foundation and navigation
-  contract exist before individual screens are restyled, followed by the final
-  data-lifecycle/native reliability gate. The remaining release gates include
-  the documented physical-device checks.
+Implementation status: Packages 0 through 34 are implemented, with their
+  backend-first additive migrations deployed where documented. Package 35's
+  client-only automated and live-backend audit is implemented; final release
+  approval still requires the documented physical-device checks.
 
 ### Delivery Rules
 
@@ -3816,6 +3813,380 @@ Done when:
   affecting delivery or duplicate prevention, and each iOS widget displays the
   correct selected-church service details after login without requiring the
   Schedule tab to be opened.
+
+#### Package 30: Shared Header, Title, and Brand-Color Corrections
+
+Status:
+
+- Implemented locally on 2026-08-12 from the physical-device screenshots.
+  Client-only; no Supabase migration, Edge Function change, route change, or
+  persisted-data change was required.
+- The shared focused header now omits its trailing lane entirely when no real
+  action exists, while preserving a stable accessible target when one does.
+  Church and focused title lanes now reflect their actual actions, and adaptive
+  typography checks the longest token before choosing a size.
+- The shared theme now owns the related navy surfaces and gradient family, and
+  the shared section heading uses a short 2x15 semantic accent instead of the
+  previous heavy rail.
+- Verification passed: TypeScript, ESLint, all six Supabase Edge Function Deno
+  checks, 456 tests, and web, Android, and iOS production exports.
+
+Goal:
+
+- Correct the shared header irregularities once, reclaim space currently lost
+  to nonexistent controls, and make the navy/accent hierarchy read as one
+  intentional palette without changing navigation or permissions.
+
+Implementation:
+
+- Fix `FocusedScreenHeader` so it renders a trailing 44x44 action lane only when
+  a real action is supplied. Screens without a trailing action must have no
+  empty outlined square, no focusable placeholder, and no reserved accessibility
+  element. Screens with a real action retain a 44x44 target and stable layout.
+- Audit every Church and Profile focused screen using the shared header. Confirm
+  the back action, contextual icon, title, church subtitle, optional real action,
+  safe-area spacing, and accessibility order are correct on both platforms.
+- Size the main Church header's trailing lane from the one visible Add Church
+  action instead of the current oversized multi-action reservation. Preserve
+  the invitation-code control in the metadata row and keep its copy behavior.
+- Strengthen the adaptive title algorithm so the longest word must fit before a
+  font size is selected. Multiword church names may use two lines, but may break
+  only at spaces. Short names must not shrink, renamed/switched churches must
+  update atomically, and a genuinely unbreakable name may use a documented
+  minimum size before ellipsis as the final fallback.
+- Reduce the shared section-heading accent rail from its current heavy treatment
+  to a shorter/thinner semantic accent. Apply it through the shared section
+  primitive rather than per-screen overrides, and retain a non-color heading
+  hierarchy.
+- Consolidate the deep navy used by the branded header, focused headers, service
+  metadata, selected controls, and strong information surfaces. Define the
+  relationship in semantic theme tokens, remove near-duplicate hard-coded navy
+  values in migrated screens, and verify light and future-dark contrast. Keep
+  status colors distinct and avoid making the interface one-note blue.
+
+Compatibility and verification:
+
+- Preserve every route, button callback, admin check, title source, and
+  accessibility label. Older installed builds are unaffected because this is
+  bundled client UI only.
+- Add fixtures for no/one trailing action, short/long church names, a long first
+  word, one unbroken name, two-line Larger Text, rapid church switching, and
+  narrow Android/iPhone widths.
+- Run TypeScript, ESLint, header/theme tests, web/Android/iOS production exports,
+  and screenshot comparisons before Package 31.
+
+Done when:
+
+- No subtab shows an empty top-right box, church names use the available width
+  without mid-word breaks, the section accent is quieter, and every dark-blue
+  treatment visibly belongs to the same semantic brand family.
+
+#### Package 31: Returning-Admin Church Hub
+
+Status:
+
+- Implemented locally on 2026-08-12. Client-only and derived from existing
+  Church readiness data; no database flag or migration was introduced.
+- Incomplete churches retain the guided checklist and recommended next step.
+  Complete churches now show one compact `Edit Church Setup` control that
+  expands every existing editor, without permanent visible or accessibility
+  `Ready` badges.
+- The compact state resets when switching churches and automatically returns to
+  guided setup if required data becomes incomplete. Existing destinations,
+  Schedule Management, permissions, queries, and mutations remain unchanged.
+- Verification passed with the Package 30 gate: TypeScript, ESLint, all six
+  Supabase Edge Function Deno checks, 456 tests, and web, Android, and iOS
+  production exports.
+
+Goal:
+
+- Keep Church Setup guided and obvious for a new/incomplete church, then make it
+  compact and editable for a returning admin instead of permanently displaying
+  onboarding progress and `Ready` badges.
+
+Implementation:
+
+- Keep the current checklist-style guided setup only while the church is
+  incomplete. Continue deriving completeness from required church details,
+  roles, weekly services, and any existing readiness rules so old and new app
+  versions agree on the underlying data.
+- While setup is incomplete, show the recommended `Next` step and completion
+  state only where it helps the admin finish setup. Never persist a separate
+  `setup complete` boolean that can drift from real church data.
+- Once setup is complete, replace the expanded setup checklist with one compact
+  `Edit Church Setup` destination or initially collapsed configuration group.
+  Opening it must expose every existing editor: Church Details, Roles, Weekly
+  Services, Members, Scheduling Rules, Song Types, and Reminder Settings.
+- Remove visible and accessibility-announced `Ready` badges from the normal
+  returning-admin view. Keep Schedule Management immediately visible and keep
+  Prepare Services, bulk service deletion, Fill Empty Slots, and Reassign All in
+  their existing permission boundary.
+- If an admin later removes required setup data, automatically return to the
+  guided incomplete state and identify the next required step. Do not trap the
+  admin in a stale compact state.
+- Preserve the active destination while harmless Realtime/cache updates arrive,
+  but return safely to the overview after a church/account switch or lost admin
+  permission.
+
+Compatibility and verification:
+
+- Keep every existing editor route/state, mutation, RPC, Realtime update, and
+  owner/scheduling-admin permission check. Released clients continue reading the
+  same rows and are unaffected.
+- Test empty, partly configured, complete, and later-broken setups; owner and
+  scheduling-admin access; one/multiple churches; refresh; church switching;
+  offline cached readiness; and Larger Text.
+
+Done when:
+
+- First-time setup remains guided, while a completed church presents a concise
+  admin workspace with one obvious way to reopen all editable setup areas and
+  no permanent `Ready` decoration.
+
+#### Package 32: Truthful and Compact Schedule Context
+
+Status:
+
+- Implemented locally on 2026-08-12. Client-only; the existing service queries
+  and date-summary query are unchanged, with no RPC, schema, or persisted-data
+  change.
+- Today now appears as compact, noninteractive header metadata and retains its
+  local-midnight/app-resume refresh and full accessibility label. The standalone
+  70px marker row and duplicate visual upcoming-services heading are removed.
+- The header period uses the authoritative upcoming-service summary. While that
+  summary is unavailable, it formats only dates from actual cached service rows;
+  the internal 90-day `loadedThrough` boundary is never presented as a service
+  date. Empty, loading, offline, and error copy are deterministic.
+- Verification passed: focused Package 32 and legacy Package 26 tests,
+  TypeScript, ESLint, all six Supabase Edge Function Deno checks, all 475 tests,
+  and web, Android, and iOS production exports.
+
+Goal:
+
+- Reduce the fixed space above the service list and ensure every visible date or
+  range describes real scheduled services, never an internal fetch horizon.
+
+Implementation:
+
+- Move Today from the standalone 70px date tile below the controls into a compact
+  noninteractive header metadata item such as `Today - Wed, Aug 12`. Keep the
+  device-local midnight/app-resume update, accessibility label, and non-button
+  semantics. Remove the old fixed marker row so more of the schedule remains
+  visible while scrolling.
+- Make the header schedule period use the authoritative first/last upcoming
+  service summary. If that query is temporarily unavailable, derive a clearly
+  scoped fallback from actual currently loaded service rows; never display the
+  end of a 90-day query window as though a service exists there.
+- Define deterministic copy for no services, one service date, a complete date
+  range, loading with cached services, offline cache, and summary failure. Keep
+  internal `loadedThrough` data available for pagination and bulk management,
+  but remove it from the user-facing main-header range.
+- Remove the duplicate `All Upcoming Services`/`My Upcoming Services` heading
+  and count above the first month because the header and segmented control
+  already communicate that context. Preserve an equivalent list-level
+  accessibility label so screen-reader users do not lose orientation.
+- Keep month headers, attention sections, filters, personal/admin defaults,
+  sticky behavior, expanded cards, and list scroll position unchanged.
+
+Compatibility and verification:
+
+- Add tests for a last service before the query boundary, one service, no
+  service, summary loading/error, cached/offline data, filters, local midnight,
+  and church switching. Explicitly prove that `Loaded through Nov 9` cannot be
+  shown when the last scheduled service is Sep 30.
+- Preserve service-query keys, mutations, Realtime handling, widget input,
+  role permissions, and all released backend contracts.
+
+Done when:
+
+- Schedule context occupies less fixed vertical space, starts directly with the
+  first meaningful section/month, and the header always reports real service
+  dates or an honest temporary state.
+
+#### Package 33: Stable Load-More State and End-of-Schedule Behavior
+
+Status:
+
+- Implemented locally on 2026-08-12. Client-only reliability repair; no
+  Supabase migration or backend deployment was required.
+- Load-more now uses one explicit `idle`, `loading`, `error`, or `complete`
+  operation scoped to account, church, local start date, window size, and target
+  range. Rapid presses are synchronously deduplicated and stale completions from
+  another scope cannot update the visible schedule.
+- Cached ranges remain successful during failed background refetches. A known
+  final service settles the footer to a stable non-button completion state, a
+  newly added later service reopens pagination, and an empty fetched range stops
+  pagination unless the authoritative summary proves a later service exists.
+- The footer keeps one component with fixed icon and text lanes through every
+  state, preserving already-rendered services and scroll position.
+- Verification passed: focused Package 33 and Package 22 regression tests,
+  TypeScript, ESLint, all six Supabase Edge Function Deno checks, all 475 tests,
+  and web, Android, and iOS production exports.
+
+Goal:
+
+- Remove the continuously flickering `Load More Services` control and stop
+  offering additional ranges when all known scheduled services are already
+  loaded.
+
+Implementation:
+
+- Reproduce the flicker with diagnostics around query status, requested range,
+  footer mount/unmount, Realtime invalidation, refresh, and list virtualization
+  before changing behavior. Record the exact state transition that causes it.
+- Replace loosely related booleans with one account/church/range-scoped footer
+  state: `idle`, `loading`, `error`, or `complete`. Ignore stale completions from
+  a previous account/church and deduplicate repeated presses for the same range.
+- Compare the last actual scheduled service date from Package 32 with the last
+  successfully loaded range. Hide the command or show one stable, non-button
+  `All scheduled services loaded` footer once the final service is covered.
+- Keep one footer identity and fixed label/icon lanes through idle, loading, and
+  retry states. Do not swap differently sized controls, remount the footer on
+  background refresh, or clear already rendered services while loading.
+- Treat an empty fetched window as a valid result. Advance safely only when a
+  later real service is known to exist; otherwise settle to `complete` instead
+  of inviting endless empty 90-day requests.
+- Preserve scroll position, expanded cards, filters, pull-to-refresh, cached
+  ranges, widget synchronization, and service Realtime updates.
+
+Compatibility and verification:
+
+- Test slow and failed requests, rapid taps, empty intermediate windows,
+  background refetch, Realtime changes, pull-to-refresh, app resume, church and
+  account switching, final-service deletion/addition, and both platforms.
+- Verify one press produces one range request and the footer remains visually
+  stable in a long virtualized list. Older builds and backend contracts remain
+  unchanged.
+
+Done when:
+
+- The load-more footer never flickers, cannot issue duplicate requests, retries
+  predictably, and disappears or settles cleanly when there is nothing else to
+  load.
+
+#### Package 34: Taller Modal Geometry and Reliable Scrolling
+
+Status:
+
+- Implemented locally on 2026-08-12 as a client-only extension of the Package
+  20/28 modal contract. No modal workflow, mutation payload, database object,
+  Edge Function, or released backend contract changed.
+- Added four shared modal families: compact confirmation, standard form, tall
+  form, and long virtualized preview. Safe-area-derived geometry now allocates
+  more vertical room to information-rich forms while preserving narrow-phone,
+  landscape, Larger Text, and tablet bounds.
+- Removed the legacy 600/620/720 form caps. Member, Role, Weekly Service,
+  Prepare Quarter, Single Service, song, and filter workflows now use the tall
+  form family; short forms and confirmations retain their compact families.
+- Standard/tall forms use the shared keyboard-aware body `ScrollView` with
+  pinned headers/actions. Auto-assignment, bulk deletion, and manual assignment
+  retain one bounded `SectionList`/`FlatList` scroll owner with safe inset
+  handling and no nested vertical body scroll.
+- Shared and virtualized scroll owners reset to the top only on open/reopen or
+  an explicit workflow target/step change. Typing, validation, cache refresh,
+  and ordinary rerenders do not reset position.
+- TypeScript, Deno Edge Function checks, full ESLint, all 484 repository tests,
+  `git diff --check`, and clean web/Android/iOS production exports pass.
+- A new Android/iOS app build is required to ship these client changes. The
+  physical-device modal matrix remains part of Package 35.
+
+Goal:
+
+- Let information-rich popups use more safe vertical space and make every modal
+  scroll reliably in both directions, especially Church forms on Android.
+
+Implementation:
+
+- Inventory every `AppModal` and `AdminFormModal` call site and classify it as a
+  compact confirmation, standard form, tall form, or long virtualized preview.
+  Remove one-off height caps such as 600/620 where they unnecessarily override
+  the safe-area-derived layout.
+- Increase standard/tall form allocations on normal and large phones while
+  preserving outer margins, tablet max widths, safe-area clearance, landscape
+  fallbacks, and compact confirmation sizing. No modal may extend behind the
+  status bar, home indicator, keyboard, or floating navigation dock.
+- Give each modal exactly one vertical scroll owner. Standard forms use the
+  shared body `ScrollView`; long candidate/preview lists use their native
+  `FlatList`/`SectionList` with `bodyScroll={false}`. Remove accidental nested
+  vertical scroll views and use horizontal scrolling only where intentional.
+- Ensure scroll containers receive bounded height plus `minHeight: 0`, correct
+  `flex`/`flexGrow`, Android nested-scroll handling where unavoidable, iOS
+  bounce/inset behavior, and reachable pinned footer actions.
+- Reset to the top only when a modal is newly opened or its workflow target/step
+  changes. Do not jump during typing, validation, cache refresh, or Realtime
+  updates. Verify scrolling from the bottom back to the top after momentum and
+  keyboard dismissal.
+- Preserve drag/tap keyboard dismissal, date/time draft confirmation, Android
+  back, iOS accessibility escape, busy-state dismissal protection, and focus
+  restoration.
+
+Compatibility and verification:
+
+- Exercise Create/Edit Church, Member, Role, Weekly Service, Single Service,
+  Prepare Quarter, bulk deletion, auto-assignment, assignment picker, filters,
+  songs, fill-ins, and every confirmation on small Android, current/older
+  iPhones, large phone, tablet, landscape, Larger Text, and display scaling.
+- Add geometry and scroll-owner contract tests plus interaction tests for reopen,
+  step changes, keyboard open/close, bottom-to-top scrolling, and pinned actions.
+  Run web/Android/iOS production exports.
+
+Done when:
+
+- Content-rich popups visibly use more of the screen, all content remains
+  reachable, and no Church or Schedule modal becomes stuck at the bottom or
+  loses its action buttons.
+
+#### Package 35: Packages 30-34 Integrated Release Gate
+
+Status:
+
+- Automated gate implemented locally on 2026-08-12. Verification-only; no
+  backend migration, Edge Function, route, persisted setting, or runtime change
+  belongs to this package.
+- Added an integrated Package 35 contract suite and repeatable release report.
+  The live read-only audit found zero public tables without RLS, all 11 baseline
+  RPCs, 13 Realtime tables, both notification cron jobs active, OneSignal
+  configured, and JWT protection intact on `delete-account`.
+- TypeScript, all six Edge Function Deno checks, full ESLint, all 489 tests,
+  `git diff --check`, and clean web, Android, and iOS production exports pass.
+- Responsive web checks passed at narrow Android, older/current iPhone, large
+  phone, tablet, and landscape sizes for the signed-out and create-church paths,
+  with no horizontal overflow or unreachable action.
+- The complete automated command/export results are recorded in
+  `docs/PACKAGE_35_RELEASE_GATE.md`. Native authenticated screenshots,
+  accessibility checks, push delivery, widgets, and released-build smoke tests
+  remain pending because no simulator runtime, connected Android device, or
+  authenticated test session is available in this workspace.
+
+Goal:
+
+- Prove the visual and reliability changes work together on real devices without
+  changing any behavior used by released app versions.
+
+Verification:
+
+- Run TypeScript, full ESLint, all repository tests, Deno checks for unchanged
+  Edge Function compatibility, `git diff --check`, and clean web/Android/iOS
+  production exports.
+- Repeat the released-build backend smoke test even though Packages 30-34 are
+  client-only. Confirm no schema, RLS, RPC, Edge Function, Auth, notification,
+  widget, or Realtime contract changed.
+- Capture Schedule, Church overview, every focused Church/Profile header, and
+  representative modal screenshots on narrow Android, current/older iPhone,
+  large phone, and tablet with normal and Larger Text.
+- Verify short/long church names, no phantom header actions, compact returning
+  setup, accurate schedule date range, Today placement, first month visibility,
+  stable load-more behavior, modal scrolling, keyboard handling, safe areas,
+  VoiceOver/TalkBack order, Reduced Motion, and two/three-tab dock clearance.
+- Recheck admin-only schedule mutations, member song ownership, church switching,
+  account switching, offline cache, pull-to-refresh, Realtime convergence, push
+  notifications, and both iOS widget modes to ensure the polish did not disturb
+  functional boundaries.
+
+Done when:
+
+- The physical-device matrix passes, no released backend contract changed, and
+  the candidate is ready for version/build increment and store test builds.
 
 ## Cross-Feature Release Gate
 

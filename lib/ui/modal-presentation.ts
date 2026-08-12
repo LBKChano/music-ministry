@@ -1,4 +1,4 @@
-export type AppModalVariant = 'confirmation' | 'form' | 'long-content';
+export type AppModalVariant = 'confirmation' | 'form' | 'tall-form' | 'long-content';
 
 export type ModalLayoutInput = {
   width: number;
@@ -15,19 +15,30 @@ export type ModalLayout = {
   maxWidth: number;
   maxHeight: number;
   minHeight: number | undefined;
+  horizontalMargin: number;
+  verticalMargin: number;
   stackActions: boolean;
 };
 
 const VARIANT_WIDTHS: Record<AppModalVariant, number> = {
   confirmation: 420,
   form: 480,
+  'tall-form': 560,
   'long-content': 680,
 };
 
 const VARIANT_HEIGHT_RATIOS: Record<AppModalVariant, number> = {
   confirmation: 0.58,
-  form: 0.88,
-  'long-content': 0.94,
+  form: 0.94,
+  'tall-form': 0.98,
+  'long-content': 1,
+};
+
+const VARIANT_MIN_HEIGHTS: Record<AppModalVariant, number | undefined> = {
+  confirmation: undefined,
+  form: 360,
+  'tall-form': 440,
+  'long-content': 440,
 };
 
 export function getModalLayout(input: ModalLayoutInput): ModalLayout {
@@ -48,9 +59,11 @@ export function getModalLayout(input: ModalLayoutInput): ModalLayout {
       input.requestedMaxWidth ?? VARIANT_WIDTHS[input.variant],
     ),
     maxHeight: resolvedMaxHeight,
-    minHeight: input.variant === 'confirmation'
+    minHeight: VARIANT_MIN_HEIGHTS[input.variant] === undefined
       ? undefined
-      : Math.min(input.variant === 'form' ? 360 : 400, resolvedMaxHeight),
+      : Math.min(VARIANT_MIN_HEIGHTS[input.variant] as number, resolvedMaxHeight),
+    horizontalMargin,
+    verticalMargin,
     stackActions: input.width < 360 || input.fontScale > 1.35,
   };
 }
@@ -67,8 +80,26 @@ export function getModalDismissAction(input: {
 
 export function shouldResetModalList(input: {
   visible: boolean;
+  previousVisible?: boolean;
   previousTargetKey: string | null;
   nextTargetKey: string;
 }): boolean {
-  return input.visible && input.previousTargetKey !== input.nextTargetKey;
+  return input.visible && (
+    input.previousVisible === false
+    || input.previousTargetKey !== input.nextTargetKey
+  );
+}
+
+export function shouldResetModalScroll(input: {
+  visible: boolean;
+  previousVisible: boolean;
+  previousContentKey: string | null;
+  nextContentKey: string;
+}): boolean {
+  return shouldResetModalList({
+    visible: input.visible,
+    previousVisible: input.previousVisible,
+    previousTargetKey: input.previousContentKey,
+    nextTargetKey: input.nextContentKey,
+  });
 }

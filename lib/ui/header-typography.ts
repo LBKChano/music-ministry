@@ -1,7 +1,8 @@
 export type HeaderTypographyVariant =
   | 'primaryTitle'
   | 'profileName'
-  | 'secondaryChurchName';
+  | 'secondaryChurchName'
+  | 'focusedTitle';
 
 export interface HeaderTypographyContract {
   preferredSize: number;
@@ -36,7 +37,7 @@ export interface WordSafeHeaderLayout {
 export const HEADER_ACTION_LANE_WIDTHS = {
   bell: 52,
   profile: 54,
-  churchActions: 140,
+  churchActions: 52,
 } as const;
 
 export const HEADER_TYPOGRAPHY: Record<
@@ -62,6 +63,13 @@ export const HEADER_TYPOGRAPHY: Record<
     minimumSize: 16,
     lineHeightOffset: 5,
     maxFontSizeMultiplier: 1.4,
+    fontWeight: '800',
+  },
+  focusedTitle: {
+    preferredSize: 19,
+    minimumSize: 17,
+    lineHeightOffset: 5,
+    maxFontSizeMultiplier: 1.35,
     fontWeight: '800',
   },
 };
@@ -108,8 +116,10 @@ export function selectAdaptiveHeaderTypography({
     Math.max(fontScale, 1),
     contract.maxFontSizeMultiplier,
   );
-  const tokenCount = displayText ? displayText.split(' ').length : 0;
+  const tokens = displayText ? displayText.split(' ') : [];
+  const tokenCount = tokens.length;
   const lineCapacity = stableWidth * (tokenCount <= 1 ? 1 : 2) * 0.92;
+  const tokenCapacity = stableWidth * 0.96;
 
   let fontSize = contract.minimumSize;
   for (
@@ -121,7 +131,17 @@ export function selectAdaptiveHeaderTypography({
       displayText,
       candidate * effectiveFontScale,
     );
-    if (estimatedWidth <= lineCapacity) {
+    const longestTokenWidth = tokens.reduce(
+      (maximum, token) => Math.max(
+        maximum,
+        estimateHeaderTextWidth(token, candidate * effectiveFontScale),
+      ),
+      0,
+    );
+    if (
+      estimatedWidth <= lineCapacity
+      && longestTokenWidth <= tokenCapacity
+    ) {
       fontSize = candidate;
       break;
     }
@@ -186,7 +206,7 @@ export function createWordSafeHeaderLayout({
 
   let bestLines = [words[0], words.slice(1).join(' ')];
   let bestScore = Number.POSITIVE_INFINITY;
-  let bestSecondLineOverflow = false;
+  let bestLineOverflow = false;
 
   for (let index = 1; index < words.length; index += 1) {
     const firstLine = words.slice(0, index).join(' ');
@@ -202,7 +222,7 @@ export function createWordSafeHeaderLayout({
     if (score < bestScore) {
       bestScore = score;
       bestLines = [firstLine, secondLine];
-      bestSecondLineOverflow = secondOverflow > 0;
+      bestLineOverflow = firstOverflow > 0 || secondOverflow > 0;
     }
   }
 
@@ -215,7 +235,7 @@ export function createWordSafeHeaderLayout({
     displayText,
     lines: bestLines,
     singleTokenOverflow: false,
-    truncated: bestSecondLineOverflow || hasOverlongToken,
+    truncated: bestLineOverflow || hasOverlongToken,
   };
 }
 
@@ -234,5 +254,29 @@ export function calculateHeaderTitleLaneWidth({
   return Math.max(
     96,
     Math.floor(windowWidth - horizontalPadding - trailingSpace),
+  );
+}
+
+export function calculateFocusedHeaderTitleLaneWidth({
+  windowWidth,
+  hasTrailingAction,
+}: {
+  windowWidth: number;
+  hasTrailingAction: boolean;
+}): number {
+  const horizontalPadding = 24;
+  const leadingControls = 88;
+  const baseGaps = 20;
+  const trailingSpace = hasTrailingAction ? 54 : 0;
+
+  return Math.max(
+    96,
+    Math.floor(
+      windowWidth
+      - horizontalPadding
+      - leadingControls
+      - baseGaps
+      - trailingSpace,
+    ),
   );
 }
