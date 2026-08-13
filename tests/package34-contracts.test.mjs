@@ -36,8 +36,11 @@ test('shared modal shell owns safe geometry, pinned chrome, and form scrolling',
 });
 
 test('content-rich modal height yields to the software keyboard', () => {
-  assert.match(appModal, /minHeight: keyboardVisible \? undefined : layout\.minHeight/);
-  assert.match(appModal, /automaticallyAdjustKeyboardInsets=\{Platform\.OS === 'ios'\}/);
+  assert.match(appModal, /getKeyboardConstrainedModalLayout/);
+  assert.match(appModal, /event\.endCoordinates\.height/);
+  assert.match(appModal, /maxHeight: constrainedLayout\.maxHeight/);
+  assert.match(appModal, /minHeight: constrainedLayout\.minHeight/);
+  assert.match(appModal, /automaticallyAdjustKeyboardInsets=\{false\}/);
   assert.match(appModal, /keyboardDismissMode=\{Platform\.OS === 'ios' \? 'interactive' : 'on-drag'\}/);
 });
 

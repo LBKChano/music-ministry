@@ -5,6 +5,7 @@ import {
   findNodeHandle,
   Keyboard,
   KeyboardAvoidingView,
+  KeyboardEvent,
   Modal,
   Platform,
   Pressable,
@@ -21,6 +22,7 @@ import { ResponsiveText } from '@/components/ui/responsive-text';
 import { useAppTheme } from '@/contexts/AppThemeContext';
 import { useReducedMotionPreference } from '@/hooks/useReducedMotionPreference';
 import {
+  getKeyboardConstrainedModalLayout,
   getModalDismissAction,
   getModalLayout,
   shouldResetModalScroll,
@@ -96,6 +98,7 @@ export function AppModal({
   const dimensions = useWindowDimensions();
   const reduceMotionEnabled = useReducedMotionPreference();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [restingHeight, setRestingHeight] = useState(dimensions.height);
   const closeButtonRef = useRef<View>(null);
   const bodyScrollRef = useRef<ScrollView>(null);
@@ -116,12 +119,28 @@ export function AppModal({
     requestedMaxWidth: maxWidth,
     requestedMaxHeight: maxHeight,
   });
+  const effectiveKeyboardHeight = keyboardVisible
+    ? Math.max(keyboardHeight, restingHeight - dimensions.height)
+    : 0;
+  const constrainedLayout = getKeyboardConstrainedModalLayout({
+    layout,
+    restingHeight,
+    keyboardHeight: effectiveKeyboardHeight,
+    topInset: insets.top,
+    bottomInset: insets.bottom,
+  });
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSubscription = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
-    const hideSubscription = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    const showSubscription = Keyboard.addListener(showEvent, (event: KeyboardEvent) => {
+      setKeyboardHeight(Math.max(0, event.endCoordinates.height));
+      setKeyboardVisible(true);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+      setKeyboardHeight(0);
+    });
     return () => {
       showSubscription.remove();
       hideSubscription.remove();
@@ -230,7 +249,7 @@ export function AppModal({
       contentInsetAdjustmentBehavior="never"
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-      automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+      automaticallyAdjustKeyboardInsets={false}
       nestedScrollEnabled
       showsVerticalScrollIndicator={false}
     >
@@ -287,9 +306,9 @@ export function AppModal({
               backgroundColor: resolvedBackgroundColor,
               borderColor: resolvedBorderColor,
               borderRadius: theme.radii.modal,
-              maxHeight: layout.maxHeight,
+              maxHeight: constrainedLayout.maxHeight,
               maxWidth: layout.maxWidth,
-              minHeight: keyboardVisible ? undefined : layout.minHeight,
+              minHeight: constrainedLayout.minHeight,
             },
           ]}
           testID={testID}

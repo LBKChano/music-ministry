@@ -20,6 +20,11 @@ export type ModalLayout = {
   stackActions: boolean;
 };
 
+export type KeyboardConstrainedModalLayout = {
+  maxHeight: number;
+  minHeight: number | undefined;
+};
+
 const VARIANT_WIDTHS: Record<AppModalVariant, number> = {
   confirmation: 420,
   form: 480,
@@ -81,6 +86,38 @@ export function getModalLayout(input: ModalLayoutInput): ModalLayout {
     horizontalMargin,
     verticalMargin,
     stackActions: input.width < 360 || input.fontScale > 1.35,
+  };
+}
+
+export function getKeyboardConstrainedModalLayout(input: {
+  layout: ModalLayout;
+  restingHeight: number;
+  keyboardHeight: number;
+  topInset: number;
+  bottomInset: number;
+}): KeyboardConstrainedModalLayout {
+  if (input.keyboardHeight <= 0) {
+    return {
+      maxHeight: input.layout.maxHeight,
+      minHeight: input.layout.minHeight,
+    };
+  }
+
+  const keyboardViewportHeight = Math.max(
+    180,
+    input.restingHeight
+      - input.keyboardHeight
+      - input.topInset
+      - input.bottomInset
+      - input.layout.verticalMargin * 2,
+  );
+  const maxHeight = Math.min(input.layout.maxHeight, keyboardViewportHeight);
+
+  return {
+    maxHeight,
+    minHeight: input.layout.minHeight === undefined
+      ? undefined
+      : Math.min(input.layout.minHeight, maxHeight),
   };
 }
 

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  getKeyboardConstrainedModalLayout,
   getModalLayout,
   shouldResetModalScroll,
 } from '../lib/ui/modal-presentation.ts';
@@ -95,4 +96,32 @@ test('requested dimensions remain subordinate to the safe viewport', () => {
 
   assert.equal(layout.maxHeight, 731);
   assert.equal(layout.maxWidth, 358);
+});
+
+test('keyboard constrains tall forms without collapsing their scrollable body', () => {
+  const layout = getModalLayout({ ...phone, variant: 'tall-form' });
+  const keyboardLayout = getKeyboardConstrainedModalLayout({
+    layout,
+    restingHeight: phone.restingHeight,
+    keyboardHeight: 300,
+    topInset: phone.topInset,
+    bottomInset: phone.bottomInset,
+  });
+
+  assert.equal(keyboardLayout.maxHeight, 431);
+  assert.equal(keyboardLayout.minHeight, 431);
+});
+
+test('keyboard layout preserves ordinary geometry after dismissal', () => {
+  const layout = getModalLayout({ ...phone, variant: 'form' });
+  assert.deepEqual(getKeyboardConstrainedModalLayout({
+    layout,
+    restingHeight: phone.restingHeight,
+    keyboardHeight: 0,
+    topInset: phone.topInset,
+    bottomInset: phone.bottomInset,
+  }), {
+    maxHeight: layout.maxHeight,
+    minHeight: layout.minHeight,
+  });
 });

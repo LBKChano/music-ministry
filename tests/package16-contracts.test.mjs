@@ -87,7 +87,8 @@ test('the shared admin form remains keyboard-safe, closable, and accessible', ()
   assert.match(appModal, /accessibilityLabel=\{`Close \$\{title\}`\}/);
   assert.match(appModal, /keyboardDismissMode=/);
   assert.match(appModal, /keyboardShouldPersistTaps="handled"/);
-  assert.match(appModal, /maxHeight: layout\.maxHeight/);
+  assert.match(appModal, /maxHeight: constrainedLayout\.maxHeight/);
+  assert.match(appModal, /minHeight: constrainedLayout\.minHeight/);
 });
 
 test('Package 16 leaves Schedule behavior and the backend untouched', () => {
