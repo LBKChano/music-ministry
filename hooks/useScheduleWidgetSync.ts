@@ -8,6 +8,7 @@ export interface ScheduleWidgetSyncParams {
   currentMemberChurchId: string | null;
   currentMemberId: string | null;
   initialized: boolean;
+  orderedRoleNames: readonly string[];
   refreshServices: () => Promise<void>;
   services: readonly ScheduleWidgetSourceService[];
   servicesError: string | null;

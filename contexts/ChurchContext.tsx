@@ -174,6 +174,7 @@ interface ChurchContextValue {
 
 export interface ChurchSessionContextValue {
   currentChurch: Church | null;
+  churchRoles: ChurchRole[];
   user: User | null;
   currentMember: ChurchMemberWithRoles | null;
   isAdmin: boolean;
@@ -2960,6 +2961,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
 
   const sessionValue = useMemo<ChurchSessionContextValue>(() => ({
     currentChurch,
+    churchRoles,
     user,
     currentMember,
     isAdmin,
@@ -2973,6 +2975,7 @@ export function ChurchProvider({ children }: { children: React.ReactNode }) {
     switchChurch: transitionChurchSession,
     retryChurchSession,
   }), [
+    churchRoles,
     currentChurch,
     currentMember,
     error,

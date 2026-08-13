@@ -47,7 +47,7 @@ test('the church widget shows one service with its assigned team', () => {
 
   assert.match(model, /person_name\?: string \| null/);
   assert.match(model, /team\?: ScheduleWidgetTeamMember\[\]/);
-  assert.match(model, /team: assignedTeam\(service\.assignments\)/);
+  assert.match(model, /team: assignedTeam\(service\.assignments, roleOrder\)/);
   assert.match(swift, /let team: \[StoredScheduleTeamMember\]\?/);
   assert.match(swift, /prefix\(1\)/);
   assert.match(swift, /Assigned Team/);
@@ -70,12 +70,12 @@ test('widget team typography adapts without unbounded layout measurement', () =>
   const swift = read('targets/ScheduleWidgets/ScheduleWidgets.swift');
 
   assert.match(swift, /struct ScheduleWidgetTeamTypography/);
-  assert.match(swift, /case 0, 1: baseSize = 13\.5/);
-  assert.match(swift, /case 2: baseSize = 12/);
-  assert.match(swift, /case 3: baseSize = 11/);
-  assert.match(swift, /default: baseSize = 10/);
-  assert.match(swift, /longestEntry[\s\S]*?fontSize: max\(9\.5, baseSize - lengthAdjustment\)/);
-  assert.match(swift, /minimumScaleFactor: longestEntry > 32 \? 0\.68 : 0\.76/);
+  assert.match(swift, /case 0, 1: baseSize = 16/);
+  assert.match(swift, /case 2: baseSize = 14\.5/);
+  assert.match(swift, /case 3: baseSize = 13/);
+  assert.match(swift, /default: baseSize = 11/);
+  assert.match(swift, /longestEntry[\s\S]*?fontSize: max\(10\.5, baseSize - lengthAdjustment\)/);
+  assert.match(swift, /minimumScaleFactor: longestEntry > 36 \? 0\.74 : 0\.82/);
   assert.doesNotMatch(swift, /PreferenceKey|onPreferenceChange|sizeThatFits/);
 });
 

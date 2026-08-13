@@ -719,9 +719,10 @@ function ScheduleServiceCardComponent({
                 key={assignment.id}
                 style={[
                   cardStyles.teamRowGroup,
+                  isMyAssignment && cardStyles.personalTeamRowGroup,
                   isMyAssignment && {
-                    backgroundColor: theme.status.info.surface,
-                    borderColor: theme.status.info.border,
+                    backgroundColor: theme.colors.surfaceElevated,
+                    borderColor: theme.colors.accent,
                   },
                 ]}
               >
@@ -740,6 +741,7 @@ function ScheduleServiceCardComponent({
                     style={({ pressed }) => [
                       cardStyles.teamRow,
                       stackTeamRows && cardStyles.teamRowStacked,
+                      isMyAssignment && cardStyles.personalTeamRow,
                       pressed && cardStyles.pressed,
                     ]}
                   >
@@ -753,6 +755,7 @@ function ScheduleServiceCardComponent({
                     style={[
                       cardStyles.teamRow,
                       stackTeamRows && cardStyles.teamRowStacked,
+                      isMyAssignment && cardStyles.personalTeamRow,
                     ]}
                   >
                     {rowContent}
@@ -1533,12 +1536,23 @@ const createCardStyles = (colors: LegacyThemeColors) => StyleSheet.create({
     borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+  personalTeamRowGroup: {
+    borderRadius: 8,
+    borderTopWidth: 1,
+    borderWidth: 1,
+    marginBottom: 8,
+    marginTop: 6,
+    overflow: 'hidden',
+  },
   teamRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 12,
     minHeight: 60,
     paddingVertical: 10,
+  },
+  personalTeamRow: {
+    paddingHorizontal: 10,
   },
   teamRowStacked: {
     alignItems: 'flex-start',
@@ -1572,13 +1586,15 @@ const createCardStyles = (colors: LegacyThemeColors) => StyleSheet.create({
   },
   fillInAction: {
     alignItems: 'center',
-    alignSelf: 'flex-start',
+    alignSelf: 'stretch',
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 7,
     justifyContent: 'center',
     minHeight: 44,
+    marginBottom: 10,
+    marginHorizontal: 10,
     overflow: 'hidden',
     paddingHorizontal: 14,
   },
@@ -1589,8 +1605,13 @@ const createCardStyles = (colors: LegacyThemeColors) => StyleSheet.create({
   },
   fillInPending: {
     alignItems: 'center',
+    alignSelf: 'stretch',
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: 7,
+    justifyContent: 'center',
+    marginHorizontal: 10,
     minHeight: 44,
     paddingHorizontal: 10,
   },

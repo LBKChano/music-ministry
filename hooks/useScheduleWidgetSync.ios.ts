@@ -20,6 +20,7 @@ export function useScheduleWidgetSync({
   currentMemberChurchId,
   currentMemberId,
   initialized,
+  orderedRoleNames,
   refreshServices,
   services,
   servicesError,
@@ -53,6 +54,7 @@ export function useScheduleWidgetSync({
     writeScheduleWidgetSnapshot(buildScheduleWidgetSnapshot({
       churchName,
       currentMemberId,
+      orderedRoleNames,
       scopeFingerprint,
       services,
     }));
@@ -62,6 +64,7 @@ export function useScheduleWidgetSync({
     currentMemberAccountId,
     currentMemberChurchId,
     currentMemberId,
+    orderedRoleNames,
     services,
     servicesError,
     servicesLoading,

@@ -76,6 +76,34 @@ test('church team entries are sanitized, sorted by role, and exclude open slots'
   ]);
 });
 
+test('widget team and personal roles follow the church schedule role order', () => {
+  const snapshot = buildScheduleWidgetSnapshot({
+    churchName: 'Grace Church',
+    currentMemberId: 'member-21',
+    orderedRoleNames: ['Gesangleiter', 'Vorspiel', 'Begleiten'],
+    scopeFingerprint: 'scope-a',
+    now,
+    services: [{
+      id: 'service-team-order',
+      date: '2026-08-03',
+      time: '09:00',
+      service_type: 'Sunday Morning',
+      assignments: [
+        { member_id: 'member-2', role: 'Begleiten', person_name: 'Lena' },
+        { member_id: 'member-21', role: 'Vorspiel', person_name: 'Lisandro' },
+        { member_id: 'member-21', role: 'Gesangleiter', person_name: 'Lisandro' },
+      ],
+    }],
+  });
+
+  assert.deepEqual(snapshot.churchServices[0].team, [
+    { role: 'Gesangleiter', memberName: 'Lisandro' },
+    { role: 'Vorspiel', memberName: 'Lisandro' },
+    { role: 'Begleiten', memberName: 'Lena' },
+  ]);
+  assert.deepEqual(snapshot.memberServices[0].roles, ['Gesangleiter', 'Vorspiel']);
+});
+
 test('past and malformed services are removed using local date and time', () => {
   const snapshot = buildScheduleWidgetSnapshot({
     churchName: 'Grace Church',

@@ -448,17 +448,17 @@ private struct ScheduleWidgetView: View {
 
         let baseSize: CGFloat
         switch visibleRowCount {
-        case 0, 1: baseSize = 13.5
-        case 2: baseSize = 12
-        case 3: baseSize = 11
-        default: baseSize = 10
+        case 0, 1: baseSize = 16
+        case 2: baseSize = 14.5
+        case 3: baseSize = 13
+        default: baseSize = 11
         }
 
         let lengthAdjustment: CGFloat
         switch longestEntry {
-        case 37...: lengthAdjustment = 1.5
-        case 29...: lengthAdjustment = 1
-        case 23...: lengthAdjustment = 0.5
+        case 43...: lengthAdjustment = 1.5
+        case 35...: lengthAdjustment = 1
+        case 28...: lengthAdjustment = 0.5
         default: lengthAdjustment = 0
         }
 
@@ -471,8 +471,8 @@ private struct ScheduleWidgetView: View {
         }
 
         return ScheduleWidgetTeamTypography(
-            fontSize: max(9.5, baseSize - lengthAdjustment),
-            minimumScaleFactor: longestEntry > 32 ? 0.68 : 0.76,
+            fontSize: max(10.5, baseSize - lengthAdjustment),
+            minimumScaleFactor: longestEntry > 36 ? 0.74 : 0.82,
             rowSpacing: spacing
         )
     }

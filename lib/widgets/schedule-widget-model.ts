@@ -138,21 +138,54 @@ function compareServices(
   return left.serviceId.localeCompare(right.serviceId);
 }
 
-function uniqueSortedRoles(values: readonly (string | null | undefined)[]): string[] {
+function normalizeRoleKey(value: string): string {
+  return value.toLocaleLowerCase();
+}
+
+function createRoleOrder(orderedRoleNames: readonly string[]): Map<string, number> {
+  const order = new Map<string, number>();
+  orderedRoleNames.forEach((value, index) => {
+    const role = sanitizeText(value, 80);
+    const key = normalizeRoleKey(role);
+    if (key && !order.has(key)) order.set(key, index);
+  });
+  return order;
+}
+
+function compareRoles(
+  left: string,
+  right: string,
+  roleOrder: ReadonlyMap<string, number>,
+): number {
+  const leftOrder = roleOrder.get(normalizeRoleKey(left));
+  const rightOrder = roleOrder.get(normalizeRoleKey(right));
+  if (leftOrder !== undefined || rightOrder !== undefined) {
+    if (leftOrder === undefined) return 1;
+    if (rightOrder === undefined) return -1;
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+  }
+  return left.localeCompare(right, undefined, { sensitivity: 'base' });
+}
+
+function uniqueSortedRoles(
+  values: readonly (string | null | undefined)[],
+  roleOrder: ReadonlyMap<string, number>,
+): string[] {
   const byNormalizedName = new Map<string, string>();
   values.forEach(value => {
     const role = sanitizeText(value, 80);
     if (!role) return;
-    const key = role.toLocaleLowerCase();
+    const key = normalizeRoleKey(role);
     if (!byNormalizedName.has(key)) byNormalizedName.set(key, role);
   });
   return [...byNormalizedName.values()].sort((left, right) => (
-    left.localeCompare(right, undefined, { sensitivity: 'base' })
+    compareRoles(left, right, roleOrder)
   ));
 }
 
 function assignedTeam(
   assignments: ScheduleWidgetSourceService['assignments'],
+  roleOrder: ReadonlyMap<string, number>,
 ): ScheduleWidgetTeamMember[] {
   const members = new Map<string, ScheduleWidgetTeamMember>();
   (assignments ?? []).forEach(assignment => {
@@ -163,7 +196,7 @@ function assignedTeam(
     if (!members.has(key)) members.set(key, { role, memberName });
   });
   return [...members.values()].sort((left, right) => (
-    left.role.localeCompare(right.role, undefined, { sensitivity: 'base' })
+    compareRoles(left.role, right.role, roleOrder)
       || left.memberName.localeCompare(right.memberName, undefined, { sensitivity: 'base' })
   ));
 }
@@ -185,6 +218,7 @@ export function createScheduleWidgetScopeFingerprint(
 export function buildScheduleWidgetSnapshot({
   churchName,
   currentMemberId,
+  orderedRoleNames = [],
   scopeFingerprint,
   services,
   now = new Date(),
@@ -192,12 +226,14 @@ export function buildScheduleWidgetSnapshot({
 }: {
   churchName: string;
   currentMemberId: string;
+  orderedRoleNames?: readonly string[];
   scopeFingerprint: string;
   services: readonly ScheduleWidgetSourceService[];
   now?: Date;
   limit?: number;
 }): ScheduleWidgetSnapshot {
   const safeLimit = Math.max(1, Math.min(10, Math.floor(limit)));
+  const roleOrder = createRoleOrder(orderedRoleNames);
   const churchServices: ScheduleWidgetService[] = [];
   const memberServices: ScheduleWidgetService[] = [];
 
@@ -215,7 +251,7 @@ export function buildScheduleWidgetSnapshot({
       time,
       serviceType,
       roles: [],
-      team: assignedTeam(service.assignments),
+      team: assignedTeam(service.assignments, roleOrder),
     };
     churchServices.push(base);
 
@@ -223,6 +259,7 @@ export function buildScheduleWidgetSnapshot({
       (service.assignments ?? [])
         .filter(assignment => assignment.member_id === currentMemberId)
         .map(assignment => assignment.role),
+      roleOrder,
     );
     if (ownRoles.length > 0) {
       memberServices.push({ ...base, roles: ownRoles });

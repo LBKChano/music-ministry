@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChurchSession } from '@/hooks/useChurch';
 import { useScheduleWidgetSync } from '@/hooks/useScheduleWidgetSync';
@@ -5,7 +6,17 @@ import { useServices } from '@/hooks/useServices';
 
 export function ScheduleWidgetLifecycleSync() {
   const { initialized, session } = useAuth();
-  const { currentChurch, currentMember, sessionStatus } = useChurchSession();
+  const {
+    churchRoles,
+    currentChurch,
+    currentMember,
+    sessionStatus,
+  } = useChurchSession();
+  const orderedRoleNames = useMemo(() => (
+    [...churchRoles]
+      .sort((left, right) => left.display_order - right.display_order)
+      .map(role => role.name)
+  ), [churchRoles]);
   const accountId = session?.user.id ?? null;
   const scopeReady = Boolean(
     sessionStatus === 'ready'
@@ -31,6 +42,7 @@ export function ScheduleWidgetLifecycleSync() {
     currentMemberChurchId: scopeReady ? currentMember?.church_id ?? null : null,
     currentMemberId: scopeReady ? currentMember?.id ?? null : null,
     initialized,
+    orderedRoleNames,
     refreshServices,
     services,
     servicesError: error,
