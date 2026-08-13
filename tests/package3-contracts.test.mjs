@@ -21,6 +21,10 @@ const verificationLinks = readSource(
   'utils',
   'signupVerificationLinks.ts',
 );
+const completedOnboardingTransition = readSource(
+  'hooks',
+  'useCompletedOnboardingTransition.ts',
+);
 const releasedPolicies = readSource(
   'supabase',
   'migrations',
@@ -50,6 +54,8 @@ test('confirmation-required signup stores no password and resumes on a dedicated
   assert.match(onboarding, /status === 'verification-required'/);
   assert.match(onboarding, /pathname: '\/verify-email'/);
   assert.match(verification, /completeOnboardingIntent/);
+  assert.match(verification, /beginCompletedOnboardingTransition/);
+  assert.match(completedOnboardingTransition, /sessionStatus === 'loading-memberships'/);
   assert.match(verification, /supabase\.auth\.resend/);
   assert.doesNotMatch(storage, /\bpassword\b/i);
   assert.doesNotMatch(workflow, /\bpassword\s*:/i);

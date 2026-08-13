@@ -20,11 +20,14 @@ const deleteFunction = read('supabase', 'functions', 'delete-account', 'index.ts
 const functionConfig = read('supabase', 'config.toml');
 const rootLayout = read('app', '_layout.tsx');
 
-test('Profile delegates neutral account actions and isolates the Danger Zone', () => {
+test('Profile delegates account actions and Account isolates permanent deletion', () => {
   assert.match(profile, /title="Account and Security"/);
   assert.match(profile, /router\.push\('\/profile-account'\)/);
-  assert.match(profile, /title="Delete Account"/);
-  assert.match(profile, /router\.push\('\/delete-account'\)/);
+  assert.doesNotMatch(profile, /title="Delete Account"/);
+  assert.doesNotMatch(profile, /router\.push\('\/delete-account'\)/);
+  assert.match(accountScreen, /title="Delete Account"/);
+  assert.match(accountScreen, /router\.push\('\/delete-account'\)/);
+  assert.match(accountScreen, /Account Management/);
   assert.doesNotMatch(profile, /await signOut\(\)|await deleteAccount\(\)/);
   assert.doesNotMatch(profile, /showSignOutModal|showDeleteModal/);
 });

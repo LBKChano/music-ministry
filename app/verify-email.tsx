@@ -14,13 +14,13 @@ import { useTheme } from '@react-navigation/native';
 import type { Session } from '@supabase/supabase-js';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCompletedOnboardingTransition } from '@/hooks/useCompletedOnboardingTransition';
 import {
   clearPendingOnboardingIntent,
   loadPendingOnboardingIntent,
 } from '@/lib/auth/onboarding-intent-storage';
 import { completeOnboardingIntent } from '@/lib/auth/onboarding-service';
 import { normalizeAccountEmail } from '@/lib/auth/onboarding-workflow';
-import { saveLastSelectedChurchId } from '@/lib/church/session-storage';
 import { supabase } from '@/lib/supabase/client';
 import {
   establishSignupVerificationSession,
@@ -47,6 +47,13 @@ export default function VerifyEmailScreen() {
   const processedUrlsRef = useRef(new Set<string>());
   const completionInFlightRef = useRef(false);
   const completedSessionAttemptRef = useRef<string | null>(null);
+  const handleTransitionError = useCallback((transitionError: string) => {
+    setStatus('error');
+    setMessage(transitionError);
+  }, []);
+  const {
+    beginTransition: beginCompletedOnboardingTransition,
+  } = useCompletedOnboardingTransition(handleTransitionError);
 
   const finishPendingAction = useCallback(async (
     verifiedSession?: Session | null,
@@ -81,11 +88,7 @@ export default function VerifyEmailScreen() {
 
       if (completion.status === 'ready') {
         await clearPendingOnboardingIntent();
-        await saveLastSelectedChurchId(
-          completion.accountId,
-          completion.churchId,
-        );
-        router.replace('/');
+        await beginCompletedOnboardingTransition(completion);
         return;
       }
 
@@ -110,7 +113,7 @@ export default function VerifyEmailScreen() {
     } finally {
       completionInFlightRef.current = false;
     }
-  }, [router, session]);
+  }, [beginCompletedOnboardingTransition, router, session]);
 
   const handleVerificationUrl = useCallback(async (url: string | null) => {
     if (!url || processedUrlsRef.current.has(url)) return false;

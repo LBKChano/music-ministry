@@ -1,6 +1,6 @@
 import { usePreventRemove } from '@react-navigation/native';
 import { Stack, useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
@@ -35,9 +35,15 @@ export function ProfileDeleteAccountScreen() {
   const previewQuery = useAccountDeletionPreview({ accountId: user?.id });
   const [confirmation, setConfirmation] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [accountDeleted, setAccountDeleted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  usePreventRemove(deleting, () => {});
+  usePreventRemove(deleting && !accountDeleted, () => {});
+
+  useEffect(() => {
+    if (!accountDeleted) return;
+    router.replace('/onboarding');
+  }, [accountDeleted, router]);
 
   const impact = previewQuery.data?.impact;
   const canDelete = Boolean(impact && confirmation.trim() === 'DELETE' && !deleting);
@@ -55,7 +61,8 @@ export function ProfileDeleteAccountScreen() {
         );
       }
       await deleteAccount();
-      router.replace('/onboarding');
+      setAccountDeleted(true);
+      setDeleting(false);
     } catch (deleteError) {
       setError(
         deleteError instanceof Error

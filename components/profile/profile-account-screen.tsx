@@ -13,7 +13,11 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { IconSymbol } from '@/components/IconSymbol';
 import { AppModal } from '@/components/ui/app-modal';
 import { ProfileFocusedHeader } from '@/components/profile/profile-focused-header';
-import { ProfileRow, ProfileStatus } from '@/components/profile/profile-primitives';
+import {
+  ProfileDangerRow,
+  ProfileRow,
+  ProfileStatus,
+} from '@/components/profile/profile-primitives';
 import { useAppTheme } from '@/contexts/AppThemeContext';
 import { useChurch } from '@/hooks/useChurch';
 import { getAppReleaseInfo } from '@/lib/profile/account';
@@ -55,7 +59,7 @@ export function ProfileAccountScreen() {
       <ProfileFocusedHeader
         disabled={signingOut}
         onBack={() => router.back()}
-        subtitle="Security and app information"
+        subtitle="Security, app information, and account management"
         title="Account"
       />
       <ScrollView
@@ -128,6 +132,27 @@ export function ProfileAccountScreen() {
           />
           <Text style={styles.signOutText}>Sign Out</Text>
         </Pressable>
+
+        <View style={styles.dangerSection}>
+          <View style={styles.dangerHeading}>
+            <Text accessibilityRole="header" style={styles.dangerTitle}>
+              Account Management
+            </Text>
+            <Text style={styles.dangerDescription}>
+              Permanent actions affecting your account and stored data.
+            </Text>
+          </View>
+          <View style={styles.dangerGroup}>
+            <ProfileDangerRow
+              accessibilityHint="Opens a deletion impact preview and permanent confirmation."
+              androidIcon="delete"
+              iosIcon="trash.fill"
+              onPress={() => router.push('/delete-account')}
+              summary="Permanently delete your account and associated data."
+              title="Delete Account"
+            />
+          </View>
+        </View>
       </ScrollView>
 
       <AppModal
@@ -192,6 +217,11 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
   infoValue: { color: theme.colors.textSecondary, fontSize: 15, fontVariant: ['tabular-nums'], fontWeight: '700' },
   signOutButton: { alignItems: 'center', alignSelf: 'stretch', backgroundColor: theme.button.secondarySurface, borderColor: theme.button.secondaryBorder, borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 9, justifyContent: 'center', minHeight: 50, paddingHorizontal: 18 },
   signOutText: { color: theme.colors.accent, fontSize: 16, fontWeight: '800' },
+  dangerSection: { gap: 9, paddingTop: 4 },
+  dangerHeading: { gap: 3, paddingHorizontal: 4 },
+  dangerTitle: { color: theme.status.error.foreground, fontSize: 17, fontWeight: '800', lineHeight: 22 },
+  dangerDescription: { color: theme.colors.textSecondary, fontSize: 13, lineHeight: 19 },
+  dangerGroup: { borderColor: theme.status.error.border, borderRadius: 8, borderWidth: 1, overflow: 'hidden' },
   modalMessage: { color: theme.colors.textSecondary, fontSize: 14, lineHeight: 21, paddingVertical: 15, textAlign: 'center' },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.55 },

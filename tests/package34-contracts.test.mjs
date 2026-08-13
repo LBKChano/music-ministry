@@ -28,6 +28,11 @@ test('shared modal shell owns safe geometry, pinned chrome, and form scrolling',
   assert.match(appModal, /automaticallyAdjustKeyboardInsets=/);
   assert.match(appModal, /nestedScrollEnabled/);
   assert.match(appModal, /contentInsetAdjustmentBehavior="never"/);
+  assert.match(
+    appModal,
+    /<View[\s\S]{0,120}accessibilityViewIsModal[\s\S]*?style=\{\[[\s\S]{0,80}styles\.modal/,
+  );
+  assert.doesNotMatch(appModal, /onPress=\{event => event\.stopPropagation\(\)\}/);
 });
 
 test('content-rich modal height yields to the software keyboard', () => {

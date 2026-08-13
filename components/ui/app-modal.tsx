@@ -276,12 +276,11 @@ export function AppModal({
           onPress={() => requestDismiss(dismissOnBackdrop)}
           style={StyleSheet.absoluteFill}
         />
-        <Pressable
+        <View
           accessibilityViewIsModal
           accessible={false}
           importantForAccessibility="yes"
           onAccessibilityEscape={() => requestDismiss(true)}
-          onPress={event => event.stopPropagation()}
           style={[
             styles.modal,
             {
@@ -374,7 +373,7 @@ export function AppModal({
           </View>
           {body}
           {actions}
-        </Pressable>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );

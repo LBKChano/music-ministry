@@ -20,7 +20,6 @@ import { shouldShowInitialLoader } from "@/lib/query/refresh-coordinator";
 import { HEADER_ACTION_LANE_WIDTHS } from "@/lib/ui/header-typography";
 import { useNotifications } from "@/contexts/NotificationContext";
 import {
-  ProfileDangerRow,
   ProfileOverviewList,
   ProfileRow,
   ProfileRowGroup,
@@ -442,33 +441,14 @@ export function ProfileScreen({
               <ProfileRowGroup>
                 <ProfileRow
                   title="Account and Security"
-                  summary={user.email ?? 'Password, sign-out, and app information.'}
+                  summary={user.email ?? 'Password, sign-out, app information, and account management.'}
                   value="Open"
                   valueTone="info"
                   iosIcon="person.crop.circle.badge.checkmark"
                   androidIcon="manage-accounts"
-                  accessibilityHint="Opens account identity, password, app information, and sign-out controls."
+                  accessibilityHint="Opens password, app information, sign-out, and account-management controls."
                   onPress={() => {
                     router.push('/profile-account');
-                  }}
-                />
-              </ProfileRowGroup>
-            ),
-          },
-          {
-            id: 'danger',
-            title: 'Danger Zone',
-            description: 'Permanent actions that affect your account and stored data.',
-            content: (
-              <ProfileRowGroup>
-                <ProfileDangerRow
-                  title="Delete Account"
-                  summary="Permanently delete your account and associated data."
-                  iosIcon="trash"
-                  androidIcon="delete"
-                  accessibilityHint="Opens a deletion impact preview and permanent confirmation."
-                  onPress={() => {
-                    router.push('/delete-account');
                   }}
                 />
               </ProfileRowGroup>

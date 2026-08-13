@@ -19,6 +19,10 @@ const rootIndex = readSource('app', 'index.tsx');
 const churchScreen = readSource('app', '(tabs)', 'church.tsx');
 const noMembership = readSource('app', 'no-membership.tsx');
 const sessionStorage = readSource('lib', 'church', 'session-storage.ts');
+const completedOnboardingTransition = readSource(
+  'hooks',
+  'useCompletedOnboardingTransition.ts',
+);
 
 test('Auth bootstrap uses the persisted session and a recoverable error without a blind timeout', () => {
   assert.match(authContext, /supabase\.auth\.getSession\(\)/);
@@ -61,8 +65,10 @@ test('manual church selection and onboarding use the shared transition path', ()
     churchScreen,
     /User selected church:[\s\S]{0,160}setCurrentChurch\(church\)/,
   );
-  assert.match(onboarding, /refreshChurches\(preferredChurchId\)/);
-  assert.match(onboarding, /saveLastSelectedChurchId/);
+  assert.match(onboarding, /beginCompletedOnboardingTransition/);
+  assert.match(completedOnboardingTransition, /refreshChurches\(target\.churchId\)/);
+  assert.match(completedOnboardingTransition, /saveLastSelectedChurchId/);
+  assert.match(completedOnboardingTransition, /session\?\.user\.id !== target\.accountId/);
   assert.doesNotMatch(onboarding, /setCurrentChurch/);
   assert.doesNotMatch(onboarding, /ONBOARDING_MEMBERSHIP_MAX_RETRIES/);
   assert.doesNotMatch(onboarding, /MEMBERSHIP_RETRY_DELAY/);

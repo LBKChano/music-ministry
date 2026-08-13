@@ -70,13 +70,12 @@ test('Profile sections and rows expose accessible settings semantics', () => {
   assert.match(inlineStatus, /accessibilityLiveRegion=/);
 });
 
-test('the overview keeps the five planned sections in visual order', () => {
+test('the overview keeps the four planned sections in visual order', () => {
   const sectionTitles = [
     'Church and Roles',
     'My Scheduling',
     'Notifications',
     'Account',
-    'Danger Zone',
   ];
   let previous = -1;
   for (const title of sectionTitles) {
@@ -98,10 +97,13 @@ test('all established Profile behavior remains connected', () => {
   assert.match(notificationEditor, /requestPermission/);
   assert.match(notificationEditor, /openNotificationSettings/);
   assert.match(screen, /router\.push\('\/profile-account'\)/);
-  assert.match(screen, /router\.push\('\/delete-account'\)/);
+  assert.doesNotMatch(screen, /router\.push\('\/delete-account'\)/);
+  assert.match(accountScreen, /router\.push\('\/delete-account'\)/);
   assert.match(accountScreen, /await signOut\(\)/);
   assert.match(deleteAccountScreen, /await deleteAccount\(\)/);
   assert.match(accountScreen, /router\.replace\('\/onboarding'\)/);
+  assert.match(deleteAccountScreen, /usePreventRemove\(deleting && !accountDeleted/);
+  assert.match(deleteAccountScreen, /if \(!accountDeleted\) return;/);
   assert.match(deleteAccountScreen, /router\.replace\('\/onboarding'\)/);
 });
 

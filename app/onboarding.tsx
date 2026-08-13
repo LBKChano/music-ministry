@@ -18,14 +18,13 @@ import { InlineStatus } from '@/components/feedback/inline-status';
 import { LabeledTextInput } from '@/components/auth/LabeledTextInput';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/AppThemeContext';
-import { useChurch } from '@/hooks/useChurch';
+import { useCompletedOnboardingTransition } from '@/hooks/useCompletedOnboardingTransition';
 import {
   clearPendingOnboardingIntent,
   loadPendingOnboardingIntent,
   savePendingOnboardingIntent,
 } from '@/lib/auth/onboarding-intent-storage';
 import { completeOnboardingIntent } from '@/lib/auth/onboarding-service';
-import { saveLastSelectedChurchId } from '@/lib/church/session-storage';
 import {
   classifySignUpOutcome,
   createChurchIntent,
@@ -44,7 +43,6 @@ type FieldErrors = Partial<Record<
   string
 >>;
 
-const SCHEDULES_ROUTE = '/(tabs)/(home)';
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function resolveRequestedStep(mode?: string): OnboardingStep {
@@ -69,7 +67,6 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const theme = useAppTheme();
   const { session } = useAuth();
-  const { refreshChurches } = useChurch();
   const routeParams = useLocalSearchParams<{
     passwordReset?: 'complete' | 'request';
     mode?: string;
@@ -102,6 +99,14 @@ export default function OnboardingScreen() {
   const invitationCodeInputRef = useRef<TextInput>(null);
   const submissionInFlightRef = useRef(false);
   const createRequestRef = useRef<{ key: string; requestId: string } | null>(null);
+  const handleTransitionError = useCallback((transitionError: string) => {
+    setError(transitionError);
+  }, []);
+  const {
+    beginTransition: beginCompletedOnboardingTransition,
+    transitionPending,
+  } = useCompletedOnboardingTransition(handleTransitionError);
+  const busy = loading || transitionPending;
 
   const signedInEmail = normalizeAccountEmail(session?.user.email ?? '');
   const signedInName = typeof session?.user.user_metadata?.name === 'string'
@@ -173,41 +178,6 @@ export default function OnboardingScreen() {
     }
   }, []);
 
-  const routeAfterChurchRefresh = useCallback(async (
-    preferredChurchId?: string,
-  ) => {
-    const transition = await refreshChurches(preferredChurchId);
-    if (transition.status === 'ready') {
-      router.replace(SCHEDULES_ROUTE);
-      return true;
-    }
-    if (transition.status === 'no-membership') {
-      router.replace('/no-membership');
-      return false;
-    }
-    if (transition.status === 'error') {
-      setError(transition.error);
-    }
-    return false;
-  }, [refreshChurches, router]);
-
-  const routeAfterCompletedIntent = useCallback(async (completion: {
-    accountId: string;
-    churchId: string;
-  }) => {
-    await saveLastSelectedChurchId(
-      completion.accountId,
-      completion.churchId,
-    );
-
-    if (session?.user.id === completion.accountId) {
-      await routeAfterChurchRefresh(completion.churchId);
-      return;
-    }
-
-    router.replace('/');
-  }, [routeAfterChurchRefresh, router, session?.user.id]);
-
   const completeIntent = useCallback(async (
     intent: PendingOnboardingIntent,
   ) => {
@@ -215,7 +185,8 @@ export default function OnboardingScreen() {
 
     if (completion.status === 'ready') {
       await clearPendingOnboardingIntent();
-      await routeAfterCompletedIntent(completion);
+      setMessage('Church ready. Loading your schedule...');
+      await beginCompletedOnboardingTransition(completion);
       return;
     }
 
@@ -239,7 +210,7 @@ export default function OnboardingScreen() {
       setInvitationCode(intent.invitationCode);
       setStep('join');
     }
-  }, [routeAfterCompletedIntent, session]);
+  }, [beginCompletedOnboardingTransition, session]);
 
   const submitIntent = useCallback(async (
     intent: PendingOnboardingIntent,
@@ -415,11 +386,8 @@ export default function OnboardingScreen() {
         );
         if (completion.status === 'ready') {
           await clearPendingOnboardingIntent();
-          await saveLastSelectedChurchId(
-            completion.accountId,
-            completion.churchId,
-          );
-          router.replace('/');
+          setMessage('Church ready. Loading your schedule...');
+          await beginCompletedOnboardingTransition(completion);
           return;
         }
         if (completion.status === 'error') {
@@ -440,7 +408,13 @@ export default function OnboardingScreen() {
 
       router.replace('/');
     });
-  }, [email, password, router, runSubmission]);
+  }, [
+    beginCompletedOnboardingTransition,
+    email,
+    password,
+    router,
+    runSubmission,
+  ]);
 
   const handleSendPasswordReset = useCallback(() => {
     const normalizedEmail = normalizeAccountEmail(resetEmail);
@@ -559,13 +533,13 @@ export default function OnboardingScreen() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Back"
-      disabled={loading}
+      disabled={busy}
       onPress={() => openStep('welcome')}
       style={({ pressed }) => [
         styles.backButton,
         { borderColor: screenColors.border },
         pressed && styles.pressed,
-        loading && styles.disabled,
+        busy && styles.disabled,
       ]}
     >
       <Text style={[styles.backButtonText, { color: screenColors.text }]}>
@@ -581,17 +555,17 @@ export default function OnboardingScreen() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ busy: loading, disabled: loading }}
-      disabled={loading}
+      accessibilityState={{ busy, disabled: busy }}
+      disabled={busy}
       onPress={onPress}
       style={({ pressed }) => [
         styles.submitButton,
         { backgroundColor: screenColors.primary },
         pressed && styles.pressed,
-        loading && styles.disabled,
+        busy && styles.disabled,
       ]}
     >
-      {loading ? (
+      {busy ? (
         <ActivityIndicator color={screenColors.primaryForeground} />
       ) : (
         <Text style={[styles.submitButtonText, { color: screenColors.primaryForeground }]}>{label}</Text>
@@ -732,7 +706,7 @@ export default function OnboardingScreen() {
               />
               <Pressable
                 accessibilityRole="button"
-                disabled={loading}
+                disabled={busy}
                 onPress={() => {
                   setResetEmail(email);
                   openStep('forgotPassword');
