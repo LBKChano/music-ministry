@@ -52,6 +52,12 @@ private struct StoredScheduleTeamMember: Codable, Hashable {
     let memberName: String
 }
 
+private struct ScheduleWidgetTeamTypography {
+    let fontSize: CGFloat
+    let minimumScaleFactor: CGFloat
+    let rowSpacing: CGFloat
+}
+
 private struct StoredScheduleService: Codable, Identifiable {
     let serviceId: String
     let date: String
@@ -390,7 +396,13 @@ private struct ScheduleWidgetView: View {
 
     private func teamList(_ service: StoredScheduleService, limit: Int) -> some View {
         let team = service.team ?? []
-        return VStack(alignment: .leading, spacing: 4) {
+        let visibleTeam = Array(team.prefix(limit))
+        let showsOverflow = team.count > limit && family == .systemMedium
+        let typography = teamTypography(
+            for: visibleTeam,
+            includesOverflowRow: showsOverflow
+        )
+        return VStack(alignment: .leading, spacing: typography.rowSpacing) {
             Label(
                 team.isEmpty ? "Team" : "Team (\(team.count))",
                 systemImage: "person.2.fill"
@@ -407,15 +419,15 @@ private struct ScheduleWidgetView: View {
                     .foregroundStyle(.white.opacity(0.68))
                     .lineLimit(2)
             } else {
-                ForEach(Array(team.prefix(limit)), id: \.self) { member in
+                ForEach(visibleTeam, id: \.self) { member in
                     (Text(member.role).bold() + Text(" · ") + Text(member.memberName))
-                        .font(.system(size: team.count > 3 ? 10 : 11, weight: .medium, design: .rounded))
+                        .font(.system(size: typography.fontSize, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.92))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.72)
+                        .minimumScaleFactor(typography.minimumScaleFactor)
                         .allowsTightening(true)
                 }
-                if team.count > limit && family == .systemMedium {
+                if showsOverflow {
                     Text("+\(team.count - limit) more")
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.white.opacity(0.62))
@@ -423,6 +435,46 @@ private struct ScheduleWidgetView: View {
                 }
             }
         }
+    }
+
+    private func teamTypography(
+        for visibleTeam: [StoredScheduleTeamMember],
+        includesOverflowRow: Bool
+    ) -> ScheduleWidgetTeamTypography {
+        let visibleRowCount = visibleTeam.count + (includesOverflowRow ? 1 : 0)
+        let longestEntry = visibleTeam
+            .map { $0.role.count + $0.memberName.count + 3 }
+            .max() ?? 0
+
+        let baseSize: CGFloat
+        switch visibleRowCount {
+        case 0, 1: baseSize = 13.5
+        case 2: baseSize = 12
+        case 3: baseSize = 11
+        default: baseSize = 10
+        }
+
+        let lengthAdjustment: CGFloat
+        switch longestEntry {
+        case 37...: lengthAdjustment = 1.5
+        case 29...: lengthAdjustment = 1
+        case 23...: lengthAdjustment = 0.5
+        default: lengthAdjustment = 0
+        }
+
+        let spacing: CGFloat
+        switch visibleRowCount {
+        case 0, 1: spacing = 7
+        case 2: spacing = 5
+        case 3: spacing = 4
+        default: spacing = 3
+        }
+
+        return ScheduleWidgetTeamTypography(
+            fontSize: max(9.5, baseSize - lengthAdjustment),
+            minimumScaleFactor: longestEntry > 32 ? 0.68 : 0.76,
+            rowSpacing: spacing
+        )
     }
 
     private var emptyView: some View {

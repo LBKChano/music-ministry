@@ -318,22 +318,6 @@ export function ProfileScreen({
             content: (
               <ProfileRowGroup>
                 <ProfileRow
-                  title="Appearance"
-                  summary="Choose whether this device follows the system appearance or uses light or dark mode."
-                  value={appearancePreference === 'system'
-                    ? 'System'
-                    : appearancePreference === 'dark'
-                      ? 'Dark'
-                      : 'Light'}
-                  valueTone="info"
-                  iosIcon="circle.lefthalf.filled"
-                  androidIcon="contrast"
-                  accessibilityHint="Opens appearance settings for this device."
-                  onPress={() => {
-                    router.push('/profile-appearance');
-                  }}
-                />
-                <ProfileRow
                   title="Church Profile"
                   summary={`${currentChurch?.name ?? 'Selected church'} | ${roleSummary}`}
                   value={userRole}
@@ -420,9 +404,9 @@ export function ProfileScreen({
             ),
           },
           {
-            id: 'notifications',
-            title: 'Notifications',
-            description: 'Permission for reminders, fill-in requests, and service updates.',
+            id: 'account-settings',
+            title: 'Account Settings',
+            description: 'Notifications, appearance, security, and settings for this account and device.',
             content: (
               <ProfileRowGroup>
                 <ProfileRow
@@ -450,15 +434,22 @@ export function ProfileScreen({
                     router.push('/notification-preferences');
                   }}
                 />
-              </ProfileRowGroup>
-            ),
-          },
-          {
-            id: 'account',
-            title: 'Account',
-            description: 'Actions for this signed-in account and device.',
-            content: (
-              <ProfileRowGroup>
+                <ProfileRow
+                  title="Appearance"
+                  summary="Choose whether this device follows the system appearance or uses light or dark mode."
+                  value={appearancePreference === 'system'
+                    ? 'System'
+                    : appearancePreference === 'dark'
+                      ? 'Dark'
+                      : 'Light'}
+                  valueTone="info"
+                  iosIcon="circle.lefthalf.filled"
+                  androidIcon="contrast"
+                  accessibilityHint="Opens appearance settings for this device."
+                  onPress={() => {
+                    router.push('/profile-appearance');
+                  }}
+                />
                 <ProfileRow
                   title="Account and Security"
                   summary={user.email ?? 'Password, sign-out, app information, and account management.'}

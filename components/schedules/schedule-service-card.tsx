@@ -513,7 +513,16 @@ function ScheduleServiceCardComponent({
             <Text accessible={false} style={[cardStyles.personalAssignmentLabel, { color: theme.status.info.foreground }]}>You&apos;re serving</Text>
             <View style={cardStyles.personalRoleList}>
               {personalRoles.map(role => (
-                <View key={role.name} style={cardStyles.personalRoleChip}>
+                <View
+                  key={role.name}
+                  style={[
+                    cardStyles.personalRoleChip,
+                    {
+                      backgroundColor: theme.colors.surface,
+                      borderColor: theme.status.info.border,
+                    },
+                  ]}
+                >
                   <RoleSymbol
                     color={theme.status.info.foreground}
                     iconKey={role.symbol.key}
@@ -789,13 +798,17 @@ function ScheduleServiceCardComponent({
                       )}
                       style={({ pressed }) => [
                         cardStyles.fillInAction,
+                        {
+                          backgroundColor: theme.button.primarySurface,
+                          borderColor: theme.button.primarySurface,
+                        },
                         pressed && cardStyles.pressed,
                         isCreatingFillInRequest && cardStyles.disabled,
                       ]}
                     >
                       <IconSymbol
                         android_material_icon_name="person-search"
-                        color={colors.secondary}
+                        color={theme.button.primaryForeground}
                         ios_icon_name="person.2.badge.gearshape"
                         size={18}
                       />
@@ -803,7 +816,10 @@ function ScheduleServiceCardComponent({
                         accessible={false}
                         style={cardStyles.actionLabelLane}
                         text="Request Fill-In"
-                        textStyle={cardStyles.fillInActionText}
+                        textStyle={[
+                          cardStyles.fillInActionText,
+                          { color: theme.button.primaryForeground },
+                        ]}
                         variant="compactLabel"
                       />
                     </Pressable>
@@ -1197,13 +1213,18 @@ const createCardStyles = (colors: LegacyThemeColors) => StyleSheet.create({
   personalAssignment: {
     alignItems: 'center',
     backgroundColor: colors.primary + '0C',
+    borderRadius: 8,
+    borderWidth: 1,
     borderLeftColor: colors.primary,
     borderLeftWidth: 3,
     flexDirection: 'row',
     gap: 10,
+    justifyContent: 'center',
     marginTop: 14,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
+    minHeight: 66,
+    overflow: 'hidden',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   fillInAttentionRow: {
     alignItems: 'center',
@@ -1262,7 +1283,8 @@ const createCardStyles = (colors: LegacyThemeColors) => StyleSheet.create({
   },
   personalAssignmentText: {
     flex: 1,
-    gap: 2,
+    gap: 5,
+    justifyContent: 'center',
   },
   personalAssignmentLabel: {
     color: colors.primary,
@@ -1277,19 +1299,27 @@ const createCardStyles = (colors: LegacyThemeColors) => StyleSheet.create({
     lineHeight: 19,
   },
   personalRoleList: {
+    alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
   },
   personalRoleChip: {
     alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
     flexDirection: 'row',
     gap: 6,
-    minHeight: 28,
+    justifyContent: 'center',
+    minHeight: 34,
     minWidth: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
   personalRoleTextLane: {
+    alignSelf: 'center',
     flexShrink: 1,
+    justifyContent: 'center',
     minWidth: 0,
   },
   notAssignedRow: {
@@ -1543,10 +1573,14 @@ const createCardStyles = (colors: LegacyThemeColors) => StyleSheet.create({
   fillInAction: {
     alignItems: 'center',
     alignSelf: 'flex-start',
+    borderRadius: 8,
+    borderWidth: 1,
     flexDirection: 'row',
     gap: 7,
+    justifyContent: 'center',
     minHeight: 44,
-    paddingHorizontal: 10,
+    overflow: 'hidden',
+    paddingHorizontal: 14,
   },
   fillInActionText: {
     color: colors.secondary,

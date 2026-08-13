@@ -70,12 +70,11 @@ test('Profile sections and rows expose accessible settings semantics', () => {
   assert.match(inlineStatus, /accessibilityLiveRegion=/);
 });
 
-test('the overview keeps the four planned sections in visual order', () => {
+test('the overview keeps the consolidated Profile sections in visual order', () => {
   const sectionTitles = [
     'Church and Roles',
     'My Scheduling',
-    'Notifications',
-    'Account',
+    'Account Settings',
   ];
   let previous = -1;
   for (const title of sectionTitles) {

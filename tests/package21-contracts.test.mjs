@@ -66,6 +66,19 @@ test('the medium widget prioritizes complete service and team details', () => {
   assert.match(swift, /return "\\\(dateText\) • \\\(date\.formatted/);
 });
 
+test('widget team typography adapts without unbounded layout measurement', () => {
+  const swift = read('targets/ScheduleWidgets/ScheduleWidgets.swift');
+
+  assert.match(swift, /struct ScheduleWidgetTeamTypography/);
+  assert.match(swift, /case 0, 1: baseSize = 13\.5/);
+  assert.match(swift, /case 2: baseSize = 12/);
+  assert.match(swift, /case 3: baseSize = 11/);
+  assert.match(swift, /default: baseSize = 10/);
+  assert.match(swift, /longestEntry[\s\S]*?fontSize: max\(9\.5, baseSize - lengthAdjustment\)/);
+  assert.match(swift, /minimumScaleFactor: longestEntry > 32 \? 0\.68 : 0\.76/);
+  assert.doesNotMatch(swift, /PreferenceKey|onPreferenceChange|sizeThatFits/);
+});
+
 test('snapshot identifiers and privacy boundaries match across JavaScript and Swift', () => {
   const model = read('lib/widgets/schedule-widget-model.ts');
   const nativeStorage = read('lib/widgets/schedule-widget.ios.ts');

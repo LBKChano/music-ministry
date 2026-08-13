@@ -31,6 +31,21 @@ test('appearance control is production-visible and native activation is complete
   assert.equal(appConfig.userInterfaceStyle, 'automatic');
 });
 
+test('Profile groups device and account preferences under Account Settings', () => {
+  const profile = read('components', 'profile', 'profile-screen.tsx');
+  const accountSettingsStart = profile.indexOf("id: 'account-settings'");
+  const notificationStart = profile.indexOf('title="Notification Delivery"');
+  const appearanceStart = profile.indexOf('title="Appearance"');
+  const accountStart = profile.indexOf('title="Account and Security"');
+
+  assert.equal(accountSettingsStart >= 0, true);
+  assert.equal(notificationStart > accountSettingsStart, true);
+  assert.equal(appearanceStart > notificationStart, true);
+  assert.equal(accountStart > appearanceStart, true);
+  assert.equal(profile.includes("id: 'notifications'"), false);
+  assert.equal(profile.includes("id: 'account'"), false);
+});
+
 test('release gate documents checks that cannot be claimed from source alone', () => {
   const gate = read('docs', 'DARK_MODE_RELEASE_GATE.md');
   assert.match(gate, /Physical Device Gate/);

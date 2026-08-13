@@ -314,6 +314,7 @@ const paginationStyles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
+    gap: 8,
     justifyContent: 'center',
     marginBottom: 12,
     marginTop: 6,
@@ -324,16 +325,21 @@ const paginationStyles = StyleSheet.create({
   },
   loadMoreIconLane: {
     alignItems: 'center',
+    height: 20,
     justifyContent: 'center',
-    width: 24,
+    width: 20,
   },
   loadMoreLabelLane: {
+    alignSelf: 'center',
+    justifyContent: 'center',
     maxWidth: 260,
   },
   loadMoreButtonText: {
     fontSize: 14,
     fontWeight: '800',
+    includeFontPadding: false,
     textAlign: 'center',
+    textAlignVertical: 'center',
   },
 });
 
