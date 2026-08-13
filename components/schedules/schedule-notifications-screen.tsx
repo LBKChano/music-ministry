@@ -21,7 +21,6 @@ import {
   type MemberNotification,
   useMemberNotifications,
 } from '@/hooks/useMemberNotifications';
-import { colors } from '@/styles/commonStyles';
 
 export function ScheduleNotificationsScreen() {
   const theme = useAppTheme();
@@ -287,7 +286,6 @@ function formatNotificationTime(value: string): string {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.background,
     flex: 1,
   },
   content: {
@@ -310,7 +308,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   permissionButtonText: {
-    color: colors.primary,
     fontSize: 14,
     fontWeight: '800',
   },
@@ -326,26 +323,22 @@ const styles = StyleSheet.create({
     paddingTop: 14,
   },
   listTitle: {
-    color: colors.text,
     flex: 1,
     fontSize: 18,
     fontWeight: '800',
   },
   listCount: {
-    color: colors.textSecondary,
     fontSize: 13,
     fontWeight: '700',
   },
   notificationRow: {
     alignItems: 'flex-start',
-    borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     minHeight: 88,
     paddingVertical: 14,
   },
   unreadNotificationRow: {
-    backgroundColor: `${colors.backgroundAlt}80`,
   },
   notificationMarker: {
     alignItems: 'center',
@@ -353,13 +346,11 @@ const styles = StyleSheet.create({
     width: 28,
   },
   notificationDot: {
-    backgroundColor: colors.primary,
     borderRadius: 5,
     height: 10,
     width: 10,
   },
   readNotificationDot: {
-    backgroundColor: colors.border,
   },
   notificationCopy: {
     flex: 1,
@@ -368,18 +359,15 @@ const styles = StyleSheet.create({
     paddingRight: 6,
   },
   notificationTitle: {
-    color: colors.text,
     fontSize: 15,
     fontWeight: '800',
     lineHeight: 20,
   },
   notificationBody: {
-    color: colors.textSecondary,
     fontSize: 14,
     lineHeight: 20,
   },
   notificationTime: {
-    color: colors.textTertiary,
     fontSize: 12,
     fontWeight: '600',
   },

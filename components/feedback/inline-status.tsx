@@ -2,32 +2,10 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import { ResponsiveText } from '@/components/ui/responsive-text';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { sanitizeUserFacingMessage } from '@/lib/ui/package16';
-import { colors } from '@/styles/commonStyles';
 
 export type InlineStatusTone = 'success' | 'error' | 'info';
-
-const STATUS_COLORS: Record<InlineStatusTone, {
-  background: string;
-  border: string;
-  foreground: string;
-}> = {
-  success: {
-    background: '#F0FDF4',
-    border: '#BBF7D0',
-    foreground: '#166534',
-  },
-  error: {
-    background: colors.errorBackground,
-    border: colors.errorBorder,
-    foreground: colors.error,
-  },
-  info: {
-    background: colors.backgroundAlt,
-    border: colors.border,
-    foreground: colors.primary,
-  },
-};
 
 export function InlineStatus({
   message,
@@ -38,9 +16,10 @@ export function InlineStatus({
   tone?: InlineStatusTone;
   live?: boolean;
 }) {
+  const theme = useAppTheme();
   if (!message) return null;
 
-  const palette = STATUS_COLORS[tone];
+  const palette = theme.status[tone];
   const isError = tone === 'error';
   const visibleMessage = sanitizeUserFacingMessage(message, tone);
 
@@ -51,7 +30,7 @@ export function InlineStatus({
       style={[
         styles.container,
         {
-          backgroundColor: palette.background,
+          backgroundColor: palette.surface,
           borderColor: palette.border,
         },
       ]}

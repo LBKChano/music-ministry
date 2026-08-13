@@ -5,7 +5,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { colors } from '@/styles/commonStyles';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 
 const impactLabels: Record<string, string> = {
   assignments: 'scheduled assignments',
@@ -23,18 +23,19 @@ export function DeleteImpactSummary({
   impact: Record<string, unknown> | null;
   loading: boolean;
 }) {
+  const theme = useAppTheme();
   if (loading) {
     return (
       <View accessibilityLiveRegion="polite" style={styles.loading}>
-        <ActivityIndicator size="small" color={colors.primary} />
-        <Text style={styles.loadingText}>Checking affected records...</Text>
+        <ActivityIndicator size="small" color={theme.colors.accent} />
+        <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>Checking affected records...</Text>
       </View>
     );
   }
 
   if (!impact) {
     return (
-      <Text style={styles.unavailable}>
+      <Text style={[styles.unavailable, { color: theme.colors.textSecondary }]}>
         Impact details are temporarily unavailable. Nothing is deleted until you confirm.
       </Text>
     );
@@ -48,14 +49,20 @@ export function DeleteImpactSummary({
     }));
 
   if (affected.length === 0) {
-    return <Text style={styles.unavailable}>No related schedule records were found.</Text>;
+    return <Text style={[styles.unavailable, { color: theme.colors.textSecondary }]}>No related schedule records were found.</Text>;
   }
 
   return (
-    <View accessibilityLiveRegion="polite" style={styles.container}>
-      <Text style={styles.title}>This also affects:</Text>
+    <View accessibilityLiveRegion="polite" style={[
+      styles.container,
+      {
+        backgroundColor: theme.status.warning.surface,
+        borderColor: theme.status.warning.border,
+      },
+    ]}>
+      <Text style={[styles.title, { color: theme.status.warning.foreground }]}>This also affects:</Text>
       {affected.map(item => (
-        <Text key={item.label} style={styles.item}>
+        <Text key={item.label} style={[styles.item, { color: theme.status.warning.foreground }]}>
           {item.count} {item.label}
         </Text>
       ))}
@@ -71,29 +78,23 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   loadingText: {
-    color: colors.textSecondary,
     fontSize: 13,
   },
   unavailable: {
-    color: colors.textSecondary,
     fontSize: 13,
     lineHeight: 19,
     paddingVertical: 8,
   },
   container: {
-    backgroundColor: '#FFF7ED',
-    borderColor: '#FDBA74',
     borderWidth: 1,
     gap: 4,
     padding: 12,
   },
   title: {
-    color: '#9A3412',
     fontSize: 14,
     fontWeight: '800',
   },
   item: {
-    color: '#7C2D12',
     fontSize: 13,
     lineHeight: 18,
   },

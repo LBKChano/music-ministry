@@ -4188,6 +4188,390 @@ Done when:
 - The physical-device matrix passes, no released backend contract changed, and
   the candidate is ready for version/build increment and store test builds.
 
+#### Package 36: Dark Appearance Runtime and Visual Contract
+
+Status:
+
+- Implemented locally on 2026-08-13. Client-only foundation; no Supabase
+  migration, Edge Function, or released backend contract changed.
+- Added a versioned per-device `system`, `light`, or `dark` preference with
+  defensive parsing, legacy development-value migration, safe storage-failure
+  fallback, live OS appearance resolution, and a development-only preview
+  override. The production Profile selector was added in Package 40 after the
+  app-owned Schedule, Church, Profile, and authentication surfaces converted.
+- `AppThemeProvider` now resolves one semantic palette without remounting Auth,
+  Church, Query, Widget, or Notification providers. React Navigation consumes
+  the resolved palette, and the existing branded startup overlay remains visible
+  until local appearance restoration completes so saved preferences cannot cause
+  an exposed light/dark startup flash.
+- Native `userInterfaceStyle` intentionally remains `light` until Package 41;
+  therefore existing production behavior and older builds remain unchanged.
+- Verification passed: TypeScript, full ESLint, all 507 repository tests, all
+  six Supabase Edge Function Deno checks, `git diff --check`, and clean web,
+  Android, and iOS production exports.
+
+Goal:
+
+- Establish one reliable appearance runtime and freeze the approved dark-mode
+  visual language before converting individual screens.
+
+Implementation:
+
+- Treat the approved preview as the visual target: deep navy canvas, elevated
+  blue-gray surfaces, restrained cool borders, near-white primary text, muted
+  blue-gray supporting text, bright blue interaction accents, semantic status
+  colors, and the translucent floating dock.
+- Refine `futureDarkAppTheme` only through semantic tokens. Do not introduce a
+  second screen-specific dark palette or scatter new color literals through
+  components.
+- Add a versioned per-device appearance preference with `system`, `light`, and
+  `dark` values. Default existing installs to `system`, fall back safely when
+  storage cannot be read, and react live when the OS appearance changes.
+- Make `AppThemeProvider` resolve the saved preference and provide the selected
+  semantic theme to React Navigation, status bars, system bars, modal portals,
+  and all descendants without remounting auth, church, query, or notification
+  providers.
+- Prevent startup flashes by resolving the preference behind the existing
+  branded splash/startup surface. Preserve the dark branded splash in both
+  appearances unless physical-device review finds a transition problem.
+- Keep the user-facing appearance selector hidden through Package 39, then add
+  it with the Profile conversion in Package 40. Retain the development override
+  for deterministic conversion and release-gate testing.
+
+Compatibility and verification:
+
+- Store appearance locally with no account, membership, RLS, or Supabase
+  dependency. Older app versions continue unchanged and can share the same
+  backend safely.
+- Test missing, valid, invalid, and migrated stored values; OS changes while the
+  app is open; cold start; sign-out/sign-in; church switching; and account
+  switching on one device.
+
+Done when:
+
+- Tests can select either palette deterministically, production still defaults
+  safely, and changing appearance never resets navigation or user data.
+
+#### Package 37: Shared Surfaces and Legacy Color Removal
+
+Status:
+
+- Completed locally on 2026-08-13. Client-only; no Supabase deployment needed.
+
+Implemented:
+
+- Shared app-state screens, inline statuses, notification permission onboarding,
+  delete-impact summaries, scheduling preference controls, reusable buttons/list
+  rows, map loading fallback, and the not-found route now resolve the active
+  semantic theme at render time.
+- The unused duplicate `darkColors` palette and unused static shared style
+  exports were removed. `styles/commonStyles` is now explicitly limited to the
+  unconverted Church root and will be removed with Package 39.
+- Existing modal, focused-header, input, status, pressed, disabled, keyboard,
+  and virtualized-list contracts remain centralized in their shared semantic
+  components.
+- Package 37 contract tests pass in addition to the full repository suite.
+
+Goal:
+
+- Make every shared primitive render correctly in both palettes before the main
+  tabs are converted.
+
+Implementation:
+
+- Replace the static light-only `styles/commonStyles` color bridge with
+  component-level semantic theme access or theme-aware style factories. Remove
+  the unused standalone `darkColors` path after all consumers migrate.
+- Convert app-state screens and panels, inline statuses, notification permission
+  onboarding, loading and retry states, empty states, delete-impact summaries,
+  reusable buttons/list rows, map fallbacks, and the not-found route.
+- Audit `AppModal`, `AdminFormModal`, inputs, switches, chips, segmented
+  controls, dividers, icon tiles, shadows, focus rings, pressed states, disabled
+  states, keyboard dismissal, and virtualized modal lists in both appearances.
+- Keep intentional white-on-brand artwork, notification-bell foregrounds,
+  destructive colors, and branded splash colors where contrast tests prove they
+  are correct. Replace only colors whose meaning changes with appearance.
+
+Compatibility and verification:
+
+- Add light/dark contract and contrast tests for every shared status and control
+  state. Preserve all current component props and workflow behavior.
+
+Done when:
+
+- No shared primitive depends on a module-level light palette and downstream
+  screens can be converted without one-off dark-mode workarounds.
+
+#### Package 38: Schedule Dark-Mode Fidelity
+
+Status:
+
+- Completed locally on 2026-08-13. Client-only; no Supabase deployment needed.
+
+Implemented:
+
+- The complete Schedule root and service-card tree now create styles from the
+  live semantic theme, covering canvas, service surfaces, metadata date tiles,
+  selected view controls, filters, teams, songs, fill-in states, actions,
+  pagination, notification permission/history, and Schedule-owned modals.
+- Date metadata uses the dedicated strong service palette, personal assignments
+  retain the labeled `You're serving` state, and all control foregrounds follow
+  semantic contrast tokens in both appearances.
+- Existing service queries, Realtime convergence, pagination, filters, widget
+  synchronization, notification paths, admin mutations, and member song
+  ownership were preserved. The setting remained development-only through this
+  package and was exposed with the completed Profile conversion in Package 40.
+- Package 38 contract tests and the full repository suite pass. Physical light
+  and dark device matrix review remains intentionally consolidated in Package
+  42 before store release.
+
+Goal:
+
+- Match the approved Schedule preview while preserving every member and admin
+  workflow.
+
+Implementation:
+
+- Apply the dark canvas, coordinated gradient header, semantic view controls,
+  filter control, month sections, service surfaces, subtle borders, and the
+  lighter translucent floating dock shown in the preview.
+- Keep service dates on strong navy tiles; use bright accent treatment for time,
+  disclosure actions, song numbers, and the selected schedule view. Preserve a
+  visibly distinct labeled `You're serving` state without relying on color
+  alone.
+- Convert collapsed and expanded cards, teams, role symbols, songs, fill-in
+  requests, manual assignment, filters, song add/edit/reorder/delete, service
+  actions, notifications, loading-more states, refresh notices, and every
+  Schedule modal.
+- Preserve existing admin-only mutations and member song ownership. Dark mode
+  must not alter pagination, Realtime updates, expanded-card state, filters,
+  scrolling, notification history, or widget synchronization.
+
+Compatibility and verification:
+
+- Test member/admin layouts, two- and three-tab docks, long church/service/role
+  names, empty and full teams, no songs and many songs, fill-in states, offline
+  cache, loading/error states, and Larger Text on Android and iOS.
+
+Done when:
+
+- Schedule matches the approved preview in dark mode and remains visually
+  unchanged in light mode except for intentional shared-token corrections.
+
+#### Package 39: Church and Administrative Workflow Dark Mode
+
+Status:
+
+- Completed locally on 2026-08-13. Client-only; no Supabase deployment needed.
+
+Implemented:
+
+- The Church root and every embedded administrative workflow now resolve the
+  active semantic palette at runtime. This includes setup rows, members, roles,
+  weekly services, scheduling rules, song types, reminders, quarter preparation,
+  single services, assignment previews, skipped reports, and destructive states.
+- All six Church date/time spinners now use the active appearance and semantic
+  input foreground while preserving the existing draft, Cancel, and Confirm
+  interaction.
+- The final `styles/commonStyles` compatibility file was removed. Shared admin
+  modals and focused editors continue through the existing semantic primitives.
+- Service, assignment, member, reminder, song-type, bulk-delete, and auto-assign
+  RPC payloads and mutation paths were not changed.
+
+Goal:
+
+- Convert the complete admin experience, including the largest concentration of
+  legacy colors and native controls.
+
+Implementation:
+
+- Match the approved Church preview: coordinated header, invitation-code
+  action, layered Church Setup rows, restrained completion/status treatments,
+  and consistent focused editor surfaces.
+- Convert Church Details, Roles, Weekly Services, Members, Scheduling Rules,
+  Song Types, Reminder Settings, Prepare Services, bulk deletion, assignment
+  previews, skipped-slot reports, and every create/edit/confirmation modal.
+- Replace hard-coded success, warning, error, selected-chip, switch, input, and
+  button colors with semantic tokens while preserving labeled status meaning.
+- Remove every forced `themeVariant="light"` and black picker text override.
+  Date and time spinners must use the active appearance and retain the current
+  draft/Confirm/Cancel behavior.
+- Preserve all RPC payloads, service creation/deletion, auto-assignment logic,
+  member administration, permissions, and backend compatibility.
+
+Compatibility and verification:
+
+- Exercise every Church subpage and modal on small Android, Dynamic Island and
+  older iPhones, large phones, tablets, landscape, Larger Text, and keyboard
+  open/closed states in both appearances.
+
+Done when:
+
+- The entire Church workflow has no bright light-only islands, unreadable native
+  pickers, or changed scheduling behavior.
+
+#### Package 40: Profile, Authentication, and Appearance Control
+
+Status:
+
+- Completed locally on 2026-08-13. Client-only; no Supabase deployment needed.
+
+Implemented:
+
+- Profile, focused Profile editors, notification and scheduling switches,
+  unavailable-date states, onboarding, password recovery, verification, and
+  no-membership recovery now use semantic runtime colors throughout.
+- The Profile Account section includes an accessible `Appearance` row and a
+  focused `System`, `Light`, and `Dark` radio-group screen. Selection updates
+  the running app immediately and remains local to this device.
+- Failed local persistence restores the previous appearance and reports an
+  actionable error. Appearance changes do not remount or reset auth, church,
+  query, notification, widget, navigation, or form state.
+- Native configuration intentionally remains unchanged until Package 41, so
+  existing installed builds and all backend contracts remain compatible.
+
+Goal:
+
+- Complete the Profile and account experience and provide a simple, accessible
+  user-facing appearance setting.
+
+Implementation:
+
+- Match the approved Profile preview: dark grouped surfaces, clear section
+  hierarchy, semantic value chips, readable membership identity, and consistent
+  focused subpage headers.
+- Convert Church Profile, Switch Church, unavailable dates, scheduling
+  preferences, notification delivery, Account, password change, account
+  deletion, onboarding, email verification, password recovery, and no-membership
+  recovery states.
+- Add an `Appearance` row in the Profile Account section. Open a focused setting
+  screen or compact modal with a segmented `System`, `Light`, and `Dark` choice;
+  show the current value in the Profile row and announce changes accessibly.
+- Apply changes immediately without navigating away, losing drafts, restarting
+  the app, or changing another device's preference. Keep the preference local
+  to the device.
+- Ensure password-manager fields, keyboards, autofill controls, calendars,
+  switches, destructive confirmations, and validation messages remain readable
+  in both appearances.
+
+Compatibility and verification:
+
+- Test appearance changes while signed out and signed in, as owner/admin/member,
+  across multiple churches and different accounts on one device. Existing
+  accounts require no migration.
+
+Done when:
+
+- Every Profile/auth route supports both palettes and the appearance preference
+  is understandable, persistent, immediate, and accessible.
+
+#### Package 41: Native Appearance Integration and Branded Surfaces
+
+Status:
+
+- Completed locally on 2026-08-13. Client-only; no Supabase deployment needed.
+  The native configuration change requires fresh Android and iOS builds, and the
+  physical-device matrix remains a release requirement.
+
+Implemented:
+
+- Expo now permits automatic native appearance, while the device-local System,
+  Light, or Dark preference also drives React Native's native color-scheme
+  override for alerts, keyboards, and platform controls.
+- Status-bar and Android navigation-bar icon styles, the native root background,
+  React Navigation, stack transition backgrounds, and the floating dock resolve
+  from the active semantic theme. Main tab headers retain light status icons.
+- The splash remains an intentional navy brand surface with an appearance-safe
+  handoff, and displayed brand artwork opts out of unwanted automatic inversion.
+- The iOS widget keeps snapshot schema version 1 and the existing app-group key,
+  uses a named branded palette, and marks accent content for tinted rendering.
+
+Goal:
+
+- Make operating-system surfaces agree with the selected app appearance and
+  eliminate transition flashes.
+
+Implementation:
+
+- Change Expo `userInterfaceStyle` from `light` to `automatic` and verify the
+  generated Android and iOS projects. Drive status-bar icons, Android system
+  navigation, keyboard appearance, native alerts, date/time controls, blur
+  material, and React Navigation from the resolved theme.
+- Verify the floating dock uses the preview's translucent blue-gray surface,
+  luminous active accent, readable inactive icons, and Android opaque fallback
+  in both palettes.
+- Keep the splash screen's professional branded navy presentation and verify a
+  seamless handoff to light and dark startup destinations.
+- Treat the iOS widget as an intentional branded dark surface unless widget
+  contrast or platform rendering requires adaptive tokens. Verify both widget
+  modes, tinted rendering, lock-screen/Smart Stack contexts, and snapshot
+  refresh without changing widget data contracts.
+- Audit app icons and images for unwanted automatic inversion and retain
+  `accessibilityIgnoresInvertColors` where appropriate.
+
+Compatibility and verification:
+
+- No backend deployment is required. Existing installed builds retain their
+  current light appearance. New native builds must be tested on physical iOS and
+  Android devices because Expo configuration and system bars cannot be proven by
+  web export alone.
+
+Done when:
+
+- The OS chrome, native controls, app content, splash, dock, and widget feel like
+  one intentional appearance on both platforms.
+
+#### Package 42: Dark-Mode Activation and Integrated Release Gate
+
+Status:
+
+- Automated activation completed locally on 2026-08-13. The physical-device
+  release matrix is intentionally still pending and is documented in
+  `docs/DARK_MODE_RELEASE_GATE.md`.
+
+Implemented:
+
+- System, Light, and Dark remain production-visible through the Profile
+  appearance screen, with native integration activated for new builds.
+- `scripts/audit-semantic-colors.mjs` blocks new literal colors and forced-light
+  controls outside the canonical theme, branded splash, and emergency fallback
+  exceptions.
+- Package contracts protect native configuration, system chrome, dock, splash,
+  widget schema, selector visibility, backend compatibility, and the documented
+  physical-device gate.
+
+Goal:
+
+- Prove the approved dark design and the Package 40 Profile appearance selector
+  are complete before store release.
+
+Verification and activation:
+
+- Add a static audit preventing new non-semantic foreground, background, border,
+  switch, and picker colors outside documented branded exceptions.
+- Run TypeScript, ESLint, all repository tests, Deno checks for unchanged Edge
+  Functions, `git diff --check`, and clean web/Android/iOS production exports.
+- Capture matching light and dark screenshots for Schedule, Church, Profile,
+  every focused subpage, representative modal families, onboarding, recovery,
+  loading, empty, offline, warning, and error states.
+- Verify contrast, Differentiate Without Color Alone, VoiceOver/TalkBack order,
+  Larger Text, Reduced Motion, display scaling, safe areas, keyboard behavior,
+  modal scrolling, and touch targets on the complete device matrix.
+- Toggle appearance with an open modal, expanded service, active filter, typed
+  draft, background refresh, offline cache, and church/account switch. No state
+  may reset and no light flash may appear.
+- Repeat core scheduling, song, fill-in, notification, account, onboarding,
+  auto-assignment, Realtime, and widget smoke tests to prove visual work did not
+  change behavior.
+- Keep the Profile appearance control enabled for test builds, but do not submit
+  the store release until the full physical-device matrix passes.
+
+Done when:
+
+- `System`, `Light`, and `Dark` are production-visible, the dark UI matches the
+  approved preview across the whole app, light mode has no regression, and no
+  released backend or older-client contract changed.
+
 ## Cross-Feature Release Gate
 
 - Run a released Android/iOS build against every deployed migration before

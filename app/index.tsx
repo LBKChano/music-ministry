@@ -7,6 +7,7 @@ import { useEffect, useRef } from 'react';
 import { isPasswordRecoveryUrl } from '@/utils/passwordResetLinks';
 import { resolveStartupDestination } from '@/lib/church/startup-coordinator';
 import { isSignupVerificationUrl } from '@/utils/signupVerificationLinks';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 
 /**
  * Root index screen — the sole place that decides where to navigate.
@@ -18,6 +19,7 @@ import { isSignupVerificationUrl } from '@/utils/signupVerificationLinks';
  * - Use router.replace so the index screen is removed from the history stack.
  */
 export default function Index() {
+  const theme = useAppTheme();
   const { session, initialized, initializationError } = useAuth();
   const { sessionStatus } = useChurchSession();
   const router = useRouter();
@@ -83,8 +85,13 @@ export default function Index() {
   // Show a loading indicator while auth initializes.
   // The splash screen is still visible on top of this (controlled by AuthContext).
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a2332' }}>
-      <ActivityIndicator size="large" color="#ffffff" />
+    <View style={{
+      alignItems: 'center',
+      backgroundColor: theme.colors.canvas,
+      flex: 1,
+      justifyContent: 'center',
+    }}>
+      <ActivityIndicator size="large" color={theme.colors.accent} />
     </View>
   );
 }

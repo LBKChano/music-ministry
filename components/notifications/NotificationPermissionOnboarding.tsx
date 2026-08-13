@@ -9,6 +9,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { ResponsiveText } from '@/components/ui/responsive-text';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useChurchSession } from '@/contexts/ChurchContext';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import {
   shouldPresentNotificationPermissionOnboarding,
   type NotificationPermissionDecision,
@@ -17,7 +18,6 @@ import {
   readNotificationPermissionOnboardingState,
   saveNotificationPermissionDecision,
 } from '@/lib/notifications/permission-onboarding-storage';
-import { colors } from '@/styles/commonStyles';
 
 interface NotificationPermissionOnboardingProps {
   scheduleReady: boolean;
@@ -28,6 +28,7 @@ type LoadedDecision = NotificationPermissionDecision | null | 'loading';
 export function NotificationPermissionOnboarding({
   scheduleReady,
 }: NotificationPermissionOnboardingProps) {
+  const theme = useAppTheme();
   const {
     hasPermission,
     permissionDenied,
@@ -135,27 +136,36 @@ export function NotificationPermissionOnboarding({
   return (
     <View
       accessibilityLabel="Notification permission options"
-      style={styles.container}
+      style={[
+        styles.container,
+        {
+          backgroundColor: theme.colors.surfaceMuted,
+          borderColor: theme.colors.borderSubtle,
+        },
+      ]}
     >
       <View style={styles.headerRow}>
-        <View style={styles.iconContainer} accessibilityElementsHidden>
+        <View
+          style={[styles.iconContainer, { backgroundColor: theme.colors.accent }]}
+          accessibilityElementsHidden
+        >
           <IconSymbol
             ios_icon_name="bell.badge.fill"
             android_material_icon_name="notifications-active"
             size={25}
-            color={colors.headerText}
+            color={theme.strongSurface.foreground}
           />
         </View>
         <View style={styles.copy}>
           <ResponsiveText
             accessibilityRole="header"
             text="Stay ready for every service"
-            textStyle={styles.title}
+            textStyle={[styles.title, { color: theme.colors.textPrimary }]}
             variant="stateTitle"
           />
           <ResponsiveText
             text="Enable Service reminders and Fill-in requests on this device."
-            textStyle={styles.description}
+            textStyle={[styles.description, { color: theme.colors.textSecondary }]}
             variant="supportingCopy"
           />
         </View>
@@ -164,7 +174,7 @@ export function NotificationPermissionOnboarding({
         <ResponsiveText
           accessibilityRole="alert"
           text={requestError}
-          textStyle={styles.errorText}
+          textStyle={[styles.errorText, { color: theme.status.error.foreground }]}
           variant="supportingCopy"
         />
       ) : null}
@@ -178,18 +188,22 @@ export function NotificationPermissionOnboarding({
           onPress={() => void enableNotifications()}
           style={({ pressed }) => [
             styles.primaryButton,
+            { backgroundColor: theme.button.primarySurface },
             pressed && styles.pressed,
             requesting && styles.disabled,
           ]}
         >
           {requesting ? (
-            <ActivityIndicator color={colors.headerText} size="small" />
+            <ActivityIndicator color={theme.button.primaryForeground} size="small" />
           ) : null}
           <ResponsiveText
             accessible={false}
             style={styles.primaryButtonLabel}
             text="Enable Notifications"
-            textStyle={styles.primaryButtonText}
+            textStyle={[
+              styles.primaryButtonText,
+              { color: theme.button.primaryForeground },
+            ]}
             variant="actionLabel"
           />
         </Pressable>
@@ -210,7 +224,10 @@ export function NotificationPermissionOnboarding({
             accessible={false}
             style={styles.secondaryButtonLabel}
             text="Not Now"
-            textStyle={styles.secondaryButtonText}
+            textStyle={[
+              styles.secondaryButtonText,
+              { color: theme.button.secondaryForeground },
+            ]}
             variant="actionLabel"
           />
         </Pressable>
@@ -222,8 +239,6 @@ export function NotificationPermissionOnboarding({
 const styles = StyleSheet.create({
   container: {
     alignSelf: 'center',
-    backgroundColor: colors.backgroundAlt,
-    borderColor: colors.border,
     borderRadius: 8,
     borderWidth: 1,
     gap: 12,
@@ -243,20 +258,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
   },
   copy: {
     flex: 1,
     gap: 7,
   },
   title: {
-    color: colors.text,
     fontSize: 17,
     lineHeight: 22,
     fontWeight: '800',
   },
   description: {
-    color: colors.textSecondary,
     fontSize: 14,
     lineHeight: 20,
   },
@@ -268,7 +280,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   errorText: {
-    color: colors.error,
     fontSize: 13,
     lineHeight: 18,
     textAlign: 'center',
@@ -281,10 +292,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: colors.primary,
   },
   primaryButtonText: {
-    color: colors.headerText,
     fontSize: 14,
     lineHeight: 19,
     fontWeight: '800',
@@ -300,7 +309,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   secondaryButtonText: {
-    color: colors.textSecondary,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '700',

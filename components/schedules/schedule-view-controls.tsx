@@ -121,7 +121,10 @@ export function ScheduleViewControls({
                 borderColor: theme.colors.surface,
               },
             ]}>
-              <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+              <Text style={[
+                styles.filterBadgeText,
+                { color: theme.strongSurface.foreground },
+              ]}>{activeFilterCount}</Text>
             </View>
           ) : null}
         </Pressable>
@@ -192,7 +195,6 @@ const styles = StyleSheet.create({
     width: 18,
   },
   filterBadgeText: {
-    color: '#FFFFFF',
     fontSize: 11,
     fontVariant: ['tabular-nums'],
     fontWeight: '800',

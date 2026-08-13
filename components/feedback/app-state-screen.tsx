@@ -8,8 +8,8 @@ import {
 } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import { ResponsiveText } from '@/components/ui/responsive-text';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { sanitizeUserFacingMessage } from '@/lib/ui/package16';
-import { colors } from '@/styles/commonStyles';
 
 type AndroidIcon = React.ComponentProps<
   typeof IconSymbol
@@ -41,7 +41,10 @@ export function AppStateScreen({
   loading?: boolean;
   actions?: StateAction[];
 }) {
-  const iconColor = iconTone === 'error' ? colors.error : colors.primary;
+  const theme = useAppTheme();
+  const iconColor = iconTone === 'error'
+    ? theme.status.error.foreground
+    : theme.colors.accent;
   const visibleMessage = sanitizeUserFacingMessage(
     message,
     iconTone === 'error' ? 'error' : 'info',
@@ -51,7 +54,7 @@ export function AppStateScreen({
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={styles.content}
-      style={styles.screen}
+      style={[styles.screen, { backgroundColor: theme.colors.canvas }]}
     >
       <View
         accessibilityElementsHidden
@@ -73,14 +76,14 @@ export function AppStateScreen({
         selectable
         style={styles.copyLane}
         text={title}
-        textStyle={styles.title}
+        textStyle={[styles.title, { color: theme.colors.textPrimary }]}
         variant="stateTitle"
       />
       <ResponsiveText
         selectable
         style={styles.copyLane}
         text={visibleMessage}
-        textStyle={styles.message}
+        textStyle={[styles.message, { color: theme.colors.textSecondary }]}
         variant="supportingCopy"
       />
       {actions.length > 0 ? (
@@ -101,7 +104,13 @@ export function AppStateScreen({
                 onPress={action.onPress}
                 style={({ pressed }) => [
                   styles.action,
-                  primary ? styles.primaryAction : styles.secondaryAction,
+                  primary
+                    ? { backgroundColor: theme.button.primarySurface }
+                    : {
+                        backgroundColor: theme.button.secondarySurface,
+                        borderColor: theme.button.secondaryBorder,
+                        borderWidth: 1,
+                      },
                   pressed && styles.pressed,
                   (action.disabled || action.loading) && styles.disabled,
                 ]}
@@ -109,14 +118,23 @@ export function AppStateScreen({
                 {action.loading ? (
                   <ActivityIndicator
                     size="small"
-                    color={primary ? colors.headerText : colors.primary}
+                    color={primary
+                      ? theme.button.primaryForeground
+                      : theme.button.secondaryForeground}
                   />
                 ) : null}
                 <ResponsiveText
                   accessible={false}
                   style={styles.actionLabelLane}
                   text={action.label}
-                  textStyle={primary ? styles.primaryText : styles.secondaryText}
+                  textStyle={[
+                    primary ? styles.primaryText : styles.secondaryText,
+                    {
+                      color: primary
+                        ? theme.button.primaryForeground
+                        : theme.button.secondaryForeground,
+                    },
+                  ]}
                   variant="actionLabel"
                 />
               </Pressable>
@@ -130,7 +148,6 @@ export function AppStateScreen({
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: colors.background,
     flex: 1,
   },
   content: {
@@ -149,7 +166,6 @@ const styles = StyleSheet.create({
     width: 72,
   },
   title: {
-    color: colors.text,
     fontSize: 25,
     fontWeight: '800',
     lineHeight: 31,
@@ -161,7 +177,6 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   message: {
-    color: colors.textSecondary,
     fontSize: 16,
     lineHeight: 24,
     maxWidth: 480,
@@ -182,21 +197,11 @@ const styles = StyleSheet.create({
     minHeight: 50,
     paddingHorizontal: 18,
   },
-  primaryAction: {
-    backgroundColor: colors.primary,
-  },
-  secondaryAction: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
-  },
   primaryText: {
-    color: colors.headerText,
     fontSize: 16,
     fontWeight: '800',
   },
   secondaryText: {
-    color: colors.primary,
     fontSize: 16,
     fontWeight: '800',
   },

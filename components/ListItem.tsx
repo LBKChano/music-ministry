@@ -1,6 +1,6 @@
 import React from "react";
 import * as Haptics from "expo-haptics";
-import { Pressable, StyleSheet, useColorScheme, View, Text } from "react-native";
+import { Pressable, StyleSheet, View, Text } from "react-native";
 import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 import Animated, {
   FadeIn,
@@ -8,7 +8,7 @@ import Animated, {
 } from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
 import Reanimated from "react-native-reanimated";
-import { appleRed, borderColor } from "@/constants/Colors";
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { IconCircle } from "./IconCircle";
 import { IconSymbol } from "./IconSymbol";
 
@@ -23,6 +23,7 @@ function RightAction({
   prog: SharedValue<number>;
   drag: SharedValue<number>;
 }) {
+  const theme = useAppTheme();
   const styleAnimation = useAnimatedStyle(() => ({
     transform: [{ translateX: drag.value + 200 }],
   }));
@@ -36,16 +37,24 @@ function RightAction({
         }
       }}
     >
-      <Reanimated.View style={[styleAnimation, styles.rightAction]}>
-        <IconSymbol ios_icon_name="trash.fill" android_material_icon_name="delete" size={24} color="white" />
+      <Reanimated.View style={[
+        styleAnimation,
+        styles.rightAction,
+        { backgroundColor: theme.button.destructiveSurface },
+      ]}>
+        <IconSymbol
+          ios_icon_name="trash.fill"
+          android_material_icon_name="delete"
+          size={24}
+          color={theme.button.destructiveForeground}
+        />
       </Reanimated.View>
     </Pressable>
   );
 }
 
 export default function ListItem({ listId }: { listId: string }) {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
+  const theme = useAppTheme();
 
   return (
     <Animated.View entering={FadeIn}>
@@ -58,8 +67,11 @@ export default function ListItem({ listId }: { listId: string }) {
         overshootRight={false}
         enableContextMenu
       >
-        <View style={styles.listItemContainer}>
-          <Text style={[styles.listItemText, { color: isDark ? "#FFFFFF" : "#000000" }]}>{listId}</Text>
+        <View style={[
+          styles.listItemContainer,
+          { borderBottomColor: theme.divider.color },
+        ]}>
+          <Text style={[styles.listItemText, { color: theme.colors.textPrimary }]}>{listId}</Text>
         </View>
 
       </ReanimatedSwipeable>
@@ -78,8 +90,7 @@ export const NicknameCircle = ({
   index?: number;
   isEllipsis?: boolean;
 }) => {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
+  const theme = useAppTheme();
 
   return (
     <Text
@@ -88,7 +99,7 @@ export const NicknameCircle = ({
         isEllipsis && styles.ellipsisCircle,
         {
           backgroundColor: color,
-          borderColor: isDark ? "#000000" : "#ffffff",
+          borderColor: theme.colors.canvas,
           marginLeft: index > 0 ? -6 : 0,
         },
       ]}
@@ -102,7 +113,6 @@ const styles = StyleSheet.create({
   listItemContainer: {
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: borderColor,
     backgroundColor: "transparent",
   },
   listItemText: {
@@ -111,7 +121,6 @@ const styles = StyleSheet.create({
   rightAction: {
     width: 200,
     height: 65,
-    backgroundColor: appleRed,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -121,7 +130,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: borderColor,
     gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 8,

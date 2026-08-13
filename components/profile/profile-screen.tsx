@@ -26,7 +26,10 @@ import {
   ProfileStatus,
   type ProfileOverviewSection,
 } from "@/components/profile/profile-primitives";
-import { useAppTheme } from '@/contexts/AppThemeContext';
+import {
+  useAppAppearance,
+  useAppTheme,
+} from '@/contexts/AppThemeContext';
 import {
   createAvailabilitySummary,
 } from "@/lib/profile/availability";
@@ -69,6 +72,7 @@ export function ProfileScreen({
   } = useNotifications();
   const router = useRouter();
   const theme = useAppTheme();
+  const { preference: appearancePreference } = useAppAppearance();
   const isFocused = useIsFocused();
   const currentMemberIdRef = useRef<string | null>(currentMember?.id ?? null);
   const availabilityQuery = useMemberAvailability({
@@ -268,13 +272,13 @@ export function ProfileScreen({
               ios_icon_name="person.crop.circle.fill"
               android_material_icon_name="account-circle"
               size={50}
-              color="#FFFFFF"
+              color={theme.strongSurface.foreground}
             />
           </View>
         )}
       >
         <TabHeaderPill
-          icon={<IconSymbol ios_icon_name="person.badge.key.fill" android_material_icon_name="verified-user" size={16} color="#FFFFFF" />}
+          icon={<IconSymbol ios_icon_name="person.badge.key.fill" android_material_icon_name="verified-user" size={16} color={theme.strongSurface.foreground} />}
           label={profileSubtitle}
         />
         <TabHeaderMetaText>{displayEmail}</TabHeaderMetaText>
@@ -313,6 +317,22 @@ export function ProfileScreen({
             description: 'Your access and ministry identity in the selected church.',
             content: (
               <ProfileRowGroup>
+                <ProfileRow
+                  title="Appearance"
+                  summary="Choose whether this device follows the system appearance or uses light or dark mode."
+                  value={appearancePreference === 'system'
+                    ? 'System'
+                    : appearancePreference === 'dark'
+                      ? 'Dark'
+                      : 'Light'}
+                  valueTone="info"
+                  iosIcon="circle.lefthalf.filled"
+                  androidIcon="contrast"
+                  accessibilityHint="Opens appearance settings for this device."
+                  onPress={() => {
+                    router.push('/profile-appearance');
+                  }}
+                />
                 <ProfileRow
                   title="Church Profile"
                   summary={`${currentChurch?.name ?? 'Selected church'} | ${roleSummary}`}

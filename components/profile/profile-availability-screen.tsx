@@ -30,6 +30,7 @@ import {
   createLegacyThemeColors,
   type LegacyThemeColors,
 } from '@/lib/ui/legacy-theme-colors';
+import type { AppTheme } from '@/lib/ui/app-theme';
 
 type StatusTone = 'success' | 'error' | 'info';
 
@@ -46,7 +47,7 @@ function AvailabilityCalendarDay({
 }) {
   const theme = useAppTheme();
   const colors = useMemo(() => createLegacyThemeColors(theme), [theme]);
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
 
   if (!date) return <View style={styles.dayCell} />;
 
@@ -100,7 +101,7 @@ function AvailabilityCalendarDay({
 export function ProfileAvailabilityScreen() {
   const theme = useAppTheme();
   const colors = useMemo(() => createLegacyThemeColors(theme), [theme]);
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -451,7 +452,9 @@ export function ProfileAvailabilityScreen() {
                   ios_icon_name={hasChanges ? 'pencil.circle.fill' : 'checkmark.circle.fill'}
                   android_material_icon_name={hasChanges ? 'edit' : 'check-circle'}
                   size={21}
-                  color={hasChanges ? '#9A3412' : '#166534'}
+                  color={hasChanges
+                    ? theme.status.warning.foreground
+                    : theme.status.success.foreground}
                 />
                 <Text style={styles.draftSummaryText}>
                   {hasChanges
@@ -528,7 +531,7 @@ export function ProfileAvailabilityScreen() {
   );
 }
 
-function createStyles(colors: LegacyThemeColors) {
+function createStyles(colors: LegacyThemeColors, theme: AppTheme) {
   return StyleSheet.create({
   container: {
     backgroundColor: colors.background,
@@ -565,7 +568,7 @@ function createStyles(colors: LegacyThemeColors) {
     lineHeight: 24,
   },
   headerSubtitle: {
-    color: '#DBEAFE',
+    color: theme.strongSurface.mutedForeground,
     fontSize: 13,
     fontWeight: '600',
     lineHeight: 18,
@@ -707,7 +710,7 @@ function createStyles(colors: LegacyThemeColors) {
   },
   dayCellSelected: {
     backgroundColor: colors.error,
-    borderColor: '#991B1B',
+    borderColor: theme.status.error.border,
   },
   dayCellDisabled: {
     opacity: 0.28,

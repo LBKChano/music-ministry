@@ -18,12 +18,14 @@ import {
   ThemeProvider,
 } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
+import * as SystemUI from 'expo-system-ui';
 import { WidgetProvider } from '@/contexts/WidgetContext';
 import { NotificationProvider, useNotifications } from '@/contexts/NotificationContext';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ChurchProvider, useChurchSession } from '@/contexts/ChurchContext';
 import {
   AppThemeProvider,
+  useAppAppearance,
   useAppTheme,
 } from '@/contexts/AppThemeContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -54,7 +56,13 @@ if (Platform.OS === 'android') {
 }
 
 // Safely resolve SystemBars — react-native-edge-to-edge requires a native build.
-type SystemBarsComponent = React.ComponentType<{ style?: string }>;
+type SystemBarStyle = 'auto' | 'inverted' | 'light' | 'dark';
+type SystemBarsComponent = React.ComponentType<{
+  style?: SystemBarStyle | {
+    statusBar?: SystemBarStyle;
+    navigationBar?: SystemBarStyle;
+  };
+}>;
 let SystemBars: SystemBarsComponent | null = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -66,6 +74,7 @@ try {
 
 function RootLayoutNav() {
   const appTheme = useAppTheme();
+  const { ready: appearanceReady } = useAppAppearance();
   const router = useRouter();
   const segments = useSegments();
   const [fontsLoaded] = useFonts({
@@ -251,8 +260,22 @@ function RootLayoutNav() {
     dark: appTheme.mode === 'dark',
     colors: createNavigationThemeColors(appTheme),
   }), [appTheme]);
+  const usesBrandedTabHeader = segments[0] === '(tabs)';
+  const statusBarStyle = appTheme.mode === 'dark' || usesBrandedTabHeader
+    ? 'light'
+    : 'dark';
+  const navigationBarStyle = appTheme.mode === 'dark' ? 'light' : 'dark';
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    void SystemUI.setBackgroundColorAsync(appTheme.colors.canvas).catch(error => {
+      console.warn('[Layout] Unable to update the native root background:', error);
+    });
+  }, [appTheme.colors.canvas]);
+
   const showStartupSplash = (
-    !initialized
+    !appearanceReady
+    || !initialized
     || (
       startupDestination === 'wait'
       && !currentChurch
@@ -265,7 +288,10 @@ function RootLayoutNav() {
   return (
     <ThemeProvider value={activeTheme}>
       <WidgetProvider>
-        <GestureHandlerRootView style={{ flex: 1 }}>
+        <GestureHandlerRootView
+          style={{ flex: 1, backgroundColor: appTheme.colors.canvas }}
+        >
+          <StatusBar animated style={statusBarStyle} />
           <MemberNotificationRealtimeSync />
           <ScheduleWidgetLifecycleSync />
           {/*
@@ -273,7 +299,12 @@ function RootLayoutNav() {
            * and ready to receive router.replace() calls from app/index.tsx.
            * An opaque overlay is shown on top while auth initializes.
            */}
-          <Stack screenOptions={{ headerShown: false }}>
+          <Stack
+            screenOptions={{
+              contentStyle: { backgroundColor: appTheme.colors.canvas },
+              headerShown: false,
+            }}
+          >
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="onboarding" options={{ headerShown: false }} />
             <Stack.Screen name="reset-password" options={{ headerShown: false }} />
@@ -285,6 +316,7 @@ function RootLayoutNav() {
             <Stack.Screen name="profile-availability" options={{ headerShown: false }} />
             <Stack.Screen name="profile-scheduling-preferences" options={{ headerShown: false }} />
             <Stack.Screen name="profile-account" options={{ headerShown: false }} />
+            <Stack.Screen name="profile-appearance" options={{ headerShown: false }} />
             <Stack.Screen name="change-password" options={{ headerShown: false }} />
             <Stack.Screen name="delete-account" options={{ headerShown: false }} />
             <Stack.Screen name="schedule-notifications" options={{ headerShown: false }} />
@@ -321,7 +353,14 @@ function RootLayoutNav() {
             </View>
           ) : null}
 
-          {SystemBars ? <SystemBars style="auto" /> : null}
+          {SystemBars ? (
+            <SystemBars
+              style={{
+                navigationBar: navigationBarStyle,
+                statusBar: statusBarStyle,
+              }}
+            />
+          ) : null}
         </GestureHandlerRootView>
       </WidgetProvider>
     </ThemeProvider>
@@ -351,7 +390,6 @@ export default function RootLayout() {
           <AuthProvider>
             <NotificationProvider>
               <ChurchProvider>
-                <StatusBar style="auto" animated />
                 <RootLayoutNav />
               </ChurchProvider>
             </NotificationProvider>

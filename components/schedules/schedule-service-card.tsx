@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AccessibilityInfo,
   LayoutAnimation,
@@ -33,7 +33,10 @@ import {
 } from '@/lib/ui/schedule-interaction';
 import { resolveSurfaceStatusTokens } from '@/lib/ui/surface-system';
 import { resolveRoleSymbolForName } from '@/lib/roles/role-symbols';
-import { colors } from '@/styles/commonStyles';
+import {
+  createLegacyThemeColors,
+  type LegacyThemeColors,
+} from '@/lib/ui/legacy-theme-colors';
 
 type ServiceComment = ServiceWithAssignments['service_comments'][number];
 
@@ -181,6 +184,8 @@ function ScheduleServiceCardComponent({
   onAssignMember,
 }: ScheduleServiceCardProps) {
   const theme = useAppTheme();
+  const colors = useMemo(() => createLegacyThemeColors(theme), [theme]);
+  const cardStyles = useMemo(() => createCardStyles(colors), [colors]);
   const { fontScale, width } = useWindowDimensions();
   const reduceMotionEnabled = useReducedMotionPreference();
   const [cardWidth, setCardWidth] = useState(0);
@@ -1085,7 +1090,7 @@ function ScheduleServiceCardComponent({
   );
 }
 
-const cardStyles = StyleSheet.create({
+const createCardStyles = (colors: LegacyThemeColors) => StyleSheet.create({
   summaryRow: {
     alignItems: 'flex-start',
     flexDirection: 'row',

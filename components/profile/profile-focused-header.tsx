@@ -7,6 +7,7 @@ const PROFILE_HEADER_ICONS: Record<string, {
   android: React.ComponentProps<typeof IconSymbol>['android_material_icon_name'];
 }> = {
   Account: { ios: 'person.crop.circle.badge.checkmark', android: 'manage-accounts' },
+  Appearance: { ios: 'circle.lefthalf.filled', android: 'contrast' },
   'Change Password': { ios: 'key.fill', android: 'password' },
   'Church Profile': { ios: 'person.text.rectangle', android: 'badge' },
   Churches: { ios: 'building.2', android: 'business' },

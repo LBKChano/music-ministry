@@ -1,7 +1,11 @@
 
 import { useChurch } from '@/hooks/useChurch';
 import type { FillInRequestWithMemberInfo } from '@/contexts/ChurchContext';
-import { colors } from '@/styles/commonStyles';
+import {
+  createLegacyThemeColors,
+  type LegacyThemeColors,
+} from '@/lib/ui/legacy-theme-colors';
+import type { AppTheme } from '@/lib/ui/app-theme';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { useServices, type ServiceWithAssignments } from '@/hooks/useServices';
@@ -246,7 +250,7 @@ function SchedulePaginationFooter({
       disabled={complete || loading}
       onPress={onPress}
       style={[
-        styles.loadMoreButton,
+        paginationStyles.loadMoreButton,
         {
           backgroundColor: complete
             ? theme.colors.surfaceMuted
@@ -259,7 +263,7 @@ function SchedulePaginationFooter({
         },
       ]}
     >
-      <View style={styles.loadMoreIconLane}>
+      <View style={paginationStyles.loadMoreIconLane}>
         {loading ? (
           <ActivityIndicator size="small" color={theme.colors.accent} />
         ) : (
@@ -285,10 +289,10 @@ function SchedulePaginationFooter({
       </View>
       <ResponsiveText
         accessible={false}
-        style={styles.loadMoreLabelLane}
+        style={paginationStyles.loadMoreLabelLane}
         text={label}
         textStyle={[
-          styles.loadMoreButtonText,
+          paginationStyles.loadMoreButtonText,
           {
             color: complete
               ? theme.colors.textSecondary
@@ -303,7 +307,40 @@ function SchedulePaginationFooter({
   );
 }
 
-const styles = StyleSheet.create({
+const paginationStyles = StyleSheet.create({
+  loadMoreButton: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 12,
+    marginTop: 6,
+    minHeight: 52,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    width: '100%',
+  },
+  loadMoreIconLane: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 24,
+  },
+  loadMoreLabelLane: {
+    maxWidth: 260,
+  },
+  loadMoreButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+});
+
+const createStyles = (
+  colors: LegacyThemeColors,
+  theme: AppTheme,
+) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -359,7 +396,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: theme.modal.backdrop,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -372,16 +409,12 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: colors.cardBackground,
+    boxShadow: theme.elevation.medium,
     borderRadius: 16,
     padding: 24,
     width: '90%',
     maxWidth: 400,
     maxHeight: '80%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 10,
   },
   addSongModalContent: {
     padding: 0,
@@ -632,7 +665,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   buttonText: {
-    color: '#FFFFFF',
+    color: theme.button.primaryForeground,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -732,6 +765,8 @@ const styles = StyleSheet.create({
 export default function HomeScreen() {
   const router = useRouter();
   const theme = useAppTheme();
+  const colors = useMemo(() => createLegacyThemeColors(theme), [theme]);
+  const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
   const currentLocalDate = useCurrentLocalDate();
   // ── ALL hooks must be called unconditionally at the top ──────────────────
   const {
@@ -1485,7 +1520,7 @@ export default function HomeScreen() {
         color: theme.colors.textSecondary,
       },
     ],
-  }), [theme]);
+  }), [styles.serviceCard, styles.serviceNotes, theme]);
 
   const renderScheduleService = useCallback(
     ({ item: service }: { item: ServiceWithAssignments }) => (
@@ -1636,7 +1671,7 @@ export default function HomeScreen() {
         trailing={<NotificationBell />}
       >
         <TabHeaderPill
-          icon={<IconSymbol ios_icon_name="calendar.badge.clock" android_material_icon_name="event" size={16} color="#FFFFFF" />}
+          icon={<IconSymbol ios_icon_name="calendar.badge.clock" android_material_icon_name="event" size={16} color={theme.strongSurface.foreground} />}
           accessibilityLabel={`${scheduleSummaryLabel}, ${upcomingText}`}
           label={scheduleSummaryLabel}
           detail={upcomingText}
@@ -1985,7 +2020,7 @@ export default function HomeScreen() {
                           selected && styles.notifyCheckboxSelected,
                         ]}>
                           {selected && (
-                            <IconSymbol ios_icon_name="checkmark" android_material_icon_name="done" size={14} color="#fff" />
+                            <IconSymbol ios_icon_name="checkmark" android_material_icon_name="done" size={14} color={theme.button.primaryForeground} />
                           )}
                         </View>
                         <View style={styles.notifyMemberTextWrap}>

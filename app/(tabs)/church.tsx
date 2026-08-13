@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,6 @@ import {
 } from 'react-native';
 import { Stack, Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { RoleSymbol } from '@/components/roles/role-symbol';
 import { AppModal } from '@/components/ui/app-modal';
@@ -51,6 +50,11 @@ import { HEADER_ACTION_LANE_WIDTHS } from '@/lib/ui/header-typography';
 import { shouldResetModalList } from '@/lib/ui/modal-presentation';
 import { resolveSelectedChurchHeaderTitle } from '@/lib/church/header-identity';
 import { useAppTheme } from '@/contexts/AppThemeContext';
+import type { AppTheme } from '@/lib/ui/app-theme';
+import {
+  createLegacyThemeColors,
+  type LegacyThemeColors,
+} from '@/lib/ui/legacy-theme-colors';
 import type { ChurchAdminDestination } from '@/lib/church-admin/summary';
 import {
   LatestStateSaveQueue,
@@ -288,6 +292,9 @@ const AutoAssignVirtualRow = React.memo(function AutoAssignVirtualRow({
 }: {
   row: AutoAssignListItem;
 }) {
+  const theme = useAppTheme();
+  const colors = useMemo(() => createLegacyThemeColors(theme), [theme]);
+  const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
   if (row.kind === 'assignment') {
     const item = row.assignment;
     const time = formatPreviewTime(item.service_time);
@@ -328,7 +335,7 @@ const AutoAssignVirtualRow = React.memo(function AutoAssignVirtualRow({
               ios_icon_name="exclamationmark.circle.fill"
               android_material_icon_name="info"
               size={15}
-              color="#9A3412"
+              color={theme.status.warning.foreground}
             />
             <Text style={styles.autoAssignPreferenceOverrideText}>
               Preference override: this member was the best eligible fallback.
@@ -350,7 +357,10 @@ const AutoAssignVirtualRow = React.memo(function AutoAssignVirtualRow({
       style={[
         styles.autoAssignSkippedItem,
         styles.autoAssignVirtualRow,
-        { borderColor: colors.border, backgroundColor: '#FFF7ED' },
+        {
+          borderColor: theme.status.warning.border,
+          backgroundColor: theme.status.warning.surface,
+        },
       ]}
     >
       <Text style={[styles.autoAssignPreviewService, { color: colors.text }]}>
@@ -381,6 +391,8 @@ const AutoAssignVirtualRow = React.memo(function AutoAssignVirtualRow({
 
 export default function ChurchScreen() {
   const theme = useAppTheme();
+  const colors = useMemo(() => createLegacyThemeColors(theme), [theme]);
+  const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
   const currentLocalDate = useCurrentLocalDate();
   const {
     churches,
@@ -1939,7 +1951,7 @@ export default function ChurchScreen() {
           options={{
             title: 'Church Management',
             headerStyle: { backgroundColor: colors.primary },
-            headerTintColor: '#fff',
+            headerTintColor: theme.strongSurface.foreground,
           }}
         />
         <View style={styles.centerContainer}>
@@ -1957,7 +1969,7 @@ export default function ChurchScreen() {
           options={{
             title: 'Church Management',
             headerStyle: { backgroundColor: colors.primary },
-            headerTintColor: '#fff',
+            headerTintColor: theme.strongSurface.foreground,
           }}
         />
         <View style={styles.centerContainer}>
@@ -2021,7 +2033,7 @@ export default function ChurchScreen() {
                 ios_icon_name="plus"
                 android_material_icon_name="add"
                 size={23}
-                color="#FFFFFF"
+                color={theme.strongSurface.foreground}
               />
             </TabHeaderIconButton>
           </>
@@ -2034,7 +2046,7 @@ export default function ChurchScreen() {
                 ios_icon_name="ticket"
                 android_material_icon_name="local-offer"
                 size={19}
-                color="#FFFFFF"
+                color={theme.strongSurface.foreground}
               />
             )}
             label="Invitation Code"
@@ -2044,7 +2056,7 @@ export default function ChurchScreen() {
                 ios_icon_name="doc.on.doc"
                 android_material_icon_name="file-copy"
                 size={17}
-                color="#DBEAFE"
+                color={theme.strongSurface.mutedForeground}
               />
             )}
             onPress={copyInvitationCode}
@@ -2052,7 +2064,7 @@ export default function ChurchScreen() {
           />
         ) : (
           <TabHeaderPill
-            icon={<IconSymbol ios_icon_name="building.2" android_material_icon_name="home" size={17} color="#FFFFFF" />}
+            icon={<IconSymbol ios_icon_name="building.2" android_material_icon_name="home" size={17} color={theme.strongSurface.foreground} />}
             label="Create a church to get started"
           />
         )}
@@ -2194,7 +2206,7 @@ export default function ChurchScreen() {
                     {currentChurch.admin_id === user?.id ? 'Owner' : 'Scheduling Admin'}
                   </Text>
                 </View>
-                <IconSymbol ios_icon_name="checkmark.shield.fill" android_material_icon_name="verified-user" size={22} color="#15803D" />
+                <IconSymbol ios_icon_name="checkmark.shield.fill" android_material_icon_name="verified-user" size={22} color={theme.status.success.foreground} />
               </View>
             </View>
           </View>
@@ -2224,7 +2236,7 @@ export default function ChurchScreen() {
                 ios_icon_name="calendar.badge.plus"
                 android_material_icon_name="event"
                 size={24}
-                color="#fff"
+                color={theme.button.primaryForeground}
               />
               <Text style={styles.actionButtonText}>Prepare Next Quarter</Text>
             </TouchableOpacity>
@@ -2238,14 +2250,14 @@ export default function ChurchScreen() {
               disabled={isAutoAssigning}
             >
               {autoAssignMode === 'fill_empty' ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <ActivityIndicator size="small" color={theme.button.primaryForeground} />
               ) : (
                 <>
                   <IconSymbol
                     ios_icon_name="person.2.fill"
                     android_material_icon_name="group"
                     size={24}
-                    color="#fff"
+                    color={theme.button.primaryForeground}
                   />
                   <Text style={styles.actionButtonText}>Fill Empty Slots</Text>
                 </>
@@ -2280,7 +2292,7 @@ export default function ChurchScreen() {
             <TouchableOpacity
               style={[
                 styles.actionButton,
-                { backgroundColor: '#15803D', marginTop: 12 },
+                { backgroundColor: theme.status.success.foreground, marginTop: 12 },
                 activeHubDestination !== 'prepare_services' && styles.hidden,
               ]}
               onPress={() => {
@@ -2292,7 +2304,7 @@ export default function ChurchScreen() {
                 ios_icon_name="plus.circle.fill"
                 android_material_icon_name="add-circle"
                 size={24}
-                color="#fff"
+                color={theme.button.primaryForeground}
               />
               <Text style={styles.actionButtonText}>Add Single Service</Text>
             </TouchableOpacity>
@@ -2345,8 +2357,12 @@ export default function ChurchScreen() {
               style={[
                 styles.autoAssignSettingsCard,
                 {
-                  backgroundColor: allowMultipleRolesSameService ? '#EEF6FF' : colors.cardBackground,
-                  borderColor: allowMultipleRolesSameService ? colors.primary : '#C7D2FE',
+                  backgroundColor: allowMultipleRolesSameService
+                    ? theme.inputHighlight.surface
+                    : theme.colors.surface,
+                  borderColor: allowMultipleRolesSameService
+                    ? theme.inputHighlight.border
+                    : theme.colors.borderStrong,
                 },
                 activeHubDestination !== 'rules' && styles.hidden,
               ]}
@@ -2361,14 +2377,20 @@ export default function ChurchScreen() {
               <View
                 style={[
                   styles.autoAssignSettingsIcon,
-                  { backgroundColor: allowMultipleRolesSameService ? colors.primary : '#E0E7FF' },
+                  {
+                    backgroundColor: allowMultipleRolesSameService
+                      ? theme.colors.accent
+                      : theme.colors.accentSoft,
+                  },
                 ]}
               >
                 <IconSymbol
                   ios_icon_name="person.2.fill"
                   android_material_icon_name="manage-accounts"
                   size={22}
-                  color={allowMultipleRolesSameService ? '#fff' : colors.primary}
+                  color={allowMultipleRolesSameService
+                    ? theme.button.primaryForeground
+                    : theme.colors.accent}
                 />
               </View>
               <View style={styles.autoAssignSettingsText}>
@@ -2389,9 +2411,12 @@ export default function ChurchScreen() {
                   <Switch
                     value={allowMultipleRolesSameService}
                     onValueChange={handleToggleAllowMultipleRolesSameService}
-                    trackColor={{ false: '#CBD5E1', true: colors.primary }}
-                    thumbColor="#fff"
-                    ios_backgroundColor="#CBD5E1"
+                    trackColor={{
+                      false: theme.colors.borderStrong,
+                      true: theme.colors.accent,
+                    }}
+                    thumbColor={theme.strongSurface.foreground}
+                    ios_backgroundColor={theme.colors.borderStrong}
                     disabled={isSavingAutoAssignSettings}
                   />
                 </View>
@@ -2435,9 +2460,9 @@ export default function ChurchScreen() {
                             ios_icon_name="checkmark.circle.fill"
                             android_material_icon_name="check-circle"
                             size={16}
-                            color="#15803D"
+                            color={theme.status.success.foreground}
                           />
-                          <Text style={[styles.songTypeSaveStatusText, { color: '#15803D' }]}>
+                          <Text style={[styles.songTypeSaveStatusText, { color: theme.status.success.foreground }]}>
                             Saved
                           </Text>
                         </>
@@ -2518,7 +2543,7 @@ export default function ChurchScreen() {
                   onPress={handleAddSongType}
                   accessibilityLabel="Add song type"
                 >
-                  <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={18} color="#fff" />
+                  <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={18} color={theme.button.primaryForeground} />
                   <Text style={styles.addSongTypeButtonText}>Add</Text>
                 </TouchableOpacity>
               </View>
@@ -2643,7 +2668,7 @@ export default function ChurchScreen() {
                                 ios_icon_name="trash"
                                 android_material_icon_name="delete"
                                 size={20}
-                                color="#ff3b30"
+                                color={theme.status.error.foreground}
                               />
                             </TouchableOpacity>
                           </View>
@@ -2691,7 +2716,7 @@ export default function ChurchScreen() {
                       ios_icon_name="plus"
                       android_material_icon_name="add"
                       size={20}
-                      color="#fff"
+                      color={theme.button.primaryForeground}
                     />
                   </TouchableOpacity>
                 </View>
@@ -2769,7 +2794,7 @@ export default function ChurchScreen() {
                                 ios_icon_name="trash"
                                 android_material_icon_name="delete"
                                 size={20}
-                                color="#ff3b30"
+                                color={theme.status.error.foreground}
                               />
                             </TouchableOpacity>
                           </View>
@@ -2798,7 +2823,7 @@ export default function ChurchScreen() {
                       ios_icon_name="plus"
                       android_material_icon_name="add"
                       size={20}
-                      color="#fff"
+                      color={theme.button.primaryForeground}
                     />
                   </TouchableOpacity>
                 </View>
@@ -2897,7 +2922,7 @@ export default function ChurchScreen() {
                                 ios_icon_name="trash"
                                 android_material_icon_name="delete"
                                 size={20}
-                                color="#ff3b30"
+                                color={theme.status.error.foreground}
                               />
                             </TouchableOpacity>
                           </View>
@@ -2920,8 +2945,12 @@ export default function ChurchScreen() {
                   style={[
                     styles.reminderStatus,
                     {
-                      backgroundColor: notificationsEnabled ? '#ECFDF5' : colors.inputBackground,
-                      borderColor: notificationsEnabled ? '#86EFAC' : colors.border,
+                      backgroundColor: notificationsEnabled
+                        ? theme.status.success.surface
+                        : theme.input.surface,
+                      borderColor: notificationsEnabled
+                        ? theme.status.success.border
+                        : theme.colors.borderSubtle,
                     },
                   ]}
                 >
@@ -2930,13 +2959,19 @@ export default function ChurchScreen() {
                       ios_icon_name={notificationsEnabled ? 'bell.badge.fill' : 'bell.slash.fill'}
                       android_material_icon_name={notificationsEnabled ? 'notifications-active' : 'notifications-off'}
                       size={26}
-                      color={notificationsEnabled ? '#15803D' : colors.textSecondary}
+                      color={notificationsEnabled
+                        ? theme.status.success.foreground
+                        : theme.colors.textSecondary}
                     />
                     <View style={styles.reminderStatusText}>
                       <Text
                         style={[
                           styles.automationBannerTitle,
-                          { color: notificationsEnabled ? '#15803D' : colors.text },
+                          {
+                            color: notificationsEnabled
+                              ? theme.status.success.foreground
+                              : theme.colors.textPrimary,
+                          },
                         ]}
                       >
                         {notificationsEnabled ? 'Reminders Active' : 'Reminders Paused'}
@@ -2969,8 +3004,11 @@ export default function ChurchScreen() {
                         console.log('User toggled notifications:', value);
                         setNotificationsEnabled(value);
                       }}
-                      trackColor={{ false: '#767577', true: colors.primary }}
-                      thumbColor={notificationsEnabled ? '#fff' : '#f4f3f4'}
+                      trackColor={{
+                        false: theme.colors.borderStrong,
+                        true: theme.colors.accent,
+                      }}
+                      thumbColor={theme.strongSurface.foreground}
                     />
                   </View>
                 </View>
@@ -3002,7 +3040,7 @@ export default function ChurchScreen() {
                           <Text
                             style={[
                               styles.quickSelectText,
-                              { color: isSelected ? '#fff' : colors.text },
+                              { color: isSelected ? theme.button.primaryForeground : colors.text },
                             ]}
                           >
                             {hourLabel}
@@ -3030,7 +3068,7 @@ export default function ChurchScreen() {
                         ios_icon_name="plus"
                         android_material_icon_name="add"
                         size={20}
-                        color="#fff"
+                        color={theme.button.primaryForeground}
                       />
                     </TouchableOpacity>
                   </View>
@@ -3070,14 +3108,14 @@ export default function ChurchScreen() {
                   disabled={isSavingNotifications}
                 >
                   {isSavingNotifications ? (
-                    <ActivityIndicator size="small" color="#fff" />
+                    <ActivityIndicator size="small" color={theme.button.primaryForeground} />
                   ) : (
                     <>
                       <IconSymbol
                         ios_icon_name="checkmark.circle"
                         android_material_icon_name="notifications"
                         size={24}
-                        color="#fff"
+                        color={theme.button.primaryForeground}
                       />
                       <Text style={styles.saveNotificationsButtonText}>Save Notification Settings</Text>
                     </>
@@ -3092,7 +3130,9 @@ export default function ChurchScreen() {
                         ios_icon_name={reminderSaveStatus === 'saved' ? 'checkmark.circle.fill' : 'exclamationmark.circle.fill'}
                         android_material_icon_name={reminderSaveStatus === 'saved' ? 'check-circle' : 'error'}
                         size={17}
-                        color={reminderSaveStatus === 'saved' ? '#15803D' : colors.error}
+                        color={reminderSaveStatus === 'saved'
+                          ? theme.status.success.foreground
+                          : theme.status.error.foreground}
                       />
                     )}
                     <Text
@@ -3116,7 +3156,10 @@ export default function ChurchScreen() {
         )}
 
         {error && (
-          <View style={[styles.errorContainer, { backgroundColor: '#ffebee' }]}>
+          <View style={[
+            styles.errorContainer,
+            { backgroundColor: theme.status.error.surface },
+          ]}>
             <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
@@ -3251,7 +3294,7 @@ export default function ChurchScreen() {
                           <Text
                             style={[
                               styles.roleCheckboxText,
-                              { color: isSelected ? '#fff' : colors.text },
+                              { color: isSelected ? theme.button.primaryForeground : colors.text },
                             ]}
                           >
                             {role.name}
@@ -3279,7 +3322,9 @@ export default function ChurchScreen() {
                     onValueChange={setEditMemberIsAdmin}
                     disabled={(members ?? []).find(m => m.id === memberToEdit)?.member_id === currentChurch?.admin_id}
                     trackColor={{ false: colors.border, true: colors.primary + '80' }}
-                    thumbColor={editMemberIsAdmin ? colors.primary : '#f4f3f4'}
+                    thumbColor={editMemberIsAdmin
+                      ? theme.colors.accent
+                      : theme.colors.textTertiary}
                   />
                 </View>
 
@@ -3354,7 +3399,7 @@ export default function ChurchScreen() {
                 <Text
                   style={[
                     styles.dayButtonText,
-                    { color: newServiceDay === index ? '#FFFFFF' : colors.text },
+                    { color: newServiceDay === index ? theme.button.primaryForeground : colors.text },
                   ]}
                 >
                   {day}
@@ -3396,7 +3441,7 @@ export default function ChurchScreen() {
                     <Text
                       style={[
                         styles.roleCheckboxText,
-                        { color: isSelected ? '#FFFFFF' : colors.text },
+                        { color: isSelected ? theme.button.primaryForeground : colors.text },
                       ]}
                     >
                       {role.name}
@@ -3697,7 +3742,7 @@ export default function ChurchScreen() {
                           <Text
                             style={[
                               styles.autoAssignScopeOptionText,
-                              { color: isSelected ? '#fff' : colors.text },
+                              { color: isSelected ? theme.button.primaryForeground : colors.text },
                             ]}
                           >
                             {option.label}
@@ -3777,7 +3822,10 @@ export default function ChurchScreen() {
                           }}
                           disabled={isGeneratingAutoAssignPreview || isApplyingAutoAssign}
                         >
-                          <Text style={[styles.autoAssignRangeChipText, { color: isSelected ? '#fff' : colors.text }]}>
+                          <Text style={[
+                            styles.autoAssignRangeChipText,
+                            { color: isSelected ? theme.button.primaryForeground : colors.text },
+                          ]}>
                             {option.label}
                           </Text>
                         </TouchableOpacity>
@@ -3805,8 +3853,8 @@ export default function ChurchScreen() {
                             value={draftAutoAssignStartDate}
                             mode="date"
                             display="spinner"
-                            themeVariant="light"
-                            textColor="#000000"
+                            themeVariant={theme.mode}
+                            textColor={theme.input.foreground}
                             onChange={(event, date) => {
                               if (date) setDraftAutoAssignStartDate(getStartOfLocalDay(date));
                             }}
@@ -3853,8 +3901,8 @@ export default function ChurchScreen() {
                             value={draftAutoAssignEndDate}
                             mode="date"
                             display="spinner"
-                            themeVariant="light"
-                            textColor="#000000"
+                            themeVariant={theme.mode}
+                            textColor={theme.input.foreground}
                             onChange={(event, date) => {
                               if (date) setDraftAutoAssignEndDate(getStartOfLocalDay(date));
                             }}
@@ -3896,7 +3944,7 @@ export default function ChurchScreen() {
                     disabled={isGeneratingAutoAssignPreview || isApplyingAutoAssign}
                   >
                     {isGeneratingAutoAssignPreview ? (
-                      <ActivityIndicator size="small" color="#fff" />
+                      <ActivityIndicator size="small" color={theme.button.primaryForeground} />
                     ) : (
                       <Text style={styles.primaryButtonText}>
                         {autoAssignPreview ? 'Regenerate Preview' : 'Generate Preview'}
@@ -3931,12 +3979,18 @@ export default function ChurchScreen() {
                           <Text style={[styles.autoAssignStatLabel, { color: colors.textSecondary }]}>Slots checked</Text>
                         </View>
                         <View style={[styles.autoAssignStat, { backgroundColor: colors.inputBackground }]}>
-                          <Text style={[styles.autoAssignStatValue, { color: '#B45309' }]}>{autoAssignPreview.skipped_count}</Text>
+                          <Text style={[
+                            styles.autoAssignStatValue,
+                            { color: theme.status.warning.foreground },
+                          ]}>{autoAssignPreview.skipped_count}</Text>
                           <Text style={[styles.autoAssignStatLabel, { color: colors.textSecondary }]}>Left open</Text>
                         </View>
                         {pendingAutoAssignMode === 'reassign_all' && (
                           <View style={[styles.autoAssignStat, { backgroundColor: colors.inputBackground }]}>
-                            <Text style={[styles.autoAssignStatValue, { color: '#C2410C' }]}>{autoAssignPreview.cleared_count}</Text>
+                            <Text style={[
+                              styles.autoAssignStatValue,
+                              { color: theme.status.warning.foreground },
+                            ]}>{autoAssignPreview.cleared_count}</Text>
                             <Text style={[styles.autoAssignStatLabel, { color: colors.textSecondary }]}>Will clear</Text>
                           </View>
                         )}
@@ -4064,14 +4118,21 @@ export default function ChurchScreen() {
                         >
                           <Text style={[
                             styles.quarterButtonText,
-                            { color: isSelected ? '#fff' : colors.text, fontWeight: '600' },
+                            {
+                              color: isSelected ? theme.button.primaryForeground : colors.text,
+                              fontWeight: '600',
+                            },
                           ]}>
                             {quarterText}
                           </Text>
                           {quarterElapsed ? (
                             <Text style={[
                               styles.quarterEndedText,
-                              { color: isSelected ? '#FFFFFF' : colors.textSecondary },
+                              {
+                                color: isSelected
+                                  ? theme.button.primaryForeground
+                                  : colors.textSecondary,
+                              },
                             ]}>
                               Ended
                             </Text>
@@ -4090,7 +4151,7 @@ export default function ChurchScreen() {
                         ios_icon_name="calendar.badge.exclamationmark"
                         android_material_icon_name="event-busy"
                         size={18}
-                        color="#9A3412"
+                        color={theme.status.warning.foreground}
                       />
                       <Text selectable style={styles.quarterEndedNoticeText}>
                         {ELAPSED_QUARTER_MESSAGE}
@@ -4149,7 +4210,7 @@ export default function ChurchScreen() {
                               isBlocked && { backgroundColor: colors.primary },
                             ]}>
                               {isBlocked && (
-                                <IconSymbol ios_icon_name="checkmark" android_material_icon_name="done" size={16} color="#fff" />
+                                <IconSymbol ios_icon_name="checkmark" android_material_icon_name="done" size={16} color={theme.button.primaryForeground} />
                               )}
                             </View>
                           </TouchableOpacity>
@@ -4188,8 +4249,8 @@ export default function ChurchScreen() {
                           value={draftSpecialServiceDate}
                           mode="date"
                           display="spinner"
-                          themeVariant="light"
-                          textColor="#000000"
+                          themeVariant={theme.mode}
+                          textColor={theme.input.foreground}
                           onChange={(event, date) => {
                             if (date) setDraftSpecialServiceDate(date);
                           }}
@@ -4234,8 +4295,8 @@ export default function ChurchScreen() {
                           value={draftSpecialServiceTime}
                           mode="time"
                           display="spinner"
-                          themeVariant="light"
-                          textColor="#000000"
+                          themeVariant={theme.mode}
+                          textColor={theme.input.foreground}
                           onChange={(event, time) => {
                             if (time) setDraftSpecialServiceTime(time);
                           }}
@@ -4281,7 +4342,10 @@ export default function ChurchScreen() {
                           style={[styles.roleCheckbox, { borderColor: isSelected ? colors.primary : colors.border, backgroundColor: isSelected ? colors.primary : colors.cardBackground }]}
                           onPress={() => toggleSpecialServiceRole(role.id)}
                         >
-                          <Text style={[styles.roleCheckboxText, { color: isSelected ? '#fff' : colors.text }]}>{role.name}</Text>
+                          <Text style={[
+                            styles.roleCheckboxText,
+                            { color: isSelected ? theme.button.primaryForeground : colors.text },
+                          ]}>{role.name}</Text>
                         </TouchableOpacity>
                       );
                     })}
@@ -4319,7 +4383,7 @@ export default function ChurchScreen() {
                           const newSpecial = specialServices.filter(s => s.id !== special.id);
                           setSpecialServices(newSpecial);
                         }}>
-                          <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={24} color="#ff3b30" />
+                          <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={24} color={theme.status.error.foreground} />
                         </TouchableOpacity>
                       </View>
                     );
@@ -4401,8 +4465,8 @@ export default function ChurchScreen() {
               value={draftAdHocServiceDate}
               mode="date"
               display="spinner"
-              themeVariant="light"
-              textColor="#000000"
+              themeVariant={theme.mode}
+              textColor={theme.input.foreground}
               onChange={(event, date) => {
                 console.log('User selected ad-hoc date:', date);
                 if (date) setDraftAdHocServiceDate(date);
@@ -4457,8 +4521,8 @@ export default function ChurchScreen() {
               value={draftAdHocServiceTime}
               mode="time"
               display="spinner"
-              themeVariant="light"
-              textColor="#000000"
+              themeVariant={theme.mode}
+              textColor={theme.input.foreground}
               onChange={(event, date) => {
                 console.log('User selected ad-hoc time:', date);
                 if (date) setDraftAdHocServiceTime(date);
@@ -4506,7 +4570,7 @@ export default function ChurchScreen() {
                   isSelected && { backgroundColor: colors.primary },
                 ]}>
                   {isSelected && (
-                    <IconSymbol ios_icon_name="checkmark" android_material_icon_name="done" size={16} color="#FFFFFF" />
+                    <IconSymbol ios_icon_name="checkmark" android_material_icon_name="done" size={16} color={theme.button.primaryForeground} />
                   )}
                 </View>
               </TouchableOpacity>
@@ -4534,9 +4598,12 @@ export default function ChurchScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (
+  colors: LegacyThemeColors,
+  theme: AppTheme,
+) => StyleSheet.create({
   datePickerWrapper: {
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.input.surface,
     borderRadius: 8,
     overflow: 'hidden',
     marginTop: 8,
@@ -4555,18 +4622,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pickerCancelButton: {
-    backgroundColor: '#e0e0e0',
+    backgroundColor: theme.button.secondarySurface,
   },
   pickerConfirmButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.button.primarySurface,
   },
   pickerCancelText: {
-    color: '#333',
+    color: theme.button.secondaryForeground,
     fontSize: 15,
     fontWeight: '600',
   },
   pickerConfirmText: {
-    color: '#fff',
+    color: theme.button.primaryForeground,
     fontSize: 15,
     fontWeight: '700',
   },
@@ -4601,7 +4668,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryButtonText: {
-    color: '#fff',
+    color: theme.button.primaryForeground,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -4675,15 +4742,15 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   reassignButton: {
-    backgroundColor: '#E8EEF8',
+    backgroundColor: theme.button.secondarySurface,
     borderWidth: 1,
-    borderColor: '#93A4BF',
+    borderColor: theme.button.secondaryBorder,
   },
   reassignButtonText: {
     color: colors.primary,
   },
   actionButtonText: {
-    color: '#fff',
+    color: theme.button.primaryForeground,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -4792,7 +4859,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   addSongTypeButtonText: {
-    color: '#fff',
+    color: theme.button.primaryForeground,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -5113,7 +5180,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   saveNotificationsButtonText: {
-    color: '#fff',
+    color: theme.button.primaryForeground,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -5157,12 +5224,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   errorText: {
-    color: '#c62828',
+    color: theme.status.error.foreground,
     fontSize: 14,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: theme.modal.backdrop,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -5177,7 +5244,7 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     borderRadius: 16,
     padding: 24,
-    shadowColor: '#000',
+    shadowColor: theme.colors.surfaceStrong,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
@@ -5386,11 +5453,11 @@ const styles = StyleSheet.create({
     marginTop: 7,
     padding: 8,
     borderRadius: 6,
-    backgroundColor: '#FFEDD5',
+    backgroundColor: theme.status.warning.surface,
   },
   autoAssignPreferenceOverrideText: {
     flex: 1,
-    color: '#9A3412',
+    color: theme.status.warning.foreground,
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '600',
@@ -5499,15 +5566,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelButton: {
-    backgroundColor: '#e0e0e0',
+    backgroundColor: theme.button.secondarySurface,
   },
   cancelButtonText: {
-    color: '#333',
+    color: theme.button.secondaryForeground,
     fontSize: 16,
     fontWeight: '600',
   },
   saveButtonText: {
-    color: '#fff',
+    color: theme.button.primaryForeground,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -5530,8 +5597,8 @@ const styles = StyleSheet.create({
   },
   quarterEndedNotice: {
     alignItems: 'center',
-    backgroundColor: '#FFF7ED',
-    borderColor: '#FED7AA',
+    backgroundColor: theme.status.warning.surface,
+    borderColor: theme.status.warning.border,
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
@@ -5541,7 +5608,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   quarterEndedNoticeText: {
-    color: '#9A3412',
+    color: theme.status.warning.foreground,
     flex: 1,
     fontSize: 13,
     fontWeight: '700',
@@ -5573,7 +5640,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   buttonText: {
-    color: '#fff',
+    color: theme.button.primaryForeground,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -5603,7 +5670,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryButtonText: {
-    color: '#fff',
+    color: theme.button.primaryForeground,
     fontSize: 16,
     fontWeight: '700',
   },

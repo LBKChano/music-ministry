@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, View, ViewStyle, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 
 export interface MapMarker {
     id: string;
@@ -33,6 +34,7 @@ export const Map = ({
     style,
     showsUserLocation = false
 }: MapProps) => {
+    const theme = useAppTheme();
 
     // HTML Content for Leaflet Map
     const mapHtml = useMemo(() => {
@@ -104,14 +106,22 @@ export const Map = ({
         `;
     }, [markers, initialRegion]);
     return (
-        <View style={[styles.container, style]}>
+        <View style={[
+            styles.container,
+            { backgroundColor: theme.colors.surfaceMuted },
+            style,
+        ]}>
             <WebView
                 originWhitelist={['*']}
                 source={{ html: mapHtml }}
                 style={styles.webview}
                 scrollEnabled={false}
                 startInLoadingState={true}
-                renderLoading={() => <View style={styles.loading}><ActivityIndicator /></View>}
+                renderLoading={() => (
+                    <View style={styles.loading}>
+                        <ActivityIndicator color={theme.colors.accent} />
+                    </View>
+                )}
             />
         </View>
     );
@@ -124,7 +134,6 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         width: '100%',
         minHeight: 200,
-        backgroundColor: '#e5e7eb',
     },
     webview: {
         flex: 1,

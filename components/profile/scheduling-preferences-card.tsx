@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import type {
   ChurchMemberWithRoles,
   RecurringServiceWithRoles,
@@ -18,7 +19,6 @@ import {
   isSchedulingOptionAvailable,
   schedulingPreferenceKey,
 } from '@/lib/scheduling/preferences';
-import { colors } from '@/styles/commonStyles';
 
 const DAY_NAMES = [
   'Sunday',
@@ -58,6 +58,7 @@ export function SchedulingPreferencesCard({
   member,
   recurringServices,
 }: SchedulingPreferencesCardProps) {
+  const theme = useAppTheme();
   const {
     preferences,
     isLoading,
@@ -88,7 +89,11 @@ export function SchedulingPreferencesCard({
     <View
       style={[
         styles.card,
-        { backgroundColor: colors.card, borderColor: colors.border },
+        {
+          backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.borderSubtle,
+          shadowColor: theme.colors.surfaceStrong,
+        },
       ]}
     >
       <View style={styles.header}>
@@ -96,17 +101,17 @@ export function SchedulingPreferencesCard({
           ios_icon_name="slider.horizontal.3"
           android_material_icon_name="tune"
           size={24}
-          color={colors.primary}
+          color={theme.colors.accent}
         />
-        <Text style={[styles.title, { color: colors.text }]}>
+        <Text style={[styles.title, { color: theme.colors.textPrimary }]}>
           Scheduling Preferences
         </Text>
         {isRefetching && !isLoading ? (
-          <ActivityIndicator size="small" color={colors.primary} />
+          <ActivityIndicator size="small" color={theme.colors.accent} />
         ) : null}
       </View>
 
-      <Text style={[styles.description, { color: colors.textSecondary }]}>
+      <Text style={[styles.description, { color: theme.colors.textSecondary }]}>
         Keep a switch on to be scheduled when needed. Turn it off to ask
         auto-assign to avoid that service and role when possible. Unavailable
         dates always remain a hard block.
@@ -114,11 +119,11 @@ export function SchedulingPreferencesCard({
 
       {isLoading ? (
         <View style={styles.loading}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={theme.colors.accent} />
         </View>
       ) : loadError ? (
         <View style={styles.messagePanel}>
-          <Text style={[styles.errorText, { color: '#B42318' }]}>
+          <Text style={[styles.errorText, { color: theme.status.error.foreground }]}>
             Scheduling preferences could not be loaded.
           </Text>
           <TouchableOpacity
@@ -126,25 +131,25 @@ export function SchedulingPreferencesCard({
             onPress={() => {
               void retry();
             }}
-            style={[styles.retryButton, { borderColor: colors.primary }]}
+            style={[styles.retryButton, { borderColor: theme.colors.accent }]}
           >
             <IconSymbol
               ios_icon_name="arrow.clockwise"
               android_material_icon_name="refresh"
               size={17}
-              color={colors.primary}
+              color={theme.colors.accent}
             />
-            <Text style={[styles.retryText, { color: colors.primary }]}>
+            <Text style={[styles.retryText, { color: theme.colors.accent }]}>
               Retry
             </Text>
           </TouchableOpacity>
         </View>
       ) : groups.length === 0 ? (
-        <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+        <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
           No roles are assigned to your profile yet.
         </Text>
       ) : visiblePreferenceCount === 0 ? (
-        <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+        <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
           Your assigned roles are not currently used by a weekly service.
         </Text>
       ) : (
@@ -152,7 +157,7 @@ export function SchedulingPreferencesCard({
           {groups.map(group => (
             group.services.length > 0 ? (
               <View key={group.role.role_id} style={styles.group}>
-                <Text style={[styles.roleName, { color: colors.text }]}>
+                <Text style={[styles.roleName, { color: theme.colors.textPrimary }]}>
                   {group.role.role_name}
                 </Text>
                 {group.services.map(service => {
@@ -173,14 +178,14 @@ export function SchedulingPreferencesCard({
                       style={[
                         styles.serviceRow,
                         {
-                          borderColor: colors.border,
-                          backgroundColor: colors.inputBackground,
+                          borderColor: theme.colors.borderSubtle,
+                          backgroundColor: theme.input.surface,
                         },
                       ]}
                     >
                       <View style={styles.serviceText}>
                         <Text
-                          style={[styles.serviceName, { color: colors.text }]}
+                          style={[styles.serviceName, { color: theme.colors.textPrimary }]}
                           numberOfLines={2}
                         >
                           {service.name}
@@ -188,7 +193,7 @@ export function SchedulingPreferencesCard({
                         <Text
                           style={[
                             styles.serviceMeta,
-                            { color: colors.textSecondary },
+                            { color: theme.colors.textSecondary },
                           ]}
                         >
                           {DAY_NAMES[service.day_of_week] ?? 'Weekly'}
@@ -198,7 +203,7 @@ export function SchedulingPreferencesCard({
                         <Text
                           style={[
                             styles.preferenceLabel,
-                            { color: colors.textSecondary },
+                            { color: theme.colors.textSecondary },
                           ]}
                         >
                           {isAvailable
@@ -210,7 +215,7 @@ export function SchedulingPreferencesCard({
                         <View style={styles.switchFrame}>
                           <ActivityIndicator
                             size="small"
-                            color={colors.primary}
+                            color={theme.colors.accent}
                           />
                         </View>
                       ) : (
@@ -226,11 +231,11 @@ export function SchedulingPreferencesCard({
                             );
                           }}
                           trackColor={{
-                            false: '#A6ADB7',
-                            true: colors.primary,
+                            false: theme.colors.borderStrong,
+                            true: theme.colors.accent,
                           }}
-                          thumbColor="#FFFFFF"
-                          ios_backgroundColor="#A6ADB7"
+                          thumbColor={theme.strongSurface.foreground}
+                          ios_backgroundColor={theme.colors.borderStrong}
                         />
                       )}
                     </View>
@@ -245,7 +250,11 @@ export function SchedulingPreferencesCard({
       {saveError ? (
         <Text
           accessibilityRole="alert"
-          style={[styles.errorText, styles.saveError, { color: '#B42318' }]}
+          style={[
+            styles.errorText,
+            styles.saveError,
+            { color: theme.status.error.foreground },
+          ]}
         >
           Your last change was not saved and has been restored. Try again.
         </Text>
@@ -260,7 +269,6 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,

@@ -10,10 +10,10 @@ import {
 import * as Linking from 'expo-linking';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '@react-navigation/native';
 import type { Session } from '@supabase/supabase-js';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 import { useCompletedOnboardingTransition } from '@/hooks/useCompletedOnboardingTransition';
 import {
   clearPendingOnboardingIntent,
@@ -29,7 +29,7 @@ import {
 
 export default function VerifyEmailScreen() {
   const router = useRouter();
-  const { colors } = useTheme();
+  const theme = useAppTheme();
   const { session } = useAuth();
   const params = useLocalSearchParams<{
     email?: string;
@@ -229,28 +229,31 @@ export default function VerifyEmailScreen() {
   const busy = status === 'verifying' || status === 'finishing';
 
   return (
-    <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.screen, { backgroundColor: theme.colors.canvas }]}>
       <Stack.Screen options={{ headerShown: false }} />
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
         <View
-          style={[styles.iconContainer, { backgroundColor: `${colors.primary}18` }]}
+          style={[
+            styles.iconContainer,
+            { backgroundColor: theme.colors.accentSoft },
+          ]}
           accessibilityElementsHidden
         >
           <IconSymbol
             ios_icon_name="envelope.badge.shield.half.filled"
             android_material_icon_name="mark-email-unread"
             size={38}
-            color={colors.primary}
+            color={theme.colors.accent}
           />
         </View>
 
-        <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>
+        <Text accessibilityRole="header" style={[styles.title, { color: theme.colors.textPrimary }]}>
           Verify Your Email
         </Text>
-        <Text style={[styles.subtitle, { color: colors.text }]}>
+        <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
           {email ? `We sent a confirmation link to ${email}.` : 'Check your email for a confirmation link.'}
         </Text>
 
@@ -259,13 +262,24 @@ export default function VerifyEmailScreen() {
           style={[
             styles.statusBox,
             {
-              borderColor: status === 'error' ? '#C62828' : colors.border,
-              backgroundColor: colors.card,
+              borderColor: status === 'error'
+                ? theme.status.error.border
+                : theme.colors.borderSubtle,
+              backgroundColor: status === 'error'
+                ? theme.status.error.surface
+                : theme.colors.surface,
             },
           ]}
         >
-          {busy ? <ActivityIndicator color={colors.primary} /> : null}
-          <Text selectable style={[styles.statusText, { color: colors.text }]}>
+          {busy ? <ActivityIndicator color={theme.colors.accent} /> : null}
+          <Text selectable style={[
+            styles.statusText,
+            {
+              color: status === 'error'
+                ? theme.status.error.foreground
+                : theme.colors.textPrimary,
+            },
+          ]}>
             {message}
           </Text>
         </View>
@@ -278,11 +292,14 @@ export default function VerifyEmailScreen() {
             onPress={handleResend}
             style={({ pressed }) => [
               styles.primaryButton,
-              { backgroundColor: colors.primary },
+              { backgroundColor: theme.button.primarySurface },
               (pressed || busy || !email) && styles.dimmed,
             ]}
           >
-            <Text style={styles.primaryButtonText}>Resend Verification Email</Text>
+            <Text style={[
+              styles.primaryButtonText,
+              { color: theme.button.primaryForeground },
+            ]}>Resend Verification Email</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -290,11 +307,17 @@ export default function VerifyEmailScreen() {
             onPress={openSignIn}
             style={({ pressed }) => [
               styles.secondaryButton,
-              { borderColor: colors.border },
+              {
+                backgroundColor: theme.button.secondarySurface,
+                borderColor: theme.button.secondaryBorder,
+              },
               (pressed || busy) && styles.dimmed,
             ]}
           >
-            <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
+            <Text style={[
+              styles.secondaryButtonText,
+              { color: theme.button.secondaryForeground },
+            ]}>
               Sign In to Continue
             </Text>
           </Pressable>
@@ -304,7 +327,7 @@ export default function VerifyEmailScreen() {
             onPress={startOver}
             style={styles.linkButton}
           >
-            <Text style={[styles.linkText, { color: colors.primary }]}>
+            <Text style={[styles.linkText, { color: theme.colors.accent }]}>
               Use a Different Email
             </Text>
           </Pressable>
@@ -376,7 +399,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   primaryButtonText: {
-    color: '#FFFFFF',
     fontSize: 16,
     lineHeight: 21,
     fontWeight: '800',

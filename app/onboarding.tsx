@@ -588,11 +588,13 @@ export default function OnboardingScreen() {
           {step === 'welcome' ? (
             <View style={styles.content}>
               <Image
+                accessibilityIgnoresInvertColors
                 accessibilityLabel="Music Ministry app logo"
                 accessibilityRole="image"
                 resizeMode="contain"
                 source={require('../assets/splash-mark.png')}
-                style={[styles.brandMark, { tintColor: theme.colors.accent }]}
+                style={styles.brandMark}
+                tintColor={theme.colors.accent}
               />
               <Text style={[styles.title, { color: screenColors.text }]}>
                 Music Ministry

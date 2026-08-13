@@ -5,10 +5,9 @@ import {
   StyleSheet,
   Text,
   TextStyle,
-  useColorScheme,
   ViewStyle,
 } from "react-native";
-import { appleBlue, zincColors } from "@/constants/Colors";
+import { useAppTheme } from '@/contexts/AppThemeContext';
 
 type ButtonVariant = "filled" | "outline" | "ghost";
 type ButtonSize = "sm" | "md" | "lg";
@@ -34,8 +33,7 @@ export const Button: React.FC<ButtonProps> = ({
   style,
   textStyle,
 }) => {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
+  const theme = useAppTheme();
 
   const sizeStyles: Record<
     ButtonSize,
@@ -58,14 +56,14 @@ export const Button: React.FC<ButtonProps> = ({
       case "filled":
         return {
           ...baseStyle,
-          backgroundColor: isDark ? zincColors[50] : zincColors[900],
+          backgroundColor: theme.button.primarySurface,
         };
       case "outline":
         return {
           ...baseStyle,
           backgroundColor: "transparent",
           borderWidth: 1,
-          borderColor: isDark ? zincColors[700] : zincColors[300],
+          borderColor: theme.button.secondaryBorder,
         };
       case "ghost":
         return {
@@ -77,15 +75,15 @@ export const Button: React.FC<ButtonProps> = ({
 
   const getTextColor = () => {
     if (disabled) {
-      return isDark ? zincColors[500] : zincColors[400];
+      return theme.colors.textTertiary;
     }
 
     switch (variant) {
       case "filled":
-        return isDark ? zincColors[900] : zincColors[50];
+        return theme.button.primaryForeground;
       case "outline":
       case "ghost":
-        return appleBlue;
+        return theme.colors.accent;
     }
   };
 

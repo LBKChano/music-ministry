@@ -7,6 +7,11 @@ private let snapshotSchemaVersion = 1
 private let staleInterval: TimeInterval = 24 * 60 * 60
 private let scheduleURL = URL(string: "musicministry://")!
 
+private enum ScheduleWidgetPalette {
+    static let background = Color(red: 0.024, green: 0.082, blue: 0.184)
+    static let accent = Color(red: 0.412, green: 0.776, blue: 1.0)
+}
+
 private enum ScheduleWidgetMode: Equatable {
     case church
     case member
@@ -15,6 +20,13 @@ private enum ScheduleWidgetMode: Equatable {
         switch self {
         case .church: return "Next Church Service"
         case .member: return "My Next Assignment"
+        }
+    }
+
+    var compactTitle: String {
+        switch self {
+        case .church: return "Next Service"
+        case .member: return "My Assignment"
         }
     }
 
@@ -270,7 +282,7 @@ private struct ScheduleWidgetView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .widgetBackground(Color(red: 0.024, green: 0.082, blue: 0.184))
+        .widgetBackground(ScheduleWidgetPalette.background)
         .widgetURL(scheduleURL)
     }
 
@@ -287,12 +299,15 @@ private struct ScheduleWidgetView: View {
     @ViewBuilder
     private func churchServiceView(_ service: StoredScheduleService) -> some View {
         if family == .systemMedium {
-            HStack(alignment: .top, spacing: 12) {
-                serviceSummary(service)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Divider().overlay(.white.opacity(0.18))
-                teamList(service, limit: 4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            GeometryReader { geometry in
+                HStack(alignment: .top, spacing: 10) {
+                    serviceSummary(service)
+                        .frame(width: max(108, geometry.size.width * 0.4), alignment: .leading)
+                        .frame(maxHeight: .infinity, alignment: .leading)
+                    Divider().overlay(.white.opacity(0.18))
+                    teamList(service, limit: 4)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
             }
         } else {
             VStack(alignment: .leading, spacing: 6) {
@@ -303,7 +318,8 @@ private struct ScheduleWidgetView: View {
                     .lineLimit(1)
                 Text(formattedSchedule(service))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(red: 0.412, green: 0.776, blue: 1.0))
+                    .foregroundStyle(ScheduleWidgetPalette.accent)
+                    .widgetAccentable()
                     .lineLimit(1)
                 Divider().overlay(.white.opacity(0.18))
                 teamList(service, limit: 2)
@@ -315,18 +331,25 @@ private struct ScheduleWidgetView: View {
         VStack(alignment: .leading, spacing: 7) {
             modeHeading
             Text(entry.churchName ?? "Church")
-                .font(.caption)
+                .font(.caption2)
                 .foregroundStyle(.white.opacity(0.72))
-                .lineLimit(2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .allowsTightening(true)
             Spacer(minLength: 0)
             Text(service.serviceType)
                 .font(.system(.headline, design: .rounded, weight: .bold))
                 .foregroundStyle(.white)
                 .lineLimit(2)
+                .minimumScaleFactor(0.78)
+                .allowsTightening(true)
             Text(formattedSchedule(service))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color(red: 0.412, green: 0.776, blue: 1.0))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(ScheduleWidgetPalette.accent)
+                .widgetAccentable()
                 .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .allowsTightening(true)
         }
     }
 
@@ -344,7 +367,8 @@ private struct ScheduleWidgetView: View {
                 .lineLimit(2)
             Text(formattedSchedule(service))
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color(red: 0.412, green: 0.776, blue: 1.0))
+                .foregroundStyle(ScheduleWidgetPalette.accent)
+                .widgetAccentable()
                 .lineLimit(1)
             if !service.roles.isEmpty {
                 Label(service.roles.joined(separator: ", "), systemImage: "music.note")
@@ -356,22 +380,27 @@ private struct ScheduleWidgetView: View {
     }
 
     private var modeHeading: some View {
-        Label(entry.mode.title, systemImage: entry.mode.systemImage)
-            .font(.caption.weight(.bold))
+        Label(entry.mode.compactTitle, systemImage: entry.mode.systemImage)
+            .font(.caption2.weight(.bold))
             .foregroundStyle(.white)
             .lineLimit(1)
+            .minimumScaleFactor(0.78)
+            .allowsTightening(true)
     }
 
     private func teamList(_ service: StoredScheduleService, limit: Int) -> some View {
         let team = service.team ?? []
         return VStack(alignment: .leading, spacing: 4) {
             Label(
-                team.isEmpty ? "Assigned Team" : "Assigned Team (\(team.count))",
+                team.isEmpty ? "Team" : "Team (\(team.count))",
                 systemImage: "person.2.fill"
             )
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(.white.opacity(0.78))
                 .lineLimit(1)
+                .accessibilityLabel(
+                    team.isEmpty ? "Assigned Team" : "Assigned Team, \(team.count) members"
+                )
             if team.isEmpty {
                 Text("No team assigned yet")
                     .font(.caption.weight(.medium))
@@ -379,10 +408,12 @@ private struct ScheduleWidgetView: View {
                     .lineLimit(2)
             } else {
                 ForEach(Array(team.prefix(limit)), id: \.self) { member in
-                    Text("\(member.role): \(member.memberName)")
-                        .font(.caption2.weight(.semibold))
+                    (Text(member.role).bold() + Text(" · ") + Text(member.memberName))
+                        .font(.system(size: team.count > 3 ? 10 : 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.92))
                         .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                        .allowsTightening(true)
                 }
                 if team.count > limit && family == .systemMedium {
                     Text("+\(team.count - limit) more")
@@ -400,7 +431,8 @@ private struct ScheduleWidgetView: View {
             Spacer(minLength: 0)
             Image(systemName: emptySymbol)
                 .font(.title2)
-                .foregroundStyle(Color(red: 0.412, green: 0.776, blue: 1.0))
+                .foregroundStyle(ScheduleWidgetPalette.accent)
+                .widgetAccentable()
             Text(emptyTitle)
                 .font(.headline)
                 .foregroundStyle(.white)
@@ -447,7 +479,7 @@ private struct ScheduleWidgetView: View {
         guard let date = displayDate(service) else { return "Date unavailable" }
         let dateText = date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
         guard service.time != nil else { return dateText }
-        return "\(dateText) at \(date.formatted(date: .omitted, time: .shortened))"
+        return "\(dateText) • \(date.formatted(date: .omitted, time: .shortened))"
     }
 
     private func displayDate(_ service: StoredScheduleService) -> Date? {

@@ -13,6 +13,7 @@ import { useMemberNotifications } from '@/hooks/useMemberNotifications';
 import {
   saveNotificationPermissionDecision,
 } from '@/lib/notifications/permission-onboarding-storage';
+import { useAppTheme } from '@/contexts/AppThemeContext';
 
 interface NotificationBellProps {
   variant?: 'default' | 'compact';
@@ -23,6 +24,7 @@ export function NotificationBell({
   variant = 'default',
   size = 24,
 }: NotificationBellProps) {
+  const theme = useAppTheme();
   const router = useRouter();
   const {
     hasPermission,
@@ -102,7 +104,13 @@ export function NotificationBell({
       accessibilityRole="button"
       activeOpacity={0.72}
       onPress={handlePress}
-      style={compact ? styles.compactButton : styles.button}
+      style={[
+        compact ? styles.compactButton : styles.button,
+        {
+          backgroundColor: theme.header.controlSurface,
+          borderColor: theme.header.controlBorder,
+        },
+      ]}
       testID="notification-bell"
     >
       <View style={styles.bellContainer}>
@@ -110,13 +118,24 @@ export function NotificationBell({
           ios_icon_name={hasPermission ? 'bell.fill' : 'bell.slash.fill'}
           android_material_icon_name={hasPermission ? 'notifications' : 'notifications-off'}
           size={compact ? Math.round(size * 0.82) : size}
-          color="#FFFFFF"
+          color={theme.header.title}
         />
         {hasPermission && unreadCount > 0 ? (
           <NotificationBadge count={unreadCount} />
         ) : !hasPermission && !compact ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>!</Text>
+          <View style={[
+            styles.badge,
+            {
+              backgroundColor: theme.status.error.foreground,
+              borderColor: theme.header.title,
+            },
+          ]}>
+            <Text style={[
+              styles.badgeText,
+              { color: theme.button.destructiveForeground },
+            ]}>
+              !
+            </Text>
           </View>
         ) : null}
       </View>
@@ -125,9 +144,21 @@ export function NotificationBell({
 }
 
 function NotificationBadge({ count }: { count: number }) {
+  const theme = useAppTheme();
   return (
-    <View style={styles.badge}>
-      <Text style={styles.badgeText}>{count > 9 ? '9+' : String(count)}</Text>
+    <View style={[
+      styles.badge,
+      {
+        backgroundColor: theme.status.error.foreground,
+        borderColor: theme.header.title,
+      },
+    ]}>
+      <Text style={[
+        styles.badgeText,
+        { color: theme.button.destructiveForeground },
+      ]}>
+        {count > 9 ? '9+' : String(count)}
+      </Text>
     </View>
   );
 }
@@ -139,9 +170,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.16)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
   },
   compactButton: {
     width: 44,
@@ -149,9 +178,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.16)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
   },
   bellContainer: {
     position: 'relative',
@@ -164,7 +191,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -7,
     right: -8,
-    backgroundColor: '#FF3B30',
     borderRadius: 9,
     minWidth: 18,
     height: 18,
@@ -172,10 +198,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#FFFFFF',
   },
   badgeText: {
-    color: '#FFFFFF',
     fontSize: 10,
     fontWeight: 'bold',
   },

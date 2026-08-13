@@ -28,13 +28,14 @@ import {
   createLegacyThemeColors,
   type LegacyThemeColors,
 } from '@/lib/ui/legacy-theme-colors';
+import type { AppTheme } from '@/lib/ui/app-theme';
 
 type StatusTone = 'success' | 'error' | 'info';
 
 export function ProfileNotificationPreferencesScreen() {
   const theme = useAppTheme();
   const colors = useMemo(() => createLegacyThemeColors(theme), [theme]);
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
   const router = useRouter();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
@@ -339,12 +340,15 @@ export function ProfileNotificationPreferencesScreen() {
                         disabled: isSaving,
                       }}
                       disabled={isSaving}
-                      ios_backgroundColor="#A6ADB7"
+                      ios_backgroundColor={theme.colors.borderStrong}
                       onValueChange={nextValue => {
                         void handlePreferenceChange(option.key, nextValue);
                       }}
-                      thumbColor="#FFFFFF"
-                      trackColor={{ false: '#A6ADB7', true: colors.primary }}
+                      thumbColor={theme.strongSurface.foreground}
+                      trackColor={{
+                        false: theme.colors.borderStrong,
+                        true: theme.colors.accent,
+                      }}
                       value={preferences[option.key]}
                     />
                   )}
@@ -365,7 +369,7 @@ export function ProfileNotificationPreferencesScreen() {
   );
 }
 
-function createStyles(colors: LegacyThemeColors) {
+function createStyles(colors: LegacyThemeColors, theme: AppTheme) {
   return StyleSheet.create({
   container: {
     backgroundColor: colors.background,
@@ -401,7 +405,7 @@ function createStyles(colors: LegacyThemeColors) {
     lineHeight: 24,
   },
   headerSubtitle: {
-    color: '#DBEAFE',
+    color: theme.strongSurface.mutedForeground,
     fontSize: 13,
     fontWeight: '600',
     lineHeight: 18,

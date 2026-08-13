@@ -29,6 +29,7 @@ import {
   ViewStyle,
   TextStyle,
 } from "react-native";
+import { useAppTheme } from '@/contexts/AppThemeContext';
 
 interface LoadingButtonProps {
   onPress: () => void;
@@ -51,7 +52,20 @@ export function LoadingButton({
   textStyle,
   loadingColor,
 }: LoadingButtonProps) {
+  const theme = useAppTheme();
   const isDisabled = disabled || loading;
+  const variantStyle = variant === 'primary'
+    ? { backgroundColor: theme.button.primarySurface }
+    : variant === 'secondary'
+      ? { backgroundColor: theme.button.secondarySurface }
+      : {
+          backgroundColor: 'transparent',
+          borderColor: theme.button.secondaryBorder,
+          borderWidth: 1,
+        };
+  const foreground = variant === 'primary'
+    ? theme.button.primaryForeground
+    : theme.button.secondaryForeground;
 
   return (
     <Pressable
@@ -59,7 +73,7 @@ export function LoadingButton({
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.button,
-        styles[variant],
+        variantStyle,
         pressed && !isDisabled && styles.pressed,
         isDisabled && styles.disabled,
         style,
@@ -67,13 +81,13 @@ export function LoadingButton({
     >
       {loading ? (
         <ActivityIndicator
-          color={loadingColor || (variant === "outline" ? "#007AFF" : "#fff")}
+          color={loadingColor || foreground}
         />
       ) : (
         <Text
           style={[
             styles.text,
-            styles[`${variant}Text` as keyof typeof styles],
+            { color: foreground },
             textStyle,
           ]}
         >
@@ -92,17 +106,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 24,
   },
-  primary: {
-    backgroundColor: "#007AFF",
-  },
-  secondary: {
-    backgroundColor: "#5856D6",
-  },
-  outline: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "#007AFF",
-  },
   pressed: {
     opacity: 0.8,
   },
@@ -112,14 +115,5 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 16,
     fontWeight: "600",
-  },
-  primaryText: {
-    color: "#fff",
-  },
-  secondaryText: {
-    color: "#fff",
-  },
-  outlineText: {
-    color: "#007AFF",
   },
 });

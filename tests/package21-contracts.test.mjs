@@ -55,6 +55,17 @@ test('the church widget shows one service with its assigned team', () => {
   assert.doesNotMatch(swift, /followingServices|dropFirst\(\)\.prefix/);
 });
 
+test('the medium widget prioritizes complete service and team details', () => {
+  const swift = read('targets/ScheduleWidgets/ScheduleWidgets.swift');
+
+  assert.match(swift, /case \.church: return "Next Service"/);
+  assert.match(swift, /team\.isEmpty \? "Team" : "Team \(\\\(team\.count\)\)"/);
+  assert.match(swift, /geometry\.size\.width \* 0\.4/);
+  assert.match(swift, /Text\(member\.role\)\.bold\(\)[\s\S]*Text\(member\.memberName\)/);
+  assert.equal((swift.match(/\.minimumScaleFactor\(/g) ?? []).length >= 5, true);
+  assert.match(swift, /return "\\\(dateText\) • \\\(date\.formatted/);
+});
+
 test('snapshot identifiers and privacy boundaries match across JavaScript and Swift', () => {
   const model = read('lib/widgets/schedule-widget-model.ts');
   const nativeStorage = read('lib/widgets/schedule-widget.ios.ts');

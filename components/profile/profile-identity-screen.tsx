@@ -27,13 +27,14 @@ import {
   createLegacyThemeColors,
   type LegacyThemeColors,
 } from '@/lib/ui/legacy-theme-colors';
+import type { AppTheme } from '@/lib/ui/app-theme';
 
 type StatusTone = 'success' | 'error' | 'info';
 
 export function ProfileIdentityScreen() {
   const theme = useAppTheme();
   const colors = useMemo(() => createLegacyThemeColors(theme), [theme]);
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const {
@@ -378,7 +379,7 @@ export function ProfileIdentityScreen() {
   );
 }
 
-function createStyles(colors: LegacyThemeColors) {
+function createStyles(colors: LegacyThemeColors, theme: AppTheme) {
   return StyleSheet.create({
   flex: {
     flex: 1,
@@ -418,7 +419,7 @@ function createStyles(colors: LegacyThemeColors) {
     lineHeight: 24,
   },
   headerSubtitle: {
-    color: '#DBEAFE',
+    color: theme.strongSurface.mutedForeground,
     fontSize: 13,
     fontWeight: '600',
     lineHeight: 18,
@@ -460,13 +461,13 @@ function createStyles(colors: LegacyThemeColors) {
     lineHeight: 23,
   },
   identityChurch: {
-    color: '#CBD5E1',
+    color: theme.strongSurface.mutedForeground,
     fontSize: 13,
     lineHeight: 18,
     marginTop: 2,
   },
   accessBadge: {
-    backgroundColor: '#DBEAFE',
+    backgroundColor: theme.colors.accentSoft,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -12,25 +12,22 @@ const rootLayout = read('app', '_layout.tsx');
 const appConfig = JSON.parse(read('app.json')).expo;
 const themeContext = read('contexts', 'AppThemeContext.tsx');
 const themeTokens = read('lib', 'ui', 'app-theme.ts');
-const legacyColors = read('styles', 'commonStyles.ts');
 const tabHeader = read('components', 'navigation', 'responsive-tab-header.tsx');
 const churchContext = read('contexts', 'ChurchContext.tsx');
 const churchScreen = read('app', '(tabs)', 'church.tsx');
 
-test('Package 23 activates only the light semantic theme', () => {
-  assert.equal(appConfig.userInterfaceStyle, 'light');
+test('Package 23 surfaces remain compatible with activated native appearance', () => {
+  assert.equal(appConfig.userInterfaceStyle, 'automatic');
   assert.match(rootLayout, /<AppThemeProvider>/);
   assert.match(rootLayout, /useAppTheme\(\)/);
   assert.match(rootLayout, /createNavigationThemeColors\(appTheme\)/);
-  assert.doesNotMatch(rootLayout, /useColorScheme|CustomDarkTheme/);
-  assert.match(themeContext, /theme = lightAppTheme/);
-  assert.doesNotMatch(themeContext, /useColorScheme/);
+  assert.doesNotMatch(rootLayout, /CustomDarkTheme/);
+  assert.match(themeContext, /useColorScheme/);
+  assert.match(themeContext, /futureDarkAppTheme/);
 });
 
-test('legacy colors remain a documented adapter to the authoritative theme', () => {
-  assert.match(legacyColors, /Compatibility bridge/);
-  assert.match(legacyColors, /lightAppTheme/);
-  assert.match(legacyColors, /futureDarkAppTheme/);
+test('semantic themes remain authoritative after legacy color removal', () => {
+  assert.equal(existsSync(join(projectRoot, 'styles', 'commonStyles.ts')), false);
   assert.match(themeTokens, /export const lightAppTheme/);
   assert.match(themeTokens, /export const futureDarkAppTheme/);
 });
@@ -58,7 +55,7 @@ test('selected Church identity converges after refresh and rename', () => {
   assert.match(churchScreen, /membership: currentMember/);
 });
 
-test('Package 23 adds no backend object or persisted theme setting', () => {
+test('Package 23 and the later client runtime add no backend theme object', () => {
   const migrations = readdirSync(join(projectRoot, 'supabase', 'migrations'));
   const functions = readdirSync(join(projectRoot, 'supabase', 'functions'));
 
