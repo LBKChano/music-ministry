@@ -653,6 +653,9 @@ function ScheduleServiceCardComponent({
                 : assignedMemberName
                   ? 'Assigned'
                   : 'Open';
+            const showAssignmentState = isMyAssignment
+              || hasFillInRequest
+              || !assignedMemberName;
             const rowContent = (
               <>
                 <AppIconTile compact>
@@ -693,16 +696,16 @@ function ScheduleServiceCardComponent({
                     variant="memberName"
                   />
                 ) : null}
-                <AppStatusBadge
-                  label={assignmentState}
-                  tone={isMyAssignment
-                    ? 'personal'
-                    : hasFillInRequest
-                      ? 'attention'
-                      : assignedMemberName
-                        ? 'assigned'
+                {showAssignmentState ? (
+                  <AppStatusBadge
+                    label={assignmentState}
+                    tone={isMyAssignment
+                      ? 'personal'
+                      : hasFillInRequest
+                        ? 'attention'
                         : 'unassigned'}
-                />
+                  />
+                ) : null}
                 {isAdmin ? (
                   <IconSymbol
                     android_material_icon_name="chevron-right"
@@ -817,7 +820,7 @@ function ScheduleServiceCardComponent({
                       />
                       <ResponsiveText
                         accessible={false}
-                        style={cardStyles.actionLabelLane}
+                        style={cardStyles.fillInActionLabelLane}
                         text="Request Fill-In"
                         textStyle={[
                           cardStyles.fillInActionText,
@@ -1602,6 +1605,12 @@ const createCardStyles = (colors: LegacyThemeColors) => StyleSheet.create({
     color: colors.secondary,
     fontSize: 13,
     fontWeight: '800',
+    textAlign: 'center',
+  },
+  fillInActionLabelLane: {
+    alignSelf: 'center',
+    flexShrink: 1,
+    minWidth: 0,
   },
   fillInPending: {
     alignItems: 'center',

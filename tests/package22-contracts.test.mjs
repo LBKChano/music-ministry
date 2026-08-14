@@ -273,9 +273,14 @@ test('Schedule controls expose labels, states, keyboard targets, and non-color c
   assert.match(screen, /All scheduled services loaded/);
   assert.match(screen, /loadMoreLabelLane:[\s\S]*?alignSelf: 'center',[\s\S]*?justifyContent: 'center'/);
   assert.match(card, /cardStyles\.fillInAction,[\s\S]*?theme\.button\.primarySurface/);
+  assert.match(card, /style=\{cardStyles\.fillInActionLabelLane\}/);
+  assert.match(card, /fillInActionLabelLane:[\s\S]*?alignSelf: 'center'/);
+  assert.match(card, /fillInActionText:[\s\S]*?textAlign: 'center'/);
   assert.match(card, /color=\{theme\.button\.primaryForeground\}/);
   assert.match(card, /personalAssignment:[\s\S]*?borderRadius: 8,[\s\S]*?borderWidth: 1/);
   assert.match(card, /personalRoleChip:[\s\S]*?borderRadius: 999,[\s\S]*?justifyContent: 'center'/);
+  assert.match(card, /showAssignmentState = isMyAssignment[\s\S]*?\|\| !assignedMemberName/);
+  assert.match(card, /\{showAssignmentState \? \([\s\S]*?<AppStatusBadge/);
   assert.doesNotMatch(card, /color: colors\.accent/);
 });
 

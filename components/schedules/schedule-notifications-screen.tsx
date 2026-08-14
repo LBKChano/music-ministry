@@ -121,12 +121,13 @@ export function ScheduleNotificationsScreen() {
 
   return (
     <SafeAreaView
-      edges={['top', 'left', 'right']}
+      edges={['left', 'right']}
       style={[styles.container, { backgroundColor: theme.colors.canvas }]}
     >
       <Stack.Screen options={{ headerShown: false }} />
       <FocusedScreenHeader
         backAccessibilityLabel="Back to Schedule"
+        extendIntoTopSafeArea
         onBack={handleBack}
         subtitle={currentChurch?.name ?? 'Schedule updates'}
         title="Notifications"

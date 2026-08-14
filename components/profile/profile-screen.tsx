@@ -320,8 +320,6 @@ export function ProfileScreen({
                 <ProfileRow
                   title="Church Profile"
                   summary={`${currentChurch?.name ?? 'Selected church'} | ${roleSummary}`}
-                  value={userRole}
-                  valueTone={userRole === 'Member' ? 'info' : 'success'}
                   iosIcon="person.text.rectangle"
                   androidIcon="badge"
                   accessibilityHint="Shows your church-scoped name, access, assigned roles, and account email."
@@ -332,8 +330,6 @@ export function ProfileScreen({
                 <ProfileRow
                   title="Switch Church"
                   summary={currentChurch?.name ?? 'Choose the church you want to use.'}
-                  value={`${churches.length} connected`}
-                  valueTone="info"
                   iosIcon="building.2"
                   androidIcon="business"
                   accessibilityHint="Opens your connected churches and lets you switch or join another church."
@@ -418,16 +414,8 @@ export function ProfileScreen({
                         ? 'Delivery settings could not be loaded. Open to retry.'
                         : notificationDeliverySummary.description
                   }
-                  value={
-                    notificationPreferencesQuery.isLoading
-                      ? 'Loading'
-                      : notificationPreferencesLoadFailed
-                        ? 'Retry'
-                        : notificationDeliverySummary.value
-                  }
                   iosIcon={hasPermission ? 'bell.badge.fill' : 'bell.slash.fill'}
                   androidIcon={hasPermission ? 'notifications-active' : 'notifications-off'}
-                  valueTone={notificationPreferencesLoadFailed ? 'error' : hasPermission ? 'success' : 'attention'}
                   accessibilityHint="Opens device permission and church notification delivery settings."
                   busy={notificationPreferencesQuery.isLoading}
                   onPress={() => {
@@ -437,12 +425,6 @@ export function ProfileScreen({
                 <ProfileRow
                   title="Appearance"
                   summary="Choose whether this device follows the system appearance or uses light or dark mode."
-                  value={appearancePreference === 'system'
-                    ? 'System'
-                    : appearancePreference === 'dark'
-                      ? 'Dark'
-                      : 'Light'}
-                  valueTone="info"
                   iosIcon="circle.lefthalf.filled"
                   androidIcon="contrast"
                   accessibilityHint="Opens appearance settings for this device."
@@ -453,8 +435,6 @@ export function ProfileScreen({
                 <ProfileRow
                   title="Account and Security"
                   summary={user.email ?? 'Password, sign-out, app information, and account management.'}
-                  value="Open"
-                  valueTone="info"
                   iosIcon="person.crop.circle.badge.checkmark"
                   androidIcon="manage-accounts"
                   accessibilityHint="Opens password, app information, sign-out, and account-management controls."

@@ -46,6 +46,18 @@ test('Profile groups device and account preferences under Account Settings', () 
   assert.equal(profile.includes("id: 'account'"), false);
 });
 
+test('Profile reserves trailing value chips for My Scheduling status', () => {
+  const profile = read('components', 'profile', 'profile-screen.tsx');
+  const churchStart = profile.indexOf("id: 'church'");
+  const schedulingStart = profile.indexOf("id: 'scheduling'");
+  const accountStart = profile.indexOf("id: 'account-settings'");
+  const sectionsEnd = profile.indexOf('] satisfies ProfileOverviewSection[]');
+
+  assert.doesNotMatch(profile.slice(churchStart, schedulingStart), /\bvalue=/);
+  assert.match(profile.slice(schedulingStart, accountStart), /\bvalue=\{/);
+  assert.doesNotMatch(profile.slice(accountStart, sectionsEnd), /\bvalue=/);
+});
+
 test('release gate documents checks that cannot be claimed from source alone', () => {
   const gate = read('docs', 'DARK_MODE_RELEASE_GATE.md');
   assert.match(gate, /Physical Device Gate/);

@@ -23,6 +23,11 @@ test('Schedule surfaces resolve from the active runtime theme', () => {
   assert.match(notifications, /theme\.colors\.accentSoft/);
 });
 
+test('notification history extends its focused header through the top safe area', () => {
+  assert.match(notifications, /edges=\{\['left', 'right'\]\}/);
+  assert.match(notifications, /<FocusedScreenHeader[\s\S]*?extendIntoTopSafeArea/);
+});
+
 test('service metadata and personal state remain labeled and semantic', () => {
   assert.match(serviceCard, /theme\.serviceMetadata\.surface/);
   assert.match(serviceCard, /theme\.serviceMetadata\.foreground/);
